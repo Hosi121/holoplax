@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { Settings } from "lucide-react";
 
 const screenMap = [
   {
@@ -29,6 +30,43 @@ const velocityTiles = [
   { label: "Sprint velocity", value: "24 pts", sub: "steady, +3 w/w" },
   { label: "Capacity bubble", value: "12h / wk", sub: "picked in onboarding" },
   { label: "Auto-handled", value: "38%", sub: "low-score tasks closed by AI" },
+];
+
+const splitThreshold = 8;
+
+const splitNodes = [
+  {
+    id: "root",
+    title: "クラウド移行計画",
+    points: 13,
+    urgency: "中",
+    risk: "中",
+    detail: "8pt超えのため分解。AIが候補を提示しています。",
+  },
+  {
+    id: "child-1",
+    title: "データ同期（段階移行）",
+    points: 5,
+    urgency: "中",
+    risk: "低",
+    detail: "バッチとストリーミングを併用し、切替前に差分確認。",
+  },
+  {
+    id: "child-2",
+    title: "権限・監査ログ設計",
+    points: 3,
+    urgency: "中",
+    risk: "中",
+    detail: "IAMロールと監査ログの要件を洗い出し。",
+  },
+  {
+    id: "child-3",
+    title: "モニタリング／アラート",
+    points: 2,
+    urgency: "低",
+    risk: "低",
+    detail: "メトリクスとSLI/SLOの初期値を設定。",
+  },
 ];
 
 export default function Home() {
@@ -288,6 +326,67 @@ export default function Home() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">タスク分解（Git風ツリー）</h3>
+              <p className="text-sm text-slate-600">
+                {splitThreshold}pt を超えたタスクは自動で分解候補を提示し、〇/×で採用可。
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <div className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
+                上限 {splitThreshold} pt
+              </div>
+              <button className="flex items-center gap-1 border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
+                <Settings size={16} />
+                変更
+              </button>
+            </div>
+          </div>
+          <div className="relative mt-6 pl-8">
+            <div className="absolute left-3 top-0 bottom-0 border-l border-slate-200" />
+            <div className="space-y-4">
+              {splitNodes.map((node, idx) => (
+                <div key={node.id} className="relative">
+                  <div className="absolute left-[9px] top-3 h-0.5 w-4 bg-slate-300" />
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 items-center justify-center bg-[#2323eb]/10 text-xs font-semibold text-[#2323eb]">
+                      {node.points}
+                    </div>
+                    <div className="flex-1 border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {node.title}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
+                            緊急度: {node.urgency}
+                          </span>
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
+                            リスク: {node.risk}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-700">{node.detail}</p>
+                      {idx === 0 ? (
+                        <div className="mt-3 flex items-center gap-2 text-xs">
+                          <span className="border border-[#2323eb]/40 bg-[#2323eb]/10 px-2 py-1 text-[#2323eb]">
+                            分解提案
+                          </span>
+                          <span className="text-slate-600">
+                            上限 {splitThreshold}pt を超過したため分解候補を生成
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
