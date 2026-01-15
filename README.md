@@ -7,13 +7,13 @@
 - NextAuth（認証予定）
 - OpenAI（`OPENAI_API_KEY` を `.env` に設定）
 
-## すぐ使う（docker compose）
+## すぐ使う（DB/バケットは Docker、Next はホスト）
 1. `.env` を作成  
    `cp .env.example .env`
-2. 必要なサービスを起動  
+2. DB/MinIO を起動  
    `docker compose up -d db minio`
-3. アプリを起動（dev モード）  
-   `docker compose up web`
+3. Next.js をホストで起動（dev モード）  
+   `npm install && npm run dev`
 
 アクセス:
 - Web: http://localhost:3000
@@ -21,8 +21,8 @@
 - MinIO: http://localhost:9000（S3 エンドポイント） / http://localhost:9001（コンソール）
 
 ## メモ
-- `web` はソースをボリュームマウントし、dev モードで動作。`node_modules` はコンテナ側で作成。
-- `DATABASE_URL` はホストからは `localhost:5433`、コンテナ内は `db:5432` を指す。NextAuth 用に `NEXTAUTH_SECRET` を設定してから起動する。
+- `docker compose` は DB/MinIO のみを管理。Next.js はホストで `npm run dev` を実行する。
+- `DATABASE_URL` はホストからは `localhost:5433`（コンテナ内は `db:5432`）。NextAuth 用に `NEXTAUTH_SECRET` を設定してから起動する。
+- MinIO のエンドポイントはホストから `http://localhost:9000` を使う。
 - OpenAI を使うときは `.env` に `OPENAI_API_KEY` を設定する（キーはコミットしないこと）。
-- Docker を使わずに動かす場合: `npm install && npm run dev`（別途 Postgres/MinIO を立ち上げる）。
 - Prisma マイグレーション: `DATABASE_URL=postgresql://holoplax:holoplax@localhost:5433/holoplax npx prisma migrate dev --name init`

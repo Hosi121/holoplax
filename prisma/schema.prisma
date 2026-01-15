@@ -16,6 +16,7 @@ enum TaskStatus {
 model Task {
   id        String     @id @default(uuid())
   title     String
+  description String    @default("")
   points    Int
   urgency   String
   risk      String
