@@ -3,8 +3,18 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const main = async () => {
+  const demoUser = await prisma.user.upsert({
+    where: { email: "demo@holoplax.local" },
+    update: {},
+    create: {
+      name: "Demo User",
+      email: "demo@holoplax.local",
+    },
+  });
   const ensureTask = async (data) => {
-    const existing = await prisma.task.findFirst({ where: { title: data.title } });
+    const existing = await prisma.task.findFirst({
+      where: { title: data.title, userId: demoUser.id },
+    });
     return existing ?? prisma.task.create({ data });
   };
 
@@ -16,6 +26,7 @@ const main = async () => {
       urgency: "中",
       risk: "低",
       status: "BACKLOG",
+      userId: demoUser.id,
     }),
     ensureTask({
       title: "DBバックアップ導線の検討",
@@ -24,6 +35,7 @@ const main = async () => {
       urgency: "中",
       risk: "中",
       status: "BACKLOG",
+      userId: demoUser.id,
     }),
     ensureTask({
       title: "ユーザーインタビュー設計",
@@ -32,27 +44,31 @@ const main = async () => {
       urgency: "高",
       risk: "中",
       status: "SPRINT",
+      userId: demoUser.id,
     }),
   ]);
 
-  const existingVelocity = await prisma.velocityEntry.count();
+  const existingVelocity = await prisma.velocityEntry.count({ where: { userId: demoUser.id } });
   if (existingVelocity === 0) {
     await prisma.velocityEntry.createMany({
       data: [
-        { name: "Sprint-10", points: 21, range: "18-24" },
-        { name: "Sprint-11", points: 24, range: "20-26" },
-        { name: "Sprint-12", points: 23, range: "20-26" },
+        { name: "Sprint-10", points: 21, range: "18-24", userId: demoUser.id },
+        { name: "Sprint-11", points: 24, range: "20-26", userId: demoUser.id },
+        { name: "Sprint-12", points: 23, range: "20-26", userId: demoUser.id },
       ],
     });
   }
 
-  await prisma.automationSetting.upsert({
-    where: { id: 1 },
-    update: { low: 35, high: 70 },
-    create: { id: 1, low: 35, high: 70 },
+  const existingAutomation = await prisma.userAutomationSetting.findFirst({
+    where: { userId: demoUser.id },
   });
+  if (!existingAutomation) {
+    await prisma.userAutomationSetting.create({
+      data: { low: 35, high: 70, userId: demoUser.id },
+    });
+  }
 
-  const existingLogs = await prisma.aiSuggestion.count();
+  const existingLogs = await prisma.aiSuggestion.count({ where: { userId: demoUser.id } });
   if (existingLogs === 0) {
     await prisma.aiSuggestion.createMany({
       data: [
@@ -62,6 +78,7 @@ const main = async () => {
           inputTitle: tasks[0].title,
           inputDescription: tasks[0].description ?? "",
           output: "小さなセクションごとに完了条件を明記すると実装が速くなります。",
+          userId: demoUser.id,
         },
         {
           type: "SCORE",
@@ -75,6 +92,7 @@ const main = async () => {
             score: 66,
             reason: "影響範囲が広いため中程度の工数",
           }),
+          userId: demoUser.id,
         },
         {
           type: "SPLIT",
@@ -104,6 +122,7 @@ const main = async () => {
               detail: "失敗時の通知チャネルを整理。",
             },
           ]),
+          userId: demoUser.id,
         },
       ],
     });
