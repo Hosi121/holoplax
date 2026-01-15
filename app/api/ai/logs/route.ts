@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { AuthError, requireAuth } from "../../../../lib/api-auth";
+import { requireAuth } from "../../../../lib/api-auth";
+import { handleAuthError, ok, serverError } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 import { adoptOrphanAiSuggestions } from "../../../../lib/user-data";
 
@@ -11,7 +11,7 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 50,
       });
-      return NextResponse.json({ logs });
+      return ok({ logs });
     }
     await adoptOrphanAiSuggestions(userId);
     const logs = await prisma.aiSuggestion.findMany({
@@ -19,12 +19,11 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       take: 20,
     });
-    return NextResponse.json({ logs });
+    return ok({ logs });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("GET /api/ai/logs error", error);
-    return NextResponse.json({ error: "failed to load logs" }, { status: 500 });
+    return serverError("failed to load logs");
   }
 }

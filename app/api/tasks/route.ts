@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server";
 import { AuthError, requireAuth } from "../../../lib/api-auth";
+import {
+  badRequest,
+  handleAuthError,
+  ok,
+  serverError,
+} from "../../../lib/api-response";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS } from "../../../lib/types";
 import { adoptOrphanTasks } from "../../../lib/user-data";
@@ -11,20 +16,19 @@ export async function GET() {
       const tasks = await prisma.task.findMany({
         orderBy: { createdAt: "desc" },
       });
-      return NextResponse.json({ tasks });
+      return ok({ tasks });
     }
     await adoptOrphanTasks(userId);
     const tasks = await prisma.task.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json({ tasks });
+    return ok({ tasks });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("GET /api/tasks error", error);
-    return NextResponse.json({ error: "failed to load tasks" }, { status: 500 });
+    return serverError("failed to load tasks");
   }
 }
 
@@ -34,7 +38,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { title, description, points, urgency, risk, status } = body;
     if (!title || points === undefined || points === null) {
-      return NextResponse.json({ error: "title and points are required" }, { status: 400 });
+      return badRequest("title and points are required");
     }
     const statusValue = Object.values(TASK_STATUS).includes(status)
       ? status
@@ -50,12 +54,11 @@ export async function POST(request: Request) {
         userId: role === "ADMIN" ? userId : userId,
       },
     });
-    return NextResponse.json({ task });
+    return ok({ task });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("POST /api/tasks error", error);
-    return NextResponse.json({ error: "failed to create task" }, { status: 500 });
+    return serverError("failed to create task");
   }
 }

@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server";
 import { AuthError, requireAuth } from "../../../../lib/api-auth";
+import {
+  handleAuthError,
+  notFound,
+  ok,
+  serverError,
+} from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS } from "../../../../lib/types";
 
@@ -27,25 +32,24 @@ export async function PATCH(
         where: { id },
         data,
       });
-      return NextResponse.json({ task: updated });
+      return ok({ task: updated });
     }
     const updated = await prisma.task.updateMany({
       where: { id, userId },
       data,
     });
     if (!updated.count) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
+      return notFound();
     }
     const task = await prisma.task.findFirst({
       where: { id, userId },
     });
-    return NextResponse.json({ task });
+    return ok({ task });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("PATCH /api/tasks/[id] error", error);
-    return NextResponse.json({ error: "not found or update failed" }, { status: 404 });
+    return notFound("not found or update failed");
   }
 }
 
@@ -59,19 +63,18 @@ export async function DELETE(
     if (role === "ADMIN") {
       await prisma.aiSuggestion.deleteMany({ where: { taskId: id } });
       await prisma.task.delete({ where: { id } });
-      return NextResponse.json({ ok: true });
+      return ok({ ok: true });
     }
     await prisma.aiSuggestion.deleteMany({ where: { taskId: id, userId } });
     const deleted = await prisma.task.deleteMany({ where: { id, userId } });
     if (!deleted.count) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
+      return notFound();
     }
-    return NextResponse.json({ ok: true });
+    return ok({ ok: true });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("DELETE /api/tasks/[id] error", error);
-    return NextResponse.json({ error: "not found or delete failed" }, { status: 404 });
+    return notFound("not found or delete failed");
   }
 }

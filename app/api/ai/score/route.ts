@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../../lib/api-auth";
+import { requireAuth } from "../../../../lib/api-auth";
+import {
+  badRequest,
+  handleAuthError,
+  ok,
+  serverError,
+} from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 
 const fallbackEstimate = (title: string, description: string) => {
@@ -22,12 +27,12 @@ const extractJson = (text: string) => {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const { userId } = await requireAuth();
     const body = await request.json();
     const title = String(body.title ?? "").trim();
     const description = String(body.description ?? "").trim();
     if (!title) {
-      return NextResponse.json({ error: "title is required" }, { status: 400 });
+      return badRequest("title is required");
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -81,12 +86,11 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json(payload);
+    return ok(payload);
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("POST /api/ai/score error", error);
-    return NextResponse.json({ error: "failed to estimate score" }, { status: 500 });
+    return serverError("failed to estimate score");
   }
 }

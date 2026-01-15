@@ -51,7 +51,7 @@ export default function VelocityPage() {
           <div className="grid gap-3 sm:grid-cols-3">
             {history.map((item) => (
               <div
-                key={item.name}
+                key={item.id}
                 className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
               >
                 <p className="text-slate-500">{item.name}</p>

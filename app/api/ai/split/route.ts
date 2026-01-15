@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../../lib/api-auth";
+import { requireAuth } from "../../../../lib/api-auth";
+import {
+  badRequest,
+  handleAuthError,
+  ok,
+  serverError,
+} from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 
 type SplitItem = {
@@ -33,13 +38,13 @@ const extractJsonArray = (text: string) => {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const { userId } = await requireAuth();
     const body = await request.json();
     const title = String(body.title ?? "").trim();
     const description = String(body.description ?? "").trim();
     const points = Number(body.points ?? 0);
     if (!title || !Number.isFinite(points) || points <= 0) {
-      return NextResponse.json({ error: "title and points are required" }, { status: 400 });
+      return badRequest("title and points are required");
     }
 
     let suggestions = fallbackSplit(title, description, points);
@@ -93,12 +98,11 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ suggestions });
+    return ok({ suggestions });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("POST /api/ai/split error", error);
-    return NextResponse.json({ error: "failed to split task" }, { status: 500 });
+    return serverError("failed to split task");
   }
 }

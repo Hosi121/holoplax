@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { AuthError, requireAuth } from "../../../lib/api-auth";
+import { conflict, handleAuthError, ok, serverError } from "../../../lib/api-response";
 import prisma from "../../../lib/prisma";
 
 export async function GET() {
@@ -9,13 +9,12 @@ export async function GET() {
       where: { id: userId },
       select: { id: true, name: true, email: true, image: true },
     });
-    return NextResponse.json({ user });
+    return ok({ user });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("GET /api/account error", error);
-    return NextResponse.json({ error: "failed to load account" }, { status: 500 });
+    return serverError("failed to load account");
   }
 }
 
@@ -32,7 +31,7 @@ export async function PATCH(request: Request) {
         where: { email, NOT: { id: userId } },
       });
       if (existing) {
-        return NextResponse.json({ error: "email already in use" }, { status: 409 });
+        return conflict("email already in use");
       }
     }
 
@@ -45,12 +44,11 @@ export async function PATCH(request: Request) {
       },
       select: { id: true, name: true, email: true, image: true },
     });
-    return NextResponse.json({ user: updated });
+    return ok({ user: updated });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("PATCH /api/account error", error);
-    return NextResponse.json({ error: "failed to update account" }, { status: 500 });
+    return serverError("failed to update account");
   }
 }

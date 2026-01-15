@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
-import { AuthError, requireAuth } from "../../../../lib/api-auth";
+import { requireAuth } from "../../../../lib/api-auth";
+import { forbidden, handleAuthError, ok, serverError } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 
 export async function GET() {
   try {
     const { role } = await requireAuth();
     if (role !== "ADMIN") {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return forbidden();
     }
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "desc" },
@@ -18,12 +18,11 @@ export async function GET() {
         createdAt: true,
       },
     });
-    return NextResponse.json({ users });
+    return ok({ users });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("GET /api/admin/users error", error);
-    return NextResponse.json({ error: "failed to load users" }, { status: 500 });
+    return serverError("failed to load users");
   }
 }

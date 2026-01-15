@@ -1,5 +1,9 @@
-import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../../lib/api-auth";
+import { requireAuth } from "../../../../lib/api-auth";
+import {
+  handleAuthError,
+  ok,
+  serverError,
+} from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 
 const canned = [
@@ -10,7 +14,7 @@ const canned = [
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const { userId } = await requireAuth();
     const body = await request.json();
     const title: string = body.title ?? "タスク";
     const description: string = body.description ?? "";
@@ -41,17 +45,17 @@ export async function POST(request: Request) {
           const data = await res.json();
           const content = data.choices?.[0]?.message?.content;
           if (content) {
-            await prisma.aiSuggestion.create({
-              data: {
-                type: "TIP",
-                taskId,
-                inputTitle: title,
+          await prisma.aiSuggestion.create({
+            data: {
+              type: "TIP",
+              taskId,
+              inputTitle: title,
                 inputDescription: description,
                 output: content,
                 userId,
               },
             });
-            return NextResponse.json({ suggestion: content });
+            return ok({ suggestion: content });
           }
         }
       } catch {
@@ -60,24 +64,21 @@ export async function POST(request: Request) {
     }
 
     const pick = canned[Math.floor(Math.random() * canned.length)];
-    await prisma.aiSuggestion.create({
-      data: {
-        type: "TIP",
-        taskId,
-        inputTitle: title,
+  await prisma.aiSuggestion.create({
+    data: {
+      type: "TIP",
+      taskId,
+      inputTitle: title,
         inputDescription: description,
         output: pick,
-        userId,
-      },
-    });
-    return NextResponse.json({
-      suggestion: `${title} のAI提案: ${pick}`,
-    });
+      userId,
+    },
+  });
+  return ok({ suggestion: `${title} のAI提案: ${pick}` });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const authError = handleAuthError(error);
+    if (authError) return authError;
     console.error("POST /api/ai/suggest error", error);
-    return NextResponse.json({ error: "failed to generate suggestion" }, { status: 500 });
+    return serverError("failed to generate suggestion");
   }
 }
