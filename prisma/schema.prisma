@@ -13,6 +13,12 @@ enum TaskStatus {
   DONE
 }
 
+enum AiSuggestionType {
+  TIP
+  SCORE
+  SPLIT
+}
+
 model Task {
   id        String     @id @default(uuid())
   title     String
@@ -23,6 +29,7 @@ model Task {
   status    TaskStatus @default(BACKLOG)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  suggestions AiSuggestion[]
 }
 
 model VelocityEntry {
@@ -38,4 +45,15 @@ model AutomationSetting {
   low       Int
   high      Int
   updatedAt DateTime @updatedAt
+}
+
+model AiSuggestion {
+  id               String           @id @default(uuid())
+  type             AiSuggestionType
+  taskId           String?
+  task             Task?            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  inputTitle       String
+  inputDescription String
+  output           String
+  createdAt        DateTime         @default(now())
 }

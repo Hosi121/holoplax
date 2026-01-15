@@ -30,3 +30,13 @@ export type AutomationSettingDTO = {
   low: number;
   high: number;
 };
+
+export type AiSuggestionDTO = {
+  id: string;
+  type: "TIP" | "SCORE" | "SPLIT";
+  taskId?: string | null;
+  inputTitle: string;
+  inputDescription: string;
+  output: string;
+  createdAt?: string | Date;
+};
