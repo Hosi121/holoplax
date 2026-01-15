@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Holoplax
 
-## Getting Started
+## スタック
+- Next.js 16 / React 19
+- Postgres（docker compose で起動）
+- MinIO（S3 互換、docker compose で起動）
+- NextAuth（認証予定）
 
-First, run the development server:
+## すぐ使う（docker compose）
+1. `.env` を作成  
+   `cp .env.example .env`
+2. 必要なサービスを起動  
+   `docker compose up -d db minio`
+3. アプリを起動（dev モード）  
+   `docker compose up web`
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+アクセス:
+- Web: http://localhost:3000
+- Postgres: localhost:5432（`.env` のユーザ/パス）
+- MinIO: http://localhost:9000（S3 エンドポイント） / http://localhost:9001（コンソール）
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## メモ
+- `web` はソースをボリュームマウントし、dev モードで動作。`node_modules` はコンテナ側で作成。
+- `DATABASE_URL` は `db` ホストを指す。NextAuth 用に `NEXTAUTH_SECRET` を設定してから起動する。
+- Docker を使わずに動かす場合: `npm install && npm run dev`（別途 Postgres/MinIO を立ち上げる）。
