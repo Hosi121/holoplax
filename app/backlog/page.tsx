@@ -8,6 +8,7 @@ export default function BacklogPage() {
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [form, setForm] = useState({
     title: "",
+    description: "",
     points: 3,
     urgency: "中",
     risk: "中",
@@ -33,16 +34,17 @@ export default function BacklogPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: form.title.trim(),
+        description: form.description.trim(),
         points: Number(form.points),
         urgency: form.urgency,
         risk: form.risk,
-        status: "backlog",
+        status: TASK_STATUS.BACKLOG,
       }),
     });
     if (res.ok) {
       const data = await res.json();
       setItems((prev) => [...prev, data.task]);
-      setForm({ title: "", points: 3, urgency: "中", risk: "中" });
+      setForm({ title: "", description: "", points: 3, urgency: "中", risk: "中" });
       setModalOpen(false);
     }
   };
@@ -120,6 +122,9 @@ export default function BacklogPage() {
                       </span>
                     </div>
                   </div>
+                  {item.description ? (
+                    <p className="mt-1 text-sm text-slate-700">{item.description}</p>
+                  ) : null}
                   <div className="mt-2 flex items-center gap-2 text-xs">
                     <button
                       className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
@@ -156,6 +161,13 @@ export default function BacklogPage() {
                   value={form.title}
                   onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                   placeholder="タイトル"
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                />
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="概要（任意）"
+                  rows={3}
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 />
                 <div className="grid gap-3 sm:grid-cols-3">

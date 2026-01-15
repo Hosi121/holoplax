@@ -1,409 +1,209 @@
-import { Settings } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, Zap } from "lucide-react";
 import { Sidebar } from "./components/sidebar";
-import { TaskSplitTree } from "./components/task-split-tree";
 
-const screenMap = [
+const highlights = [
   {
-    title: "Backlog intake",
-    detail: "1 inbox for ideas, chores, reminders. Auto-tag and score by effort/impact.",
+    label: "バックログ",
+    value: "自動で貯まる",
+    desc: "アイデア/メモ/メールをスコア付きで整理",
   },
   {
-    title: "Sprint desk",
-    detail: "Pick capacity in onboarding bubbles, lock scope, and auto-plan points.",
+    label: "スプリント",
+    value: "容量でロック",
+    desc: "ポイントでキャパを決め、コミットを固定",
   },
   {
-    title: "Velocity radar",
-    detail: "Sprints, burn-downs, and a running velocity band so life work stays predictable.",
-  },
-  {
-    title: "Automation lab",
-    detail: "Low-score tasks get auto-routed; high-score items get AI-suggested splits.",
+    label: "ベロシティ",
+    value: "24 pt",
+    desc: "直近スプリントのレンジと推移を可視化",
   },
 ];
 
-const automationRules = [
-  "Score < 35 → auto-queue to AI agents or defer to inbox",
-  "Score 35-70 → suggest splits and dependencies before commit",
-  "Score > 70 → break into shards; keep owner in the loop with approvals",
+const flow = [
+  { title: "Capture", detail: "ひとまず全部インボックスへ。AIが点数とタグを付与。" },
+  { title: "Commit", detail: "スプリント容量を決め、点数に応じて自動/分解を振り分け。" },
+  { title: "Execute", detail: "低スコアは自動処理、高スコアは分割して着手。" },
 ];
 
-const velocityTiles = [
-  { label: "Sprint velocity", value: "24 pts", sub: "steady, +3 w/w" },
-  { label: "Capacity bubble", value: "12h / wk", sub: "picked in onboarding" },
-  { label: "Auto-handled", value: "38%", sub: "low-score tasks closed by AI" },
+const thresholds = [
+  { range: "< 35", label: "自動で捌く", icon: Zap },
+  { range: "35-70", label: "分解と依存チェック", icon: CheckCircle2 },
+  { range: "> 70", label: "分割してレビュー", icon: BarChart3 },
 ];
 
 const splitThreshold = 8;
 
-const splitNodes = [
-  {
-    id: "root",
-    title: "クラウド移行計画",
-    points: 13,
-    urgency: "中",
-    risk: "中",
-    detail: "8pt超えのため分解。AIが候補を提示しています。",
-  },
-  {
-    id: "child-1",
-    title: "データ同期（段階移行）",
-    points: 5,
-    urgency: "中",
-    risk: "低",
-    detail: "バッチとストリーミングを併用し、切替前に差分確認。",
-  },
-  {
-    id: "child-2",
-    title: "権限・監査ログ設計",
-    points: 3,
-    urgency: "中",
-    risk: "中",
-    detail: "IAMロールと監査ログの要件を洗い出し。",
-  },
-  {
-    id: "child-3",
-    title: "モニタリング／アラート",
-    points: 2,
-    urgency: "低",
-    risk: "低",
-    detail: "メトリクスとSLI/SLOの初期値を設定。",
-  },
-];
-
 export default function Home() {
   return (
     <div className="relative isolate min-h-screen bg-white">
-      <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-10 lg:px-6 lg:py-14">
+      <div className="mx-auto flex min-h-screen max-w-6xl gap-6 px-4 py-12 lg:px-6">
         <Sidebar splitThreshold={splitThreshold} />
 
-        <div className="relative flex flex-1 flex-col gap-10">
-          <header
-            id="ダッシュボード"
-            className="flex flex-col gap-6 border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between"
-          >
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Agile OS for life work
-              </p>
-              <h1 className="text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl">
-                スプリント思考で人生タスクをさばく
-              </h1>
-              <p className="max-w-2xl text-base text-slate-600">
-                バックログを自動で溜めて、オンボーディングでキャパ（ベロシティ）を決め、
-                AIが点数を見て自動ハンドリング or 分解提案。あなたは本質に集中。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-sm font-medium">
-              <button className="bg-[#2323eb] px-4 py-2 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30">
-                スプリントを始める
-              </button>
-              <button className="border border-slate-200 bg-slate-50 px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
-                MinIO + Docker を設定
-              </button>
+        <div className="flex flex-1 flex-col gap-10">
+          <header className="border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+                  Agile OS for life work
+                </p>
+                <h1 className="text-4xl font-semibold leading-tight text-slate-900">
+                  スプリントで回す人生タスク
+                </h1>
+                <p className="max-w-2xl text-base text-slate-600">
+                  バックログを自動で集めてスコア化。容量に合わせてコミットを固定し、
+                  点数に応じて自動処理と分解を振り分けます。
+                </p>
+                <div className="flex flex-wrap gap-3 text-sm font-medium">
+                  <button className="bg-[#2323eb] px-4 py-2 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30">
+                    今すぐスプリントを切る
+                  </button>
+                  <button className="flex items-center gap-1 border border-slate-200 bg-slate-50 px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
+                    使い方を見る
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="grid w-full max-w-sm gap-3 border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Snapshot</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {highlights.map((item) => (
+                    <div key={item.label} className="border border-slate-200 bg-white px-3 py-2">
+                      <p className="text-xs text-slate-500">{item.label}</p>
+                      <p className="text-lg font-semibold text-slate-900">{item.value}</p>
+                      <p className="text-[11px] text-slate-600">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between border border-slate-200 bg-white px-3 py-2">
+                  <div>
+                    <p className="text-xs text-slate-500">自動化しきい値</p>
+                    <p className="text-sm font-semibold text-slate-900">上限 {splitThreshold} pt</p>
+                  </div>
+                  <span className="bg-[#2323eb]/10 px-3 py-1 text-xs font-semibold text-[#2323eb]">
+                    AI ready
+                  </span>
+                </div>
+              </div>
             </div>
           </header>
 
-        <section id="バックログ" className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-          <div className="border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="mb-6 flex items-center gap-3 text-sm text-slate-600">
-              <span className="bg-[#2323eb]/10 px-3 py-1 font-medium text-[#2323eb]">
-                Backlog → Sprint → Done
-              </span>
-              <span className="border border-slate-200 px-3 py-1">
-                AI-ready
-              </span>
-            </div>
-            <h2 className="text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl">
-              タスクの自動バックログ化とスプリント計画をワンストップで。
-            </h2>
-            <p className="mt-4 max-w-2xl text-lg text-slate-600">
-              キャパ（ポイント）を最初に決め、低スコアはAIがさばき、高スコアは分解を提案。
-              ベロシティはスプリント単位で見える化。
-            </p>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {velocityTiles.map((tile) => (
-                <div
-                  key={tile.label}
-                  className="border border-slate-200 bg-slate-50 px-4 py-4"
-                >
-                  <p className="text-sm text-slate-500">{tile.label}</p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-semibold text-slate-900">
-                      {tile.value}
-                    </span>
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      {tile.sub}
-                    </span>
+          <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+            <div className="border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">流れをシンプルに</h3>
+                <span className="text-xs uppercase tracking-[0.25em] text-slate-500">
+                  capture → commit → execute
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {flow.map((item) => (
+                  <div key={item.title} className="border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                    <p className="mt-2 text-sm text-slate-600">{item.detail}</p>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-slate-600">
-              <span className="border border-[#2323eb]/30 bg-[#2323eb]/10 px-3 py-1 text-[#2323eb]">
-                ベロシティはスプリント単位
-              </span>
-              <span className="border border-slate-200 px-3 py-1">
-                自動バックログ化
-              </span>
-              <span className="border border-slate-200 px-3 py-1">
-                キャパをオンボーディングで決定
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-600">Automation readiness</p>
-              <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
-                AI pass / fail
-              </span>
-            </div>
-            <div className="flex items-end gap-3">
-              <div className="text-5xl font-semibold text-slate-900">74</div>
-              <div className="bg-[#2323eb]/10 px-3 py-1 text-xs font-semibold text-[#2323eb]">
-                ready to auto-handle
+                ))}
               </div>
             </div>
-            <p className="text-sm text-slate-600">
-              低スコアは自動で捌き、高スコアは分解してからスプリントに入れる流れを標準化。
-            </p>
-            <div className="space-y-2 border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              {automationRules.map((rule) => (
-                <div key={rule} className="flex items-start gap-2">
-                  <span className="mt-[6px] h-2 w-2 bg-[#2323eb]" />
-                  <span>{rule}</span>
-                </div>
-              ))}
+
+            <div className="border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">点数で挙動を決める</h3>
+                <span className="bg-[#2323eb]/10 px-3 py-1 text-xs text-[#2323eb]">
+                  分割しきい値 {splitThreshold} pt
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {thresholds.map((rule) => (
+                  <div key={rule.range} className="border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <rule.icon size={16} className="text-[#2323eb]" />
+                      <p className="text-sm font-semibold text-slate-900">{rule.range}</p>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{rule.label}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                低スコアは自動、境界は分解提案、高スコアは分割とレビューを標準化。
+              </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
-              <div className="border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="text-slate-500">Next actions</p>
-                <p className="mt-2 font-medium text-slate-900">
-                  12 items queued for auto-handle
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+            <div className="border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">バックログとスプリント</h3>
+                <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
+                  AI-ready
+                </span>
+              </div>
+              <p className="mt-3 text-sm text-slate-600">
+                バックログを自動で貯め、スプリント容量に合わせて送るだけ。
+                緊急度・リスクのタグ付きで、そのままポイント管理。
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs text-slate-500">Backlog</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">AIが下準備</p>
+                  <p className="text-sm text-slate-600">重複チェックと分解提案を自動で提示。</p>
+                </div>
+                <div className="border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs text-slate-500">Sprint</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">容量ロック</p>
+                  <p className="text-sm text-slate-600">残ポイントを見ながらコミットを固定。</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">ベロシティのざっくり可視化</h3>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {["Sprint-10", "Sprint-11", "Sprint-12"].map((sprint) => (
+                  <div
+                    key={sprint}
+                    className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+                  >
+                    <p className="text-slate-500">{sprint}</p>
+                    <p className="text-2xl font-semibold text-slate-900">22 pt</p>
+                    <p className="text-xs text-slate-500">レンジ: 20-26</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                スプリント履歴とレンジを軽く表示。実データ連携で精度を高めていきます。
+              </p>
+            </div>
+          </section>
+
+          <section className="border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">インフラ前提</h3>
+                <p className="text-sm text-slate-600">
+                  Docker compose で Postgres + MinIO を起動。Next はホストで動かすだけ。
                 </p>
               </div>
-              <div className="border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="text-slate-500">Needs split</p>
-                <p className="mt-2 font-medium text-slate-900">4 big items to shard</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="スプリント" className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-          <div className="border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Core screens</h3>
-              <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
-                shadcn-inspired system UI
+              <span className="bg-[#2323eb]/10 px-3 py-1 text-xs font-semibold text-[#2323eb]">
+                AWS ready
               </span>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {screenMap.map((screen) => (
-                <div
-                  key={screen.title}
-                  className="group border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:border-[#2323eb]/60"
-                >
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-base font-semibold text-slate-900">
-                      {screen.title}
-                    </h4>
-                    <span className="text-[#2323eb] opacity-0 transition group-hover:opacity-100">
-                      →
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{screen.detail}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 bg-[#2323eb]" />
-              <p className="text-sm text-slate-600">Infra for deploy</p>
-            </div>
-            <h3 className="text-xl font-semibold text-slate-900">
-              AWS-ready with MinIO (S3) + Docker
-            </h3>
-            <p className="text-sm text-slate-600">
-              AWSへデプロイしつつ、S3互換ストレージはMinIOに置き換え可能。Docker composeで
-              安定したデリバリーを前提にする設計。
-            </p>
-            <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              <div className="flex items-center justify-between">
-                <span>Storage</span>
-                <span className="bg-[#2323eb]/10 px-3 py-1 text-xs text-[#2323eb]">
-                  MinIO (S3)
-                </span>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm text-slate-800">
+              <div className="border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-slate-500">Storage</p>
+                <p className="mt-2 font-semibold text-slate-900">MinIO (S3互換)</p>
               </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Runtime</span>
-                <span className="bg-white px-3 py-1 text-xs text-slate-700">
-                  Docker compose ready
-                </span>
+              <div className="border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-slate-500">Database</p>
+                <p className="mt-2 font-semibold text-slate-900">Postgres</p>
               </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Delivery</span>
-                <span className="bg-white px-3 py-1 text-xs text-slate-700">
-                  AWS deploy plan
-                </span>
+              <div className="border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-slate-500">Runtime</p>
+                <p className="mt-2 font-semibold text-slate-900">Next.js 16</p>
               </div>
             </div>
-            <div className="border border-[#2323eb]/30 bg-[#2323eb]/10 px-4 py-3 text-sm text-slate-900">
-              白と #2323eb を軸にしたシンプルなシステムUI。余白と境界線で情報を整流。
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-          <div className="border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Task flow</h3>
-              <span className="text-xs uppercase tracking-[0.25em] text-slate-500">
-                plan → do → review
-              </span>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {["Capture", "Commit", "Execute"].map((stage) => (
-                <div
-                  key={stage}
-                  className="border border-slate-200 bg-slate-50 px-4 py-4"
-                >
-                  <p className="text-sm text-slate-500">{stage}</p>
-                  <p className="mt-2 text-slate-900">
-                    {stage === "Capture" &&
-                      "Auto-backlog with scoring and tags from inboxes."}
-                    {stage === "Commit" &&
-                      "Select capacity and lock scope per sprint with points."}
-                    {stage === "Execute" &&
-                      "AI handles low scores; you focus on the high-impact work."}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Readiness checklist</h3>
-              <span className="bg-[#2323eb]/10 px-3 py-1 text-xs text-[#2323eb]">
-                onboarding bubbles
-              </span>
-            </div>
-            <div className="mt-4 space-y-3 text-sm text-slate-800">
-              <div className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3">
-                <span className="mt-1 h-2 w-2 bg-[#2323eb]" />
-                <div>
-                  <p className="font-medium text-slate-900">
-                    Set sprint length & capacity
-                  </p>
-                  <p className="text-slate-600">
-                    Quick bubble Q&A during onboarding to lock velocity targets.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3">
-                <span className="mt-1 h-2 w-2 bg-[#2323eb]" />
-                <div>
-                  <p className="font-medium text-slate-900">Connect backlog sources</p>
-                  <p className="text-slate-600">
-                    Calendar, notes, email, chat: all funnel into the backlog as
-                    structured tasks.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3">
-                <span className="mt-1 h-2 w-2 bg-[#2323eb]" />
-                <div>
-                  <p className="font-medium text-slate-900">AI actions & guardrails</p>
-                  <p className="text-slate-600">
-                    Choose what AI can auto-complete, what requires review, and when to
-                    split tasks.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="自動化" className="border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">タスク分解（Git風ツリー）</h3>
-              <p className="text-sm text-slate-600">
-                {splitThreshold}pt を超えたタスクは自動で分解候補を提示し、〇/×で採用可。
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <div className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
-                上限 {splitThreshold} pt
-              </div>
-              <button className="flex items-center gap-1 border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
-                <Settings size={16} />
-                変更
-              </button>
-            </div>
-          </div>
-          <TaskSplitTree nodes={splitNodes} splitThreshold={splitThreshold} />
-        </section>
-
-        <section id="ベロシティ" className="border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">ベロシティと予測</h3>
-              <p className="text-sm text-slate-600">
-                過去スプリントのポイント履歴とレンジを表示（モック）。
-              </p>
-            </div>
-            <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
-              coming soon
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {["Sprint-10", "Sprint-11", "Sprint-12"].map((sprint) => (
-              <div
-                key={sprint}
-                className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
-              >
-                <p className="text-slate-500">{sprint}</p>
-                <p className="text-2xl font-semibold text-slate-900">22 pt</p>
-                <p className="text-xs text-slate-500">レンジ: 20-26</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="設定" className="border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">設定・ポリシー</h3>
-              <p className="text-sm text-slate-600">
-                AI実行としきい値、通知、ストレージの設定（モック）。
-              </p>
-            </div>
-            <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
-              config
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              <p className="text-slate-500">AI しきい値</p>
-              <p className="mt-1 font-semibold text-slate-900">{splitThreshold} pt</p>
-              <p className="text-xs text-slate-600">超過で分解提案</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              <p className="text-slate-500">通知</p>
-              <p className="mt-1 font-semibold text-slate-900">オフ</p>
-              <p className="text-xs text-slate-600">MVPでは通知なし</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-              <p className="text-slate-500">ストレージ</p>
-              <p className="mt-1 font-semibold text-slate-900">MinIO (S3)</p>
-              <p className="text-xs text-slate-600">docker-compose で起動</p>
-            </div>
-          </div>
-        </section>
+          </section>
         </div>
       </div>
     </div>

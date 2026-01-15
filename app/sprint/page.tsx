@@ -7,7 +7,7 @@ import { TASK_STATUS, TaskDTO } from "../../lib/types";
 export default function SprintPage() {
   const capacity = 24;
   const [items, setItems] = useState<TaskDTO[]>([]);
-  const [newItem, setNewItem] = useState({ title: "", points: 1 });
+  const [newItem, setNewItem] = useState({ title: "", description: "", points: 1 });
 
   const fetchTasks = useCallback(async () => {
     const res = await fetch("/api/tasks");
@@ -34,13 +34,14 @@ export default function SprintPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: newItem.title.trim(),
+        description: newItem.description.trim(),
         points: Number(newItem.points),
         urgency: "中",
         risk: "中",
         status: TASK_STATUS.SPRINT,
       }),
     });
-    setNewItem({ title: "", points: 1 });
+    setNewItem({ title: "", description: "", points: 1 });
     fetchTasks();
   };
 
@@ -90,6 +91,13 @@ export default function SprintPage() {
               placeholder="タスク名"
               className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
             />
+            <textarea
+              value={newItem.description}
+              onChange={(e) => setNewItem((p) => ({ ...p, description: e.target.value }))}
+              placeholder="概要（任意）"
+              rows={2}
+              className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+            />
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -118,6 +126,9 @@ export default function SprintPage() {
               >
                 <div>
                   <p className="font-semibold text-slate-900">{item.title}</p>
+                  {item.description ? (
+                    <p className="text-xs text-slate-600">{item.description}</p>
+                  ) : null}
                   <p className="text-xs text-slate-600">ステータス: {item.status}</p>
                 </div>
                 <div className="flex items-center gap-2">

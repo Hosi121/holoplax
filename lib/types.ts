@@ -9,6 +9,7 @@ export type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS];
 export type TaskDTO = {
   id: string;
   title: string;
+  description?: string;
   points: number;
   urgency: string;
   risk: string;

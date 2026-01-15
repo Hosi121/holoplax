@@ -11,8 +11,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { title, points, urgency, risk, status } = body;
-  if (!title || !points) {
+  const { title, description, points, urgency, risk, status } = body;
+  if (!title || points === undefined || points === null) {
     return NextResponse.json({ error: "title and points are required" }, { status: 400 });
   }
   const statusValue = Object.values(TASK_STATUS).includes(status)
@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   const task = await prisma.task.create({
     data: {
       title,
+      description: description ?? "",
       points: Number(points),
       urgency: urgency ?? "中",
       risk: risk ?? "中",

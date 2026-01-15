@@ -11,6 +11,7 @@ export async function PATCH(
   const data: Record<string, unknown> = {};
 
   if (body.title) data.title = body.title;
+  if (typeof body.description === "string") data.description = body.description;
   if (body.points) data.points = Number(body.points);
   if (body.urgency) data.urgency = body.urgency;
   if (body.risk) data.risk = body.risk;
