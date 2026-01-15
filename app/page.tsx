@@ -35,12 +35,12 @@ export default function Home() {
   return (
     <div className="relative isolate min-h-screen bg-white">
       <div className="relative mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10 lg:py-14">
-        <div className="absolute right-6 top-6 flex items-center border border-slate-200 bg-white px-2 py-2 shadow-sm">
+        <div className="absolute right-6 top-6 flex items-center border border-slate-200 bg-white px-3 py-3 shadow-sm">
           <Image
             src="/logo_holoplax.png"
             alt="Holoplax logo"
-            width={44}
-            height={44}
+            width={64}
+            height={64}
             priority
           />
         </div>
