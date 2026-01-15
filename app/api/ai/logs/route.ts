@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../../lib/api-auth";
+import { AuthError, requireAuth } from "../../../../lib/api-auth";
 import prisma from "../../../../lib/prisma";
 import { adoptOrphanAiSuggestions } from "../../../../lib/user-data";
 
 export async function GET() {
   try {
-    const userId = await requireUserId();
+    const { userId, role } = await requireAuth();
+    if (role === "ADMIN") {
+      const logs = await prisma.aiSuggestion.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return NextResponse.json({ logs });
+    }
     await adoptOrphanAiSuggestions(userId);
     const logs = await prisma.aiSuggestion.findMany({
       where: { userId },

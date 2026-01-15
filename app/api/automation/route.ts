@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../lib/api-auth";
+import { AuthError, requireAuth } from "../../../lib/api-auth";
 import prisma from "../../../lib/prisma";
 
 export async function GET() {
   try {
-    const userId = await requireUserId();
+    const { userId } = await requireAuth();
     const current =
       (await prisma.userAutomationSetting.findFirst({
         where: { userId },
@@ -23,7 +23,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const { userId } = await requireAuth();
     const body = await request.json();
     const low = Number(body.low);
     const high = Number(body.high);

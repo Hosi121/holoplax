@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../../lib/api-auth";
+import { AuthError, requireAuth } from "../../../../lib/api-auth";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS } from "../../../../lib/types";
 
@@ -21,7 +21,14 @@ export async function PATCH(
   }
 
   try {
-    const userId = await requireUserId();
+    const { userId, role } = await requireAuth();
+    if (role === "ADMIN") {
+      const updated = await prisma.task.update({
+        where: { id },
+        data,
+      });
+      return NextResponse.json({ task: updated });
+    }
     const updated = await prisma.task.updateMany({
       where: { id, userId },
       data,
@@ -48,11 +55,14 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    const userId = await requireUserId();
+    const { userId, role } = await requireAuth();
+    if (role === "ADMIN") {
+      await prisma.aiSuggestion.deleteMany({ where: { taskId: id } });
+      await prisma.task.delete({ where: { id } });
+      return NextResponse.json({ ok: true });
+    }
     await prisma.aiSuggestion.deleteMany({ where: { taskId: id, userId } });
-    const deleted = await prisma.task.deleteMany({
-      where: { id, userId },
-    });
+    const deleted = await prisma.task.deleteMany({ where: { id, userId } });
     if (!deleted.count) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }

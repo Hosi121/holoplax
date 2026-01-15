@@ -1,5 +1,6 @@
 "use client";
 
+import { signOut } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/sidebar";
 import { AiSuggestionDTO } from "../../lib/types";
@@ -10,6 +11,8 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [aiLogs, setAiLogs] = useState<AiSuggestionDTO[]>([]);
+  const [account, setAccount] = useState({ name: "", email: "", image: "" });
+  const [accountDirty, setAccountDirty] = useState(false);
 
   const fetchThresholds = useCallback(async () => {
     const res = await fetch("/api/automation");
@@ -25,11 +28,24 @@ export default function SettingsPage() {
     setAiLogs(data.logs ?? []);
   }, []);
 
+  const fetchAccount = useCallback(async () => {
+    const res = await fetch("/api/account");
+    if (!res.ok) return;
+    const data = await res.json();
+    setAccount({
+      name: data.user?.name ?? "",
+      email: data.user?.email ?? "",
+      image: data.user?.image ?? "",
+    });
+    setAccountDirty(false);
+  }, []);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchThresholds();
     void fetchAiLogs();
-  }, [fetchThresholds, fetchAiLogs]);
+    void fetchAccount();
+  }, [fetchThresholds, fetchAiLogs, fetchAccount]);
 
   const saveThresholds = async () => {
     await fetch("/api/automation", {
@@ -62,11 +78,99 @@ export default function SettingsPage() {
         </header>
 
         <section className="grid gap-4 lg:grid-cols-2">
+          <div
+            id="account"
+            className="border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">アカウント</h3>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-1 text-xs text-slate-500">
+                名前
+                <input
+                  value={account.name}
+                  onChange={(e) => {
+                    setAccount((p) => ({ ...p, name: e.target.value }));
+                    setAccountDirty(true);
+                  }}
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  placeholder="名前"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-slate-500">
+                メール
+                <input
+                  value={account.email}
+                  onChange={(e) => {
+                    setAccount((p) => ({ ...p, email: e.target.value }));
+                    setAccountDirty(true);
+                  }}
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  placeholder="you@example.com"
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex items-center gap-4">
+              <div className="h-12 w-12 border border-slate-200 bg-slate-100">
+                {account.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={account.image}
+                    alt="avatar"
+                    className="h-full w-full object-cover"
+                  />
+                ) : null}
+              </div>
+              <label className="text-xs text-slate-500">
+                アイコン画像
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const result = String(reader.result ?? "");
+                      setAccount((p) => ({ ...p, image: result }));
+                      setAccountDirty(true);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  className="mt-2 block text-xs text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-slate-700"
+                />
+              </label>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  await fetch("/api/account", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(account),
+                  });
+                  setAccountDirty(false);
+                }}
+                disabled={!accountDirty}
+                className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
+              >
+                変更を保存
+              </button>
+              <button
+                onClick={() => signOut()}
+                className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-red-300 hover:text-red-600"
+              >
+                ログアウト
+              </button>
+            </div>
+          </div>
+
           <div className="border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">AI しきい値</h3>
-              <p className="text-sm text-slate-600">
-                低・中・高の分岐ポイントを設定（現在: {low} / {high}）。
-              </p>
+            <h3 className="text-lg font-semibold text-slate-900">AI しきい値</h3>
+            <p className="text-sm text-slate-600">
+              低・中・高の分岐ポイントを設定（現在: {low} / {high}）。
+            </p>
               <div className="mt-3 flex items-center gap-2 text-sm">
                 <input
                   type="number"

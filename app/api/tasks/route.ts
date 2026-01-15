@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
-import { AuthError, requireUserId } from "../../../lib/api-auth";
+import { AuthError, requireAuth } from "../../../lib/api-auth";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS } from "../../../lib/types";
 import { adoptOrphanTasks } from "../../../lib/user-data";
 
 export async function GET() {
   try {
-    const userId = await requireUserId();
+    const { userId, role } = await requireAuth();
+    if (role === "ADMIN") {
+      const tasks = await prisma.task.findMany({
+        orderBy: { createdAt: "desc" },
+      });
+      return NextResponse.json({ tasks });
+    }
     await adoptOrphanTasks(userId);
     const tasks = await prisma.task.findMany({
       where: { userId },
@@ -24,7 +30,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireUserId();
+    const { userId, role } = await requireAuth();
     const body = await request.json();
     const { title, description, points, urgency, risk, status } = body;
     if (!title || points === undefined || points === null) {
@@ -41,7 +47,7 @@ export async function POST(request: Request) {
         urgency: urgency ?? "中",
         risk: risk ?? "中",
         status: statusValue,
-        userId,
+        userId: role === "ADMIN" ? userId : userId,
       },
     });
     return NextResponse.json({ task });

@@ -8,9 +8,10 @@ import {
   KanbanSquare,
   LayoutDashboard,
   Settings,
+  Users,
   Zap,
 } from "lucide-react";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 
 export const navItems = [
@@ -21,6 +22,7 @@ export const navItems = [
   { label: "ベロシティ", href: "/velocity", icon: BarChart3 },
   { label: "自動化", href: "/automation", icon: Zap },
   { label: "設定", href: "/settings", icon: Settings },
+  { label: "ユーザー管理", href: "/admin/users", icon: Users, adminOnly: true },
 ];
 
 type SidebarProps = {
@@ -29,7 +31,7 @@ type SidebarProps = {
 
 export function Sidebar({ splitThreshold }: SidebarProps) {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   return (
     <aside className="sticky top-0 hidden min-h-screen w-60 flex-col border border-slate-200 bg-white p-4 shadow-sm lg:flex">
       <div className="border-b border-slate-200 pb-4">
@@ -43,7 +45,9 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
         />
       </div>
       <nav className="mt-4 flex flex-col gap-1">
-        {navItems.map((item) => (
+        {navItems
+          .filter((item) => !item.adminOnly || session?.user?.role === "ADMIN")
+          .map((item) => (
           <Link
             key={item.label}
             href={item.href}
@@ -59,18 +63,44 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
         ))}
       </nav>
       <div className="mt-auto border-t border-slate-200 pt-4 text-xs text-slate-600">
-        {session?.user ? (
-          <div className="space-y-2">
-            <div className="truncate text-[11px] text-slate-500">Signed in</div>
-            <div className="truncate text-sm font-semibold text-slate-900">
-              {session.user.email ?? session.user.name ?? "User"}
+        {status === "loading" ? (
+          <div className="text-[11px] text-slate-500">読み込み中...</div>
+        ) : session?.user ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                Account
+              </div>
+              <Link
+                href="/settings#account"
+                className="text-slate-400 transition hover:text-[#2323eb]"
+                aria-label="アカウント設定"
+              >
+                <Settings size={14} />
+              </Link>
             </div>
-            <button
-              onClick={() => signOut()}
-              className="w-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-red-300 hover:text-red-600"
-            >
-              ログアウト
-            </button>
+            <div className="flex items-center gap-3">
+              {session.user.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={session.user.image}
+                  alt={session.user.name ?? session.user.email ?? "User"}
+                  className="h-10 w-10 border border-slate-200 object-cover"
+                />
+              ) : (
+                <div className="flex h-10 w-10 items-center justify-center border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-600">
+                  {(session.user.name ?? session.user.email ?? "U").slice(0, 1)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-900">
+                  {session.user.name ?? "ユーザー"}
+                </div>
+                <div className="truncate text-xs text-slate-600">
+                  {session.user.email ?? "email@example.com"}
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <Link

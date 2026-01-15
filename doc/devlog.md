@@ -15,6 +15,7 @@
 - シードスクリプト追加（仮想データ/AIログ）。`scripts/seed-dev.mjs`
 - NextAuth導入の下地を追加（Email/Google/GitHub対応、ユーザー分離前提のスキーマ）。`lib/auth.ts`, `app/api/auth/[...nextauth]/route.ts`, `prisma/schema.prisma`
 - Task/Velocity/Automation/AIログはユーザーIDで分離（APIに認証必須）。`app/api/*`
+- 管理者ロールとパスワード認証を追加（Credentials）。管理者は全データ参照可能。`lib/auth.ts`, `app/api/*`, `prisma/schema.prisma`
 
 ## 未実装/未接続の機能
 - NextAuth のUI（ログイン導線/認証画面）は未整備。
