@@ -33,7 +33,6 @@ export default function OnboardingPage() {
   const [goalDescription, setGoalDescription] = useState("");
   const [points, setPoints] = useState(3);
   const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
-  const storyPoints = [1, 2, 3, 5, 8, 13];
   const [cadence, setCadence] = useState("weekly");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
