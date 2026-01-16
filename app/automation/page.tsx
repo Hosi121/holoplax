@@ -54,7 +54,8 @@ export default function AutomationPage() {
               </p>
               <h1 className="text-3xl font-semibold text-slate-900">自動化</h1>
               <p className="text-sm text-slate-600">
-                スコアしきい値ごとの挙動を管理（モック）。MVPでは固定ルール。
+                スコアしきい値ごとの挙動を管理。低スコアはAI委任キュー、高スコアは自動分解（承認モードは環境変数
+                AUTOMATION_REQUIRE_APPROVAL=true でON）。
               </p>
             </div>
             <div className="flex items-center gap-2 text-sm">

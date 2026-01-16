@@ -14,6 +14,10 @@ type SplitSuggestion = {
   detail: string;
 };
 
+const DELEGATE_TAG = "auto-delegate";
+const SPLIT_PARENT_TAG = "auto-split-parent";
+const PENDING_APPROVAL_TAG = "automation-needs-approval";
+
 type MemberRow = {
   id: string;
   name: string | null;
@@ -318,6 +322,51 @@ export default function BacklogPage() {
           </div>
         </header>
 
+        {items.filter((item) => item.tags?.includes(DELEGATE_TAG)).length ? (
+          <section className="border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">AI委任キュー</h2>
+              <span className="text-xs text-slate-500">
+                {items.filter((item) => item.tags?.includes(DELEGATE_TAG)).length} 件
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {items
+                .filter(
+                  (item) =>
+                    item.status === TASK_STATUS.BACKLOG && item.tags?.includes(DELEGATE_TAG),
+                )
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-slate-800"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-slate-900">{item.title}</p>
+                      <span className="border border-amber-200 bg-white px-2 py-1 text-xs text-amber-700">
+                        AI委任候補
+                      </span>
+                    </div>
+                    {item.description ? (
+                      <p className="mt-1 text-xs text-slate-700">{item.description}</p>
+                    ) : null}
+                    <div className="mt-2 flex items-center gap-2 text-xs text-slate-700">
+                      <span className="border border-slate-200 bg-white px-2 py-1">
+                        {item.points} pt
+                      </span>
+                      <span className="border border-slate-200 bg-white px-2 py-1">
+                        緊急度: {item.urgency}
+                      </span>
+                      <span className="border border-slate-200 bg-white px-2 py-1">
+                        リスク: {item.risk}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-3">
             {items
@@ -326,6 +375,8 @@ export default function BacklogPage() {
                   ? item.status === TASK_STATUS.BACKLOG
                   : item.status === TASK_STATUS.SPRINT,
               )
+              .filter((item) => !item.tags?.includes(DELEGATE_TAG))
+              .filter((item) => !item.tags?.includes(SPLIT_PARENT_TAG))
               .map((item) => (
                 <div
                   key={item.id}
@@ -343,6 +394,11 @@ export default function BacklogPage() {
                       <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
                         リスク: {item.risk}
                       </span>
+                      {item.tags?.includes(PENDING_APPROVAL_TAG) ? (
+                        <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
+                          承認待ち
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   {item.description ? (
@@ -444,6 +500,40 @@ export default function BacklogPage() {
               ))}
           </div>
         </section>
+
+        {items.filter((item) => item.tags?.includes(SPLIT_PARENT_TAG)).length ? (
+          <section className="border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">自動分解済み (元タスク)</h2>
+              <span className="text-xs text-slate-500">
+                {items.filter((item) => item.tags?.includes(SPLIT_PARENT_TAG)).length} 件
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {items
+                .filter((item) => item.tags?.includes(SPLIT_PARENT_TAG))
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-slate-900">{item.title}</p>
+                      <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                        分解済み
+                      </span>
+                    </div>
+                    {item.description ? (
+                      <p className="mt-1 text-xs text-slate-600">{item.description}</p>
+                    ) : null}
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      自動分解で子タスクを作成しました。親は情報保持のみ。
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </section>
+        ) : null}
 
         {modalOpen ? (
           <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">

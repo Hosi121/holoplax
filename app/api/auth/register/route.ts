@@ -23,7 +23,12 @@ export async function POST(request: Request) {
     }
 
     const hashed = await hash(password, 10);
-    const shouldVerify = Boolean(process.env.EMAIL_SERVER && process.env.EMAIL_FROM);
+    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+    const isLocal = baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1");
+    // ローカル（localhost）ではメール認証を自動スキップ。強制したい場合は EMAIL_VERIFY_ALWAYS=true を設定。
+    const forceVerify = process.env.EMAIL_VERIFY_ALWAYS === "true";
+    const hasEmailConfig = Boolean(process.env.EMAIL_SERVER && process.env.EMAIL_FROM);
+    const shouldVerify = forceVerify || (!isLocal && hasEmailConfig);
     const user = await prisma.user.create({
       data: {
         email,
