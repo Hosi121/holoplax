@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "../components/sidebar";
+import { useWorkspaceId } from "../components/use-workspace-id";
 import { TASK_STATUS, TaskDTO, TaskStatus } from "../../lib/types";
 
 type Column = {
@@ -17,15 +18,21 @@ const columns: Column[] = [
 ];
 
 export default function KanbanPage() {
+  const { workspaceId, ready } = useWorkspaceId();
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoverColumn, setHoverColumn] = useState<TaskStatus | null>(null);
 
   const fetchTasks = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setItems([]);
+      return;
+    }
     const res = await fetch("/api/tasks");
     const data = await res.json();
     setItems(data.tasks ?? []);
-  }, []);
+  }, [ready, workspaceId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

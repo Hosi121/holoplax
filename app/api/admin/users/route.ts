@@ -26,6 +26,14 @@ export async function GET() {
         role: true,
         disabledAt: true,
         createdAt: true,
+        memberships: {
+          select: {
+            role: true,
+            workspace: {
+              select: { id: true, name: true },
+            },
+          },
+        },
       },
     });
     return ok({ users });

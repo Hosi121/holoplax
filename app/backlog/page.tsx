@@ -3,6 +3,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/sidebar";
+import { useWorkspaceId } from "../components/use-workspace-id";
 import { TASK_STATUS, TaskDTO } from "../../lib/types";
 
 type SplitSuggestion = {
@@ -15,6 +16,7 @@ type SplitSuggestion = {
 
 export default function BacklogPage() {
   const splitThreshold = 8;
+  const { workspaceId, ready } = useWorkspaceId();
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [form, setForm] = useState({
     title: "",
@@ -37,10 +39,15 @@ export default function BacklogPage() {
   });
 
   const fetchTasks = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setItems([]);
+      return;
+    }
     const res = await fetch("/api/tasks");
     const data = await res.json();
     setItems(data.tasks ?? []);
-  }, []);
+  }, [ready, workspaceId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

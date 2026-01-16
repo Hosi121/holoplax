@@ -3,10 +3,12 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "../components/sidebar";
+import { useWorkspaceId } from "../components/use-workspace-id";
 import { TASK_STATUS, TaskDTO } from "../../lib/types";
 
 export default function SprintPage() {
   const capacity = 24;
+  const { workspaceId, ready } = useWorkspaceId();
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [newItem, setNewItem] = useState({ title: "", description: "", points: 1 });
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
@@ -19,10 +21,15 @@ export default function SprintPage() {
   });
 
   const fetchTasks = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setItems([]);
+      return;
+    }
     const res = await fetch("/api/tasks");
     const data = await res.json();
     setItems((data.tasks ?? []).filter((t: TaskDTO) => t.status !== TASK_STATUS.BACKLOG));
-  }, []);
+  }, [ready, workspaceId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

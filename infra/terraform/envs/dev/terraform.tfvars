@@ -1,0 +1,13 @@
+region             = "ap-northeast-3"
+name_prefix        = "holoplax-dev"
+vpc_cidr           = "10.20.0.0/16"
+public_subnet_cidrs = ["10.20.1.0/24", "10.20.2.0/24"]
+private_subnet_cidrs = ["10.20.101.0/24", "10.20.102.0/24"]
+app_port           = 3000
+instance_type      = "t3.micro"
+db_instance_class  = "db.t3.micro"
+db_name            = "holoplax"
+db_username        = "holoplax"
+db_multi_az        = false
+bucket_name        = "holoplax-dev-avatars-unique"
+public_read        = true

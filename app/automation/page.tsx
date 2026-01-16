@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/sidebar";
+import { useWorkspaceId } from "../components/use-workspace-id";
 import { AutomationSettingDTO } from "../../lib/types";
 
 export default function AutomationPage() {
+  const { workspaceId, ready } = useWorkspaceId();
   const [thresholds, setThresholds] = useState<AutomationSettingDTO>({ low: 35, high: 70 });
   const [dirty, setDirty] = useState(false);
   const rules = [
@@ -14,11 +16,17 @@ export default function AutomationPage() {
   ];
 
   const fetchThresholds = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setThresholds({ low: 35, high: 70 });
+      setDirty(false);
+      return;
+    }
     const res = await fetch("/api/automation");
     const data = await res.json();
     setThresholds({ low: data.low ?? 35, high: data.high ?? 70 });
     setDirty(false);
-  }, []);
+  }, [ready, workspaceId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

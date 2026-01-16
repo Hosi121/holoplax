@@ -20,5 +20,29 @@ export async function resolveWorkspaceId(userId: string) {
     orderBy: { createdAt: "asc" },
     select: { workspaceId: true },
   });
-  return fallback?.workspaceId ?? null;
+  if (fallback?.workspaceId) {
+    return fallback.workspaceId;
+  }
+
+  // 初回ユーザー用に個人ワークスペースを自動作成する
+  const createdId = await prisma.$transaction(async (tx) => {
+    const existing = await tx.workspaceMember.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      select: { workspaceId: true },
+    });
+    if (existing?.workspaceId) return existing.workspaceId;
+
+    const workspace = await tx.workspace.create({
+      data: {
+        name: "Personal workspace",
+        ownerId: userId,
+        members: { create: { userId, role: "owner" } },
+      },
+      select: { id: true },
+    });
+    return workspace.id;
+  });
+
+  return createdId ?? null;
 }

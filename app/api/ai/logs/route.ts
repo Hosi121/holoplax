@@ -1,21 +1,17 @@
 import { requireAuth } from "../../../../lib/api-auth";
 import { handleAuthError, ok, serverError } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
-import { adoptOrphanAiSuggestions } from "../../../../lib/user-data";
+import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 export async function GET() {
   try {
-    const { userId, role } = await requireAuth();
-    if (role === "ADMIN") {
-      const logs = await prisma.aiSuggestion.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      });
-      return ok({ logs });
+    const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return ok({ logs: [] });
     }
-    await adoptOrphanAiSuggestions(userId);
     const logs = await prisma.aiSuggestion.findMany({
-      where: { userId },
+      where: { workspaceId },
       orderBy: { createdAt: "desc" },
       take: 20,
     });

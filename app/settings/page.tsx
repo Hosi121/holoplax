@@ -4,11 +4,13 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "../components/sidebar";
+import { useWorkspaceId } from "../components/use-workspace-id";
 import { AiSuggestionDTO } from "../../lib/types";
 
 export default function SettingsPage() {
   const { update } = useSession();
   const router = useRouter();
+  const { workspaceId, ready } = useWorkspaceId();
   const [low, setLow] = useState(35);
   const [high, setHigh] = useState(70);
   const [notifications, setNotifications] = useState(false);
@@ -18,18 +20,30 @@ export default function SettingsPage() {
   const [accountDirty, setAccountDirty] = useState(false);
 
   const fetchThresholds = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setLow(35);
+      setHigh(70);
+      setDirty(false);
+      return;
+    }
     const res = await fetch("/api/automation");
     const data = await res.json();
     setLow(data.low ?? 35);
     setHigh(data.high ?? 70);
     setDirty(false);
-  }, []);
+  }, [ready, workspaceId]);
 
   const fetchAiLogs = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setAiLogs([]);
+      return;
+    }
     const res = await fetch("/api/ai/logs");
     const data = await res.json();
     setAiLogs(data.logs ?? []);
-  }, []);
+  }, [ready, workspaceId]);
 
   const fetchAccount = useCallback(async () => {
     const res = await fetch("/api/account");

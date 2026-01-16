@@ -6,6 +6,7 @@ import {
   serverError,
 } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
+import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const fallbackEstimate = (title: string, description: string) => {
   const base = title.length + description.length;
@@ -28,11 +29,25 @@ const extractJson = (text: string) => {
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return badRequest("workspace is required");
+    }
     const body = await request.json();
     const title = String(body.title ?? "").trim();
     const description = String(body.description ?? "").trim();
+    const taskId = body.taskId ?? null;
     if (!title) {
       return badRequest("title is required");
+    }
+    if (taskId) {
+      const task = await prisma.task.findFirst({
+        where: { id: taskId, workspaceId },
+        select: { id: true },
+      });
+      if (!task) {
+        return badRequest("invalid taskId");
+      }
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -78,11 +93,12 @@ export async function POST(request: Request) {
     await prisma.aiSuggestion.create({
       data: {
         type: "SCORE",
-        taskId: body.taskId ?? null,
+        taskId,
         inputTitle: title,
         inputDescription: description,
         output: JSON.stringify(payload),
         userId,
+        workspaceId,
       },
     });
 

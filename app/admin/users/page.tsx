@@ -10,6 +10,10 @@ type UserRow = {
   role: string;
   disabledAt?: string | null;
   createdAt: string;
+  memberships?: {
+    role: string;
+    workspace: { id: string; name: string };
+  }[];
 };
 
 type TaskRow = {
@@ -178,12 +182,13 @@ export default function AdminUsersPage() {
             </div>
           ) : (
             <div className="grid gap-2">
-              <div className="grid grid-cols-[1.4fr_1fr_0.7fr_0.8fr_0.8fr_0.7fr] gap-3 border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] gap-3 border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
                 <span>ユーザー</span>
                 <span>メール</span>
                 <span>権限</span>
                 <span>状態</span>
                 <span>作成日</span>
+                <span>ワークスペース</span>
                 <span>タスク</span>
               </div>
               {users.map((user) => {
@@ -200,7 +205,7 @@ export default function AdminUsersPage() {
                 );
                 return (
                   <div key={user.id} className="grid gap-2">
-                    <div className="grid grid-cols-[1.4fr_1fr_0.7fr_0.8fr_0.8fr_0.7fr] items-center gap-3 border border-slate-200 px-3 py-2 text-sm text-slate-800">
+                    <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] items-center gap-3 border border-slate-200 px-3 py-2 text-sm text-slate-800">
                       <span className="truncate">{user.name ?? "Unnamed"}</span>
                       <span className="truncate text-slate-600">
                         {user.email ?? "-"}
@@ -245,6 +250,27 @@ export default function AdminUsersPage() {
                       <span className="text-xs text-slate-500">
                         {new Date(user.createdAt).toLocaleDateString()}
                       </span>
+                      <div className="text-xs text-slate-600">
+                        {user.memberships && user.memberships.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {user.memberships.slice(0, 2).map((membership) => (
+                              <span
+                                key={membership.workspace.id}
+                                className="border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+                              >
+                                {membership.workspace.name}
+                              </span>
+                            ))}
+                            {user.memberships.length > 2 ? (
+                              <span className="text-[11px] text-slate-400">
+                                +{user.memberships.length - 2}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">未所属</span>
+                        )}
+                      </div>
                       <button
                         onClick={async () => {
                           if (isOpen) {

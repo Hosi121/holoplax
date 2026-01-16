@@ -6,6 +6,7 @@ import {
   serverError,
 } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
+import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 type SplitItem = {
   title: string;
@@ -39,12 +40,26 @@ const extractJsonArray = (text: string) => {
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return badRequest("workspace is required");
+    }
     const body = await request.json();
     const title = String(body.title ?? "").trim();
     const description = String(body.description ?? "").trim();
     const points = Number(body.points ?? 0);
+    const taskId = body.taskId ?? null;
     if (!title || !Number.isFinite(points) || points <= 0) {
       return badRequest("title and points are required");
+    }
+    if (taskId) {
+      const task = await prisma.task.findFirst({
+        where: { id: taskId, workspaceId },
+        select: { id: true },
+      });
+      if (!task) {
+        return badRequest("invalid taskId");
+      }
     }
 
     let suggestions = fallbackSplit(title, description, points);
@@ -90,11 +105,12 @@ export async function POST(request: Request) {
     await prisma.aiSuggestion.create({
       data: {
         type: "SPLIT",
-        taskId: body.taskId ?? null,
+        taskId,
         inputTitle: title,
         inputDescription: description,
         output: JSON.stringify(suggestions),
         userId,
+        workspaceId,
       },
     });
 

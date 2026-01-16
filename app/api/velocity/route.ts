@@ -6,20 +6,17 @@ import {
   serverError,
 } from "../../../lib/api-response";
 import prisma from "../../../lib/prisma";
-import { adoptOrphanVelocity } from "../../../lib/user-data";
+import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
 export async function GET() {
   try {
-    const { userId, role } = await requireAuth();
-    if (role === "ADMIN") {
-      const velocity = await prisma.velocityEntry.findMany({
-        orderBy: { createdAt: "desc" },
-      });
-      return ok({ velocity });
+    const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return ok({ velocity: [] });
     }
-    await adoptOrphanVelocity(userId);
     const velocity = await prisma.velocityEntry.findMany({
-      where: { userId },
+      where: { workspaceId },
       orderBy: { createdAt: "desc" },
     });
     return ok({ velocity });
@@ -34,6 +31,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return badRequest("workspace is required");
+    }
     const body = await request.json();
     const { name, points, range } = body;
     if (!name || !points || !range) {
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
         points: Number(points),
         range,
         userId,
+        workspaceId,
       },
     });
     return ok({ entry });

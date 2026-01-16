@@ -89,6 +89,11 @@ export default function WorkspacesPage() {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ workspaceId: workspace.id }),
                     });
+                    window.dispatchEvent(
+                      new CustomEvent("workspace:changed", {
+                        detail: { workspaceId: workspace.id },
+                      }),
+                    );
                   }}
                   className={`border px-3 py-2 text-left text-sm transition ${
                     selectedId === workspace.id
@@ -131,6 +136,11 @@ export default function WorkspacesPage() {
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ workspaceId: data.workspace.id }),
                         });
+                        window.dispatchEvent(
+                          new CustomEvent("workspace:changed", {
+                            detail: { workspaceId: data.workspace.id },
+                          }),
+                        );
                       }
                     }
                   }}

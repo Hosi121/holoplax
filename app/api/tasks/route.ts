@@ -7,7 +7,6 @@ import {
 } from "../../../lib/api-response";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS } from "../../../lib/types";
-import { adoptOrphanTasks } from "../../../lib/user-data";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
 export async function GET() {
@@ -17,7 +16,6 @@ export async function GET() {
     if (!workspaceId) {
       return ok({ tasks: [] });
     }
-    await adoptOrphanTasks(userId, workspaceId);
     const tasks = await prisma.task.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },

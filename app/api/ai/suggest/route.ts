@@ -1,10 +1,12 @@
 import { requireAuth } from "../../../../lib/api-auth";
 import {
+  badRequest,
   handleAuthError,
   ok,
   serverError,
 } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
+import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const canned = [
   "小さく分けて今日30分以内に終わる粒度にしてください。",
@@ -15,10 +17,24 @@ const canned = [
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return badRequest("workspace is required");
+    }
     const body = await request.json();
     const title: string = body.title ?? "タスク";
     const description: string = body.description ?? "";
     const taskId: string | null = body.taskId ?? null;
+
+    if (taskId) {
+      const task = await prisma.task.findFirst({
+        where: { id: taskId, workspaceId },
+        select: { id: true },
+      });
+      if (!task) {
+        return badRequest("invalid taskId");
+      }
+    }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (apiKey) {
@@ -50,11 +66,12 @@ export async function POST(request: Request) {
               type: "TIP",
               taskId,
               inputTitle: title,
-                inputDescription: description,
-                output: content,
-                userId,
-              },
-            });
+              inputDescription: description,
+              output: content,
+              userId,
+              workspaceId,
+            },
+          });
             return ok({ suggestion: content });
           }
         }
@@ -69,9 +86,10 @@ export async function POST(request: Request) {
       type: "TIP",
       taskId,
       inputTitle: title,
-        inputDescription: description,
-        output: pick,
+      inputDescription: description,
+      output: pick,
       userId,
+      workspaceId,
     },
   });
   return ok({ suggestion: `${title} のAI提案: ${pick}` });

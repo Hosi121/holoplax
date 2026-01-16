@@ -12,11 +12,13 @@ const PUBLIC_PATHS = [
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isStaticAsset = pathname.includes(".") || pathname.startsWith("/public");
 
   if (
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/public") ||
+    isStaticAsset ||
     PUBLIC_PATHS.some((path) => pathname.startsWith(path))
   ) {
     return NextResponse.next();

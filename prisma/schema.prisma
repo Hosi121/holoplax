@@ -215,7 +215,7 @@ model UserAutomationSetting {
   workspaceId String?
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@unique([userId])
+  @@unique([userId, workspaceId])
 }
 
 model AiSuggestion {

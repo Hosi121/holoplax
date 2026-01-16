@@ -6,18 +6,21 @@ import {
   serverError,
 } from "../../../lib/api-response";
 import prisma from "../../../lib/prisma";
+import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
 export async function GET() {
   try {
     const { userId } = await requireAuth();
-    const current =
-      (await prisma.userAutomationSetting.findFirst({
-        where: { userId },
-      })) ??
-      (await prisma.userAutomationSetting.create({
-        data: { low: 35, high: 70, userId },
-      }));
-    return ok({ low: current.low, high: current.high });
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return ok({ low: 35, high: 70, workspaceId: null });
+    }
+    const current = await prisma.userAutomationSetting.upsert({
+      where: { userId_workspaceId: { userId, workspaceId } },
+      update: {},
+      create: { low: 35, high: 70, userId, workspaceId },
+    });
+    return ok({ low: current.low, high: current.high, workspaceId });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;
@@ -29,6 +32,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
+    const workspaceId = await resolveWorkspaceId(userId);
+    if (!workspaceId) {
+      return badRequest("workspace is required");
+    }
     const body = await request.json();
     const low = Number(body.low);
     const high = Number(body.high);
@@ -36,7 +43,7 @@ export async function POST(request: Request) {
       return badRequest("low/high are required");
     }
     const existing = await prisma.userAutomationSetting.findFirst({
-      where: { userId },
+      where: { userId, workspaceId },
     });
     const saved = existing
       ? await prisma.userAutomationSetting.update({
@@ -44,9 +51,9 @@ export async function POST(request: Request) {
           data: { low, high },
         })
       : await prisma.userAutomationSetting.create({
-          data: { low, high, userId },
+          data: { low, high, userId, workspaceId },
         });
-    return ok({ low: saved.low, high: saved.high });
+    return ok({ low: saved.low, high: saved.high, workspaceId });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;

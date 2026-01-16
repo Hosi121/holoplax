@@ -2,19 +2,26 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/sidebar";
+import { useWorkspaceId } from "../components/use-workspace-id";
 import { VelocityEntryDTO } from "../../lib/types";
 
 export default function VelocityPage() {
+  const { workspaceId, ready } = useWorkspaceId();
   const [history, setHistory] = useState<VelocityEntryDTO[]>([]);
   const [form, setForm] = useState({ name: "Sprint-1", points: 22, range: "20-26" });
 
   const fetchVelocity = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setHistory([]);
+      return;
+    }
     const res = await fetch("/api/velocity");
     const data = await res.json();
     setHistory(data.velocity ?? []);
     const nextNum = (data.velocity?.length ?? 0) + 1;
     setForm((p) => ({ ...p, name: `Sprint-${nextNum}` }));
-  }, []);
+  }, [ready, workspaceId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

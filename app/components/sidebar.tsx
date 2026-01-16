@@ -92,6 +92,11 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ workspaceId: nextId }),
                   });
+                  window.dispatchEvent(
+                    new CustomEvent("workspace:changed", {
+                      detail: { workspaceId: nextId },
+                    }),
+                  );
                   router.refresh();
                 }}
                 className="border border-slate-200 bg-white px-2 py-2 text-sm text-slate-700"
