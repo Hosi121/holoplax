@@ -5,6 +5,12 @@ import prisma from "../../../../lib/prisma";
 import { TASK_STATUS } from "../../../../lib/types";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
+const getEnv = (key: string) => {
+  const value = process.env[key];
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
 export async function POST(request: Request) {
   const signingSecret = process.env.SLACK_SIGNING_SECRET;
   if (!signingSecret) {
