@@ -188,8 +188,7 @@ export default function SprintPage() {
     try {
       const res = await fetch("/api/sprints/current", { method: "PATCH" });
       if (res.ok) {
-        const data = await res.json();
-        setSprint(data.sprint ?? null);
+        await fetchSprint();
       }
       fetchTasks();
       fetchSprintHistory();
