@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -39,7 +39,9 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
   const [workspaces, setWorkspaces] = useState<
     { id: string; name: string; role: string }[]
   >([]);
-  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(
+    null,
+  );
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
     <aside className="sticky top-0 hidden min-h-screen w-60 flex-col border border-slate-200 bg-white p-4 shadow-sm lg:flex">
       <div className="border-b border-slate-200 pb-4">
         <Image
-          src="/logo_holoplax.png"
+          src="/logo_holoplax.webp"
           alt="Holoplax logo"
           width={180}
           height={56}
@@ -129,19 +131,19 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
         {navItems
           .filter((item) => !item.adminOnly || session?.user?.role === "ADMIN")
           .map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[#2323eb]/40 hover:bg-[#2323eb]/10 hover:text-[#2323eb] ${
-              pathname === item.href
-                ? "border-[#2323eb]/40 bg-[#2323eb]/10 text-[#2323eb]"
-                : "border-transparent text-slate-700"
-            }`}
-          >
-            <item.icon size={16} />
-            <span>{item.label}</span>
-          </Link>
-        ))}
+            <Link
+              key={item.label}
+              href={item.href}
+              className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[#2323eb]/40 hover:bg-[#2323eb]/10 hover:text-[#2323eb] ${
+                pathname === item.href
+                  ? "border-[#2323eb]/40 bg-[#2323eb]/10 text-[#2323eb]"
+                  : "border-transparent text-slate-700"
+              }`}
+            >
+              <item.icon size={16} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
       </nav>
       <div className="mt-auto border-t border-slate-200 pt-4 text-xs text-slate-600">
         {status === "loading" ? (
