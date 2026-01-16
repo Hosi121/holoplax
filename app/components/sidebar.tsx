@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export const navItems = [
   { label: "ダッシュボード", href: "/", icon: LayoutDashboard },
@@ -44,8 +44,8 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
   );
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
-  useEffect(() => {
-    if (!session?.user) return;
+  const loadWorkspaces = useCallback(() => {
+    if (!session?.user) return () => undefined;
     let active = true;
     setWorkspaceLoading(true);
     fetch("/api/workspaces/current")
@@ -63,6 +63,19 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
       active = false;
     };
   }, [session?.user]);
+
+  useEffect(() => loadWorkspaces(), [loadWorkspaces]);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    const handler = () => {
+      loadWorkspaces();
+    };
+    window.addEventListener("workspace:changed", handler);
+    return () => {
+      window.removeEventListener("workspace:changed", handler);
+    };
+  }, [loadWorkspaces, session?.user]);
   return (
     <aside className="sticky top-0 hidden min-h-screen w-60 flex-col border border-slate-200 bg-white p-4 shadow-sm lg:flex">
       <div className="border-b border-slate-200 pb-4">
