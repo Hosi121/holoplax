@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
@@ -42,14 +43,24 @@ export default async function Home() {
     : [null, [], []];
 
   const sprintTasks = sprint
-    ? tasks.filter((task) => task.sprintId === sprint.id || task.status === "SPRINT")
+    ? tasks.filter(
+        (task) => task.sprintId === sprint.id || task.status === "SPRINT",
+      )
     : tasks.filter((task) => task.status === "SPRINT");
   const sprintDone = sprintTasks.filter((task) => task.status === "DONE");
   const sprintActive = sprintTasks.filter((task) => task.status !== "DONE");
-  const committedPoints = sprintActive.reduce((sum, task) => sum + task.points, 0);
-  const totalSprintPoints = sprintTasks.reduce((sum, task) => sum + task.points, 0);
+  const committedPoints = sprintActive.reduce(
+    (sum, task) => sum + task.points,
+    0,
+  );
+  const totalSprintPoints = sprintTasks.reduce(
+    (sum, task) => sum + task.points,
+    0,
+  );
   const completionRate = totalSprintPoints
-    ? (sprintDone.reduce((sum, task) => sum + task.points, 0) / totalSprintPoints) * 100
+    ? (sprintDone.reduce((sum, task) => sum + task.points, 0) /
+        totalSprintPoints) *
+      100
     : 0;
 
   const doneTasks = tasks.filter((task) => task.status === "DONE");
@@ -57,8 +68,12 @@ export default async function Home() {
   const leadTimeDays =
     leadTimeSample.length > 0
       ? leadTimeSample.reduce((sum, task) => {
-          const created = task.createdAt ? new Date(task.createdAt).getTime() : 0;
-          const updated = task.updatedAt ? new Date(task.updatedAt).getTime() : created;
+          const created = task.createdAt
+            ? new Date(task.createdAt).getTime()
+            : 0;
+          const updated = task.updatedAt
+            ? new Date(task.updatedAt).getTime()
+            : created;
           return sum + Math.max(0, updated - created);
         }, 0) /
         leadTimeSample.length /
@@ -99,7 +114,8 @@ export default async function Home() {
   const recentActivity = tasks.length
     ? tasks.slice(0, 4).map((task) => {
         if (task.status === "DONE") return `完了: ${task.title}`;
-        if (task.status === "SPRINT") return `スプリントに「${task.title}」を追加`;
+        if (task.status === "SPRINT")
+          return `スプリントに「${task.title}」を追加`;
         return `バックログ追加: ${task.title}`;
       })
     : [
@@ -110,7 +126,9 @@ export default async function Home() {
       ];
 
   const prevVelocity = velocitySeries.at(-2) ?? velocitySeries.at(-1) ?? 0;
-  const reviewDate = sprint?.startedAt ? new Date(sprint.startedAt) : new Date();
+  const reviewDate = sprint?.startedAt
+    ? new Date(sprint.startedAt)
+    : new Date();
   reviewDate.setDate(reviewDate.getDate() + 7);
   const reviewLabel = `${reviewDate.toLocaleDateString("ja-JP", {
     weekday: "short",
@@ -124,24 +142,29 @@ export default async function Home() {
         committedPoints - (prevVelocity ?? 0)
       }`,
       icon: ListTodo,
+      arrowDir:
+        committedPoints - (prevVelocity ?? 0) >= 0 ? "positive" : "negative",
     },
     {
       label: "完了率",
       value: formatPercent(completionRate),
-      delta: `${completionRate >= 0 ? "+" : ""}${Math.round(completionRate - 60)}%`,
+      delta: `${completionRate - 60 >= 0 ? "+" : ""}${Math.round(completionRate - 60)}%`,
       icon: CheckCircle2,
+      arrowDir: completionRate - 60 >= 0 ? "positive" : "negative",
     },
     {
       label: "平均リードタイム",
       value: formatDays(leadTimeDays || 2.4),
-      delta: leadTimeDays ? `-${Math.max(0, leadTimeDays - 2).toFixed(1)}` : "-0.4",
+      delta: `${(leadTimeDays || 2.4) - 2 > 0 ? "+" : ""}${((leadTimeDays || 2.4) - 2).toFixed(1)}`,
       icon: Timer,
+      arrowDir: (leadTimeDays || 2.4) - 2 >= 0 ? "positive" : "negative",
     },
     {
       label: "次のレビュー",
       value: reviewLabel,
       delta: "48h",
       icon: CalendarDays,
+      arrowDir: "positive",
     },
   ];
 
@@ -180,7 +203,10 @@ export default async function Home() {
 
           <section className="grid gap-4 lg:grid-cols-4">
             {kpis.map((kpi) => (
-              <div key={kpi.label} className="border border-slate-200 bg-white p-4 shadow-sm">
+              <div
+                key={kpi.label}
+                className="border border-slate-200 bg-white p-4 shadow-sm"
+              >
                 <div className="flex items-center justify-between">
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
                     {kpi.label}
@@ -188,9 +214,21 @@ export default async function Home() {
                   <kpi.icon size={16} className="text-slate-400" />
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <p className="text-2xl font-semibold text-slate-900">{kpi.value}</p>
-                  <span className="flex items-center gap-1 text-xs text-emerald-600">
-                    <ArrowUpRight size={12} />
+                  <p className="text-2xl font-semibold text-slate-900">
+                    {kpi.value}
+                  </p>
+                  <span
+                    className={`flex items-center gap-1 text-xs ${
+                      kpi.arrowDir === "negative"
+                        ? "text-rose-600"
+                        : "text-emerald-600"
+                    }`}
+                  >
+                    {kpi.delta.startsWith("-") ? (
+                      <ArrowDownRight size={12} />
+                    ) : (
+                      <ArrowUpRight size={12} />
+                    )}
                     {kpi.delta}
                   </span>
                 </div>
@@ -201,25 +239,39 @@ export default async function Home() {
           <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <div className="border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">ベロシティ推移</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  ベロシティ推移
+                </h2>
                 <span className="text-xs text-slate-500">直近7スプリント</span>
               </div>
               {velocitySeries.length ? (
                 <>
                   <div className="mt-4 grid grid-cols-7 items-end gap-2">
                     {velocitySeries.map((value, idx) => (
-                      <div key={`velocity-${idx}`} className="flex flex-col items-center gap-2">
+                      <div
+                        key={`velocity-${idx}`}
+                        className="flex flex-col items-center gap-2"
+                      >
                         <div
                           className="w-full rounded-sm bg-[#2323eb]/20"
-                          style={{ height: `${(value / velocityMax) * 120 + 12}px` }}
+                          style={{
+                            height: `${(value / velocityMax) * 120 + 12}px`,
+                          }}
                         />
-                        <span className="text-[10px] text-slate-500">{value}</span>
+                        <span className="text-[10px] text-slate-500">
+                          {value}
+                        </span>
                       </div>
                     ))}
                   </div>
                   <div className="mt-4 flex items-center gap-3 text-xs text-slate-600">
                     <span className="border border-slate-200 bg-slate-50 px-2 py-1">
-                      平均 {Math.round(velocitySeries.reduce((a, b) => a + b, 0) / velocitySeries.length)} pt
+                      平均{" "}
+                      {Math.round(
+                        velocitySeries.reduce((a, b) => a + b, 0) /
+                          velocitySeries.length,
+                      )}{" "}
+                      pt
                     </span>
                     <span className="border border-slate-200 bg-slate-50 px-2 py-1">
                       最高 {Math.max(...velocitySeries)} pt
@@ -228,8 +280,12 @@ export default async function Home() {
                 </>
               ) : (
                 <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-800">ベロシティデータがありません。</p>
-                  <p className="mt-1">スプリントを開始して完了すると自動で記録されます。</p>
+                  <p className="font-semibold text-slate-800">
+                    ベロシティデータがありません。
+                  </p>
+                  <p className="mt-1">
+                    スプリントを開始して完了すると自動で記録されます。
+                  </p>
                   <div className="mt-3 flex gap-2 text-xs">
                     <Link
                       href="/sprint"
@@ -250,7 +306,9 @@ export default async function Home() {
 
             <div className="border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">バーンダウン</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  バーンダウン
+                </h2>
                 <span className="text-xs text-slate-500">7日間</span>
               </div>
               {burndownSeries.length ? (
@@ -258,9 +316,23 @@ export default async function Home() {
                   <div className="mt-4">
                     <svg viewBox="0 0 240 120" className="h-32 w-full">
                       <defs>
-                        <linearGradient id="burn-gradient" x1="0" x2="0" y1="0" y2="1">
-                          <stop offset="0%" stopColor="#2323eb" stopOpacity="0.25" />
-                          <stop offset="100%" stopColor="#2323eb" stopOpacity="0.02" />
+                        <linearGradient
+                          id="burn-gradient"
+                          x1="0"
+                          x2="0"
+                          y1="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="#2323eb"
+                            stopOpacity="0.25"
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="#2323eb"
+                            stopOpacity="0.02"
+                          />
                         </linearGradient>
                       </defs>
                       <polyline
@@ -269,7 +341,8 @@ export default async function Home() {
                         strokeWidth="2"
                         points={burndownSeries
                           .map((value, idx) => {
-                            const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
+                            const x =
+                              (idx / (burndownSeries.length - 1)) * 220 + 10;
                             const y = 110 - (value / burndownMax) * 90;
                             return `${x},${y}`;
                           })
@@ -279,7 +352,8 @@ export default async function Home() {
                         fill="url(#burn-gradient)"
                         points={`10,110 ${burndownSeries
                           .map((value, idx) => {
-                            const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
+                            const x =
+                              (idx / (burndownSeries.length - 1)) * 220 + 10;
                             const y = 110 - (value / burndownMax) * 90;
                             return `${x},${y}`;
                           })
@@ -294,8 +368,12 @@ export default async function Home() {
                 </>
               ) : (
                 <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-800">バーンダウンはまだありません。</p>
-                  <p className="mt-1">スプリントを開始し、タスクをコミットするとここに表示されます。</p>
+                  <p className="font-semibold text-slate-800">
+                    バーンダウンはまだありません。
+                  </p>
+                  <p className="mt-1">
+                    スプリントを開始し、タスクをコミットするとここに表示されます。
+                  </p>
                   <div className="mt-3 flex gap-2 text-xs">
                     <Link
                       href="/sprint"
@@ -318,8 +396,12 @@ export default async function Home() {
           <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
             <div className="border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">バックログ状況</h2>
-                <span className="text-xs text-slate-500">分解しきい値 {splitThreshold} pt</span>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  バックログ状況
+                </h2>
+                <span className="text-xs text-slate-500">
+                  分解しきい値 {splitThreshold} pt
+                </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 {backlogSnapshot.map((item) => (
@@ -328,8 +410,12 @@ export default async function Home() {
                     className="border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700"
                   >
                     <p className="text-xs text-slate-500">{item.label}</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
-                    <span className={`mt-2 inline-flex px-2 py-1 text-[11px] ${item.accent}`}>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {item.value}
+                    </p>
+                    <span
+                      className={`mt-2 inline-flex px-2 py-1 text-[11px] ${item.accent}`}
+                    >
                       タスク
                     </span>
                   </div>
@@ -342,7 +428,9 @@ export default async function Home() {
 
             <div className="border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">最近のアクティビティ</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  最近のアクティビティ
+                </h2>
                 <span className="text-xs text-slate-500">直近24時間</span>
               </div>
               <div className="mt-4 space-y-3 text-sm text-slate-700">
