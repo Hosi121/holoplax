@@ -6,6 +6,7 @@ import { Sidebar } from "../components/sidebar";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { SprintDTO, TASK_STATUS, TaskDTO } from "../../lib/types";
 
+const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 type MemberRow = {
   id: string;
   name: string | null;
@@ -418,16 +419,19 @@ export default function SprintPage() {
             <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
               <label className="grid gap-1 text-xs text-slate-500">
                 ポイント
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="pt"
+                <select
                   value={newItem.points}
                   onChange={(e) =>
-                    setNewItem((p) => ({ ...p, points: Number(e.target.value) || 0 }))
+                    setNewItem((p) => ({ ...p, points: Number(e.target.value) || 1 }))
                   }
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                />
+                >
+                  {storyPoints.map((pt) => (
+                    <option key={pt} value={pt}>
+                      {pt} pt
+                    </option>
+                  ))}
+                </select>
               </label>
                 <button
                   onClick={addItem}
@@ -659,16 +663,19 @@ export default function SprintPage() {
                 <div className="grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-1 text-xs text-slate-500">
                     ポイント
-                    <input
-                      type="number"
-                      min={1}
-                      placeholder="pt"
+                    <select
                       value={editForm.points}
                       onChange={(e) =>
-                        setEditForm((p) => ({ ...p, points: Number(e.target.value) || 0 }))
+                        setEditForm((p) => ({ ...p, points: Number(e.target.value) || 1 }))
                       }
                       className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
+                    >
+                      {storyPoints.map((pt) => (
+                        <option key={pt} value={pt}>
+                          {pt} pt
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="grid gap-1 text-xs text-slate-500">
                     緊急度

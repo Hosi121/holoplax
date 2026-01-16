@@ -7,6 +7,7 @@ import {
   serverError,
 } from "../../../../lib/api-response";
 import { applyAutomationForTask } from "../../../../lib/automation";
+import { badPoints } from "../../../../lib/points";
 import { logAudit } from "../../../../lib/audit";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS } from "../../../../lib/types";
@@ -23,6 +24,9 @@ export async function PATCH(
   if (body.title) data.title = body.title;
   if (typeof body.description === "string") data.description = body.description;
   if (body.points !== undefined && body.points !== null) {
+    if (badPoints(body.points)) {
+      return badRequest("points must be one of 1,2,3,5,8,13,21,34");
+    }
     data.points = Number(body.points);
   }
   if (body.urgency) data.urgency = body.urgency;

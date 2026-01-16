@@ -32,6 +32,8 @@ export default function OnboardingPage() {
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [points, setPoints] = useState(3);
+  const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
+  const storyPoints = [1, 2, 3, 5, 8, 13];
   const [cadence, setCadence] = useState("weekly");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,16 +166,17 @@ export default function OnboardingPage() {
                 />
                 <label className="grid gap-2 text-xs text-slate-500">
                   目標の粒度
-                  <input
-                    type="number"
-                    min={1}
-                    max={13}
+                  <select
                     value={points}
-                    onChange={(event) =>
-                      setPoints(Number(event.target.value) || 1)
-                    }
+                    onChange={(event) => setPoints(Number(event.target.value) || 1)}
                     className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
+                  >
+                    {storyPoints.map((pt) => (
+                      <option key={pt} value={pt}>
+                        {pt} pt
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             ) : null}

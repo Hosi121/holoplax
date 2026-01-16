@@ -15,11 +15,11 @@ const getEnv = (key: string) => process.env[key] ?? "";
 export async function POST(request: Request) {
   const sharedToken = getEnv("DISCORD_INTEGRATION_TOKEN");
   if (!sharedToken) {
-    return unauthorized("integration token not configured");
+    return unauthorized();
   }
   const received = headerToken(request);
   if (!received || received !== sharedToken) {
-    return unauthorized("invalid integration token");
+    return unauthorized();
   }
 
   const body = await request.json().catch(() => ({}));

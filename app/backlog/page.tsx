@@ -11,6 +11,7 @@ import {
   SPLIT_PARENT_TAG,
 } from "../../lib/automation-constants";
 
+const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 type SplitSuggestion = {
   title: string;
   points: number;
@@ -717,16 +718,19 @@ export default function BacklogPage() {
                 <div className="grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-1 text-xs text-slate-500">
                     ポイント
-                    <input
-                      type="number"
-                      min={1}
-                      placeholder="pt"
+                    <select
                       value={form.points}
                       onChange={(e) =>
-                        setForm((p) => ({ ...p, points: Number(e.target.value) || 0 }))
+                        setForm((p) => ({ ...p, points: Number(e.target.value) || 1 }))
                       }
                       className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
+                    >
+                      {storyPoints.map((pt) => (
+                        <option key={pt} value={pt}>
+                          {pt} pt
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="grid gap-1 text-xs text-slate-500">
                     緊急度
@@ -876,15 +880,19 @@ export default function BacklogPage() {
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 />
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <input
-                    type="number"
-                    min={1}
+                  <select
                     value={editForm.points}
                     onChange={(e) =>
-                      setEditForm((p) => ({ ...p, points: Number(e.target.value) || 0 }))
+                      setEditForm((p) => ({ ...p, points: Number(e.target.value) || 1 }))
                     }
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
+                  >
+                    {storyPoints.map((pt) => (
+                      <option key={pt} value={pt}>
+                        {pt} pt
+                      </option>
+                    ))}
+                  </select>
                   <select
                     value={editForm.urgency}
                     onChange={(e) => setEditForm((p) => ({ ...p, urgency: e.target.value }))}

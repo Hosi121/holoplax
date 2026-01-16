@@ -6,6 +6,7 @@ import {
   serverError,
 } from "../../../lib/api-response";
 import { applyAutomationForTask } from "../../../lib/automation";
+import { badPoints } from "../../../lib/points";
 import { logAudit } from "../../../lib/audit";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS } from "../../../lib/types";
@@ -56,20 +57,23 @@ export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
     const body = await request.json();
-    const {
-      title,
-      description,
-      points,
-      urgency,
-      risk,
-      status,
-      dueDate,
-      assigneeId,
+  const {
+    title,
+    description,
+    points,
+    urgency,
+    risk,
+    status,
+    dueDate,
+    assigneeId,
       tags,
       dependencyIds,
     } = body;
     if (!title || points === undefined || points === null) {
       return badRequest("title and points are required");
+    }
+    if (badPoints(points)) {
+      return badRequest("points must be one of 1,2,3,5,8,13,21,34");
     }
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {

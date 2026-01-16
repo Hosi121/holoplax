@@ -23,7 +23,7 @@ const verifySlackSignature = (secret: string, body: string, timestamp: string, s
 export async function POST(request: Request) {
   const signingSecret = getEnv("SLACK_SIGNING_SECRET");
   if (!signingSecret) {
-    return unauthorized("SLACK_SIGNING_SECRET not configured");
+    return unauthorized();
   }
 
   const raw = await request.text();
@@ -31,17 +31,17 @@ export async function POST(request: Request) {
   const signature = request.headers.get("x-slack-signature") ?? "";
 
   if (!timestamp || !signature) {
-    return unauthorized("missing slack headers");
+    return unauthorized();
   }
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - Number(timestamp)) > 60 * 5) {
-    return unauthorized("request is too old");
+    return unauthorized();
   }
   try {
     const okSig = verifySlackSignature(signingSecret, raw, timestamp, signature);
-    if (!okSig) return unauthorized("invalid signature");
+    if (!okSig) return unauthorized();
   } catch {
-    return unauthorized("invalid signature");
+    return unauthorized();
   }
 
   const params = new URLSearchParams(raw);
