@@ -1,10 +1,9 @@
-import { AuthError, requireAuth } from "../../../../lib/api-auth";
+import { requireAuth } from "../../../../lib/api-auth";
 import {
   badRequest,
   handleAuthError,
   notFound,
   ok,
-  serverError,
 } from "../../../../lib/api-response";
 import { applyAutomationForTask } from "../../../../lib/automation";
 import { badPoints } from "../../../../lib/points";

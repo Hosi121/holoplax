@@ -1,4 +1,4 @@
-import { AuthError, requireAuth } from "../../../lib/api-auth";
+import { requireAuth } from "../../../lib/api-auth";
 import { conflict, handleAuthError, ok, serverError } from "../../../lib/api-response";
 import prisma from "../../../lib/prisma";
 

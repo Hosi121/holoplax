@@ -47,6 +47,7 @@ export default function BacklogPage() {
   });
   const [modalOpen, setModalOpen] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [suggestionMap, setSuggestionMap] = useState<Record<string, string>>({});
   const [scoreHint, setScoreHint] = useState<string | null>(null);
   const [splitMap, setSplitMap] = useState<Record<string, SplitSuggestion[]>>({});
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
@@ -89,7 +90,6 @@ export default function BacklogPage() {
   }, [ready, workspaceId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchTasks();
     void fetchMembers();
   }, [fetchTasks, fetchMembers]);
@@ -175,7 +175,11 @@ export default function BacklogPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setSuggestion(data.suggestion);
+        if (taskId) {
+          setSuggestionMap((prev) => ({ ...prev, [taskId]: data.suggestion }));
+        } else {
+          setSuggestion(data.suggestion);
+        }
       }
     } finally {
       setSuggestLoadingId(null);
@@ -325,7 +329,7 @@ export default function BacklogPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-10 lg:px-6 lg:py-14">
-      <Sidebar splitThreshold={8} />
+      <Sidebar />
       <main className="flex-1 space-y-6">
         <header className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
@@ -565,6 +569,11 @@ export default function BacklogPage() {
                       </LoadingButton>
                     ) : null}
                   </div>
+                  {suggestionMap[item.id] ? (
+                    <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                      {suggestionMap[item.id]}
+                    </div>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                     {item.dueDate ? (
                       <span className="border border-slate-200 bg-white px-2 py-1">

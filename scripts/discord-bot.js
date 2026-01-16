@@ -1,7 +1,7 @@
 // Minimal Discord bot that registers /holotask and forwards it to the Holoplax integration endpoint.
 // Usage: node scripts/discord-bot.js (requires env vars below and discord.js installed)
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable @typescript-eslint/no-require-imports */
 const {
   Client,
   GatewayIntentBits,

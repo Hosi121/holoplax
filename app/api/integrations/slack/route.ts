@@ -1,9 +1,4 @@
-import {
-  badRequest,
-  ok,
-  unauthorized,
-  unauthorizedWithMessage,
-} from "../../../../lib/api-response";
+import { ok, unauthorized, unauthorizedWithMessage } from "../../../../lib/api-response";
 import { applyAutomationForTask } from "../../../../lib/automation";
 import { verifySlackSignature } from "../../../../lib/integrations/auth";
 import prisma from "../../../../lib/prisma";

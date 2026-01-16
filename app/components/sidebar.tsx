@@ -28,11 +28,7 @@ export const navItems = [
   { label: "監査ログ", href: "/admin/audit", icon: BarChart3, adminOnly: true },
 ];
 
-type SidebarProps = {
-  splitThreshold?: number;
-};
-
-export function Sidebar({ splitThreshold }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -64,6 +60,7 @@ export function Sidebar({ splitThreshold }: SidebarProps) {
     };
   }, [session?.user]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => loadWorkspaces(), [loadWorkspaces]);
 
   useEffect(() => {

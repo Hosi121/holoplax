@@ -1,7 +1,7 @@
 // Minimal Slack bot using @slack/bolt that posts to the Holoplax integration endpoint.
 // Requires env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, DISCORD_INTEGRATION_TOKEN (shared), DISCORD_INTEGRATION_URL or SLACK_INTEGRATION_URL.
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { App } = require("@slack/bolt");
 
 const {

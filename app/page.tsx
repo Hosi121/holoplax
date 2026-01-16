@@ -57,8 +57,8 @@ export default async function Home() {
   const leadTimeDays =
     leadTimeSample.length > 0
       ? leadTimeSample.reduce((sum, task) => {
-          const created = task.createdAt?.getTime?.() ?? Date.now();
-          const updated = task.updatedAt?.getTime?.() ?? Date.now();
+          const created = task.createdAt ? new Date(task.createdAt).getTime() : 0;
+          const updated = task.updatedAt ? new Date(task.updatedAt).getTime() : created;
           return sum + Math.max(0, updated - created);
         }, 0) /
         leadTimeSample.length /
@@ -151,7 +151,7 @@ export default async function Home() {
   return (
     <div className="relative isolate min-h-screen bg-white">
       <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-10 lg:px-6 lg:py-14">
-        <Sidebar splitThreshold={splitThreshold} />
+        <Sidebar />
 
         <main className="flex-1 space-y-6">
           <header className="border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50 p-6 shadow-sm">

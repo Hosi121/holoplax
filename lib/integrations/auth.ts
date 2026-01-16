@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { unauthorized, unauthorizedWithMessage } from "../api-response";
+import { unauthorizedWithMessage } from "../api-response";
 
 export const extractHeaderToken = (request: Request) =>
   request.headers.get("x-integration-token") ??
