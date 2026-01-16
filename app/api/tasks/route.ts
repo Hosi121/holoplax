@@ -5,6 +5,7 @@ import {
   ok,
   serverError,
 } from "../../../lib/api-response";
+import { applyAutomationForTask } from "../../../lib/automation";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS } from "../../../lib/types";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
@@ -44,6 +45,14 @@ export async function POST(request: Request) {
     const statusValue = Object.values(TASK_STATUS).includes(status)
       ? status
       : TASK_STATUS.BACKLOG;
+    const activeSprint =
+      statusValue === TASK_STATUS.SPRINT
+        ? await prisma.sprint.findFirst({
+            where: { workspaceId, status: "ACTIVE" },
+            orderBy: { startedAt: "desc" },
+            select: { id: true },
+          })
+        : null;
     const task = await prisma.task.create({
       data: {
         title,
@@ -52,8 +61,20 @@ export async function POST(request: Request) {
         urgency: urgency ?? "中",
         risk: risk ?? "中",
         status: statusValue,
+        sprintId: activeSprint?.id ?? null,
         userId,
         workspaceId,
+      },
+    });
+    await applyAutomationForTask({
+      userId,
+      workspaceId,
+      task: {
+        id: task.id,
+        title: task.title,
+        description: task.description ?? "",
+        points: task.points,
+        status: task.status,
       },
     });
     return ok({ task });

@@ -19,6 +19,9 @@ export async function requireUserId() {
     where: { id: userId },
     select: { disabledAt: true },
   });
+  if (!user) {
+    throw new AuthError("user not found");
+  }
   if (user?.disabledAt) {
     throw new AuthError("disabled");
   }
@@ -35,6 +38,9 @@ export async function requireAuth() {
     where: { id: userId },
     select: { disabledAt: true, role: true },
   });
+  if (!user) {
+    throw new AuthError("user not found");
+  }
   if (user?.disabledAt) {
     throw new AuthError("disabled");
   }

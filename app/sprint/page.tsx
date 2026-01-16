@@ -4,12 +4,14 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "../components/sidebar";
 import { useWorkspaceId } from "../components/use-workspace-id";
-import { TASK_STATUS, TaskDTO } from "../../lib/types";
+import { SprintDTO, TASK_STATUS, TaskDTO } from "../../lib/types";
 
 export default function SprintPage() {
   const capacity = 24;
   const { workspaceId, ready } = useWorkspaceId();
   const [items, setItems] = useState<TaskDTO[]>([]);
+  const [sprint, setSprint] = useState<SprintDTO | null>(null);
+  const [sprintLoading, setSprintLoading] = useState(false);
   const [newItem, setNewItem] = useState({ title: "", description: "", points: 1 });
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
   const [editForm, setEditForm] = useState({
@@ -31,16 +33,30 @@ export default function SprintPage() {
     setItems((data.tasks ?? []).filter((t: TaskDTO) => t.status !== TASK_STATUS.BACKLOG));
   }, [ready, workspaceId]);
 
+  const fetchSprint = useCallback(async () => {
+    if (!ready) return;
+    if (!workspaceId) {
+      setSprint(null);
+      return;
+    }
+    const res = await fetch("/api/sprints/current");
+    if (!res.ok) return;
+    const data = await res.json();
+    setSprint(data.sprint ?? null);
+  }, [ready, workspaceId]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchTasks();
-  }, [fetchTasks]);
+    void fetchSprint();
+  }, [fetchTasks, fetchSprint]);
 
   const used = useMemo(
     () => items.filter((i) => i.status !== TASK_STATUS.DONE).reduce((sum, i) => sum + i.points, 0),
     [items],
   );
-  const remaining = capacity - used;
+  const activeCapacity = sprint?.capacityPoints ?? capacity;
+  const remaining = activeCapacity - used;
 
   const addItem = async () => {
     if (!newItem.title.trim() || newItem.points <= 0) return;
@@ -59,6 +75,37 @@ export default function SprintPage() {
     });
     setNewItem({ title: "", description: "", points: 1 });
     fetchTasks();
+  };
+
+  const startSprint = async () => {
+    setSprintLoading(true);
+    try {
+      const res = await fetch("/api/sprints/current", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capacityPoints: capacity }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSprint(data.sprint ?? null);
+      }
+    } finally {
+      setSprintLoading(false);
+    }
+  };
+
+  const endSprint = async () => {
+    setSprintLoading(true);
+    try {
+      const res = await fetch("/api/sprints/current", { method: "PATCH" });
+      if (res.ok) {
+        const data = await res.json();
+        setSprint(data.sprint ?? null);
+      }
+      fetchTasks();
+    } finally {
+      setSprintLoading(false);
+    }
   };
 
   const markDone = async (id: string) => {
@@ -121,16 +168,42 @@ export default function SprintPage() {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
-                キャパ 24 pt
+                キャパ {activeCapacity} pt
               </span>
               <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
                 残り {remaining} pt
               </span>
-              <button className="bg-[#2323eb] px-4 py-2 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30">
-                スプリント開始
-              </button>
+              {sprint ? (
+                <button
+                  onClick={endSprint}
+                  disabled={sprintLoading}
+                  className="bg-slate-900 px-4 py-2 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/30 disabled:opacity-60"
+                >
+                  スプリント終了
+                </button>
+              ) : (
+                <button
+                  onClick={startSprint}
+                  disabled={sprintLoading}
+                  className="bg-[#2323eb] px-4 py-2 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30 disabled:opacity-60"
+                >
+                  スプリント開始
+                </button>
+              )}
             </div>
           </div>
+          {sprint ? (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+              <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                {sprint.name}
+              </span>
+              <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                開始: {sprint.startedAt ? new Date(sprint.startedAt).toLocaleDateString() : "-"}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-3 text-xs text-slate-500">スプリントは未開始です。</div>
+          )}
         </header>
 
         <section className="border border-slate-200 bg-white p-6 shadow-sm">

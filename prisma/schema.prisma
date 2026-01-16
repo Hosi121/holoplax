@@ -24,29 +24,35 @@ enum UserRole {
   USER
 }
 
+enum SprintStatus {
+  ACTIVE
+  CLOSED
+}
+
 model User {
-  id            String            @id @default(cuid())
-  name          String?
-  email         String?           @unique
-  emailVerified DateTime?
-  image         String?
-  role          UserRole          @default(USER)
-  disabledAt    DateTime?
-  accounts      Account[]
-  sessions      Session[]
-  memberships   WorkspaceMember[]
-  workspacesOwned Workspace[]
-  password      UserPassword?
-  emailTokens   EmailVerificationToken[]
-  resetTokens   PasswordResetToken[]
-  auditLogsAsActor AuditLog[]     @relation("AuditActor")
-  auditLogsAsTarget AuditLog[]    @relation("AuditTargetUser")
-  tasks         Task[]
-  velocityEntries VelocityEntry[]
+  id                     String                   @id @default(cuid())
+  name                   String?
+  email                  String?                  @unique
+  emailVerified          DateTime?
+  image                  String?
+  role                   UserRole                 @default(USER)
+  disabledAt             DateTime?
+  accounts               Account[]
+  sessions               Session[]
+  memberships            WorkspaceMember[]
+  workspacesOwned        Workspace[]
+  password               UserPassword?
+  emailTokens            EmailVerificationToken[]
+  resetTokens            PasswordResetToken[]
+  auditLogsAsActor       AuditLog[]               @relation("AuditActor")
+  auditLogsAsTarget      AuditLog[]               @relation("AuditTargetUser")
+  tasks                  Task[]
+  velocityEntries        VelocityEntry[]
   userAutomationSettings UserAutomationSetting[]
-  aiSuggestions AiSuggestion[]
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  aiSuggestions          AiSuggestion[]
+  sprints                Sprint[]
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
 }
 
 model Account {
@@ -116,85 +122,88 @@ model VerificationToken {
 }
 
 model Workspace {
-  id        String            @id @default(cuid())
-  name      String
-  ownerId   String
-  owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members   WorkspaceMember[]
-  tasks     Task[]
-  velocityEntries VelocityEntry[]
+  id                     String                  @id @default(cuid())
+  name                   String
+  ownerId                String
+  owner                  User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members                WorkspaceMember[]
+  tasks                  Task[]
+  velocityEntries        VelocityEntry[]
   userAutomationSettings UserAutomationSetting[]
-  aiSuggestions AiSuggestion[]
-  invites   WorkspaceInvite[]
-  auditLogs AuditLog[]
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  aiSuggestions          AiSuggestion[]
+  invites                WorkspaceInvite[]
+  auditLogs              AuditLog[]
+  sprints                Sprint[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 }
 
 model WorkspaceMember {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   userId      String
-  role        String   @default("member")
+  role        String    @default("member")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
 
   @@unique([workspaceId, userId])
 }
 
 model WorkspaceInvite {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   email       String
-  role        String   @default("member")
-  token       String   @unique
+  role        String    @default("member")
+  token       String    @unique
   expiresAt   DateTime
   acceptedAt  DateTime?
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 model AuditLog {
-  id               String    @id @default(cuid())
-  actorId          String
-  action           String
-  targetUserId     String?
+  id                String     @id @default(cuid())
+  actorId           String
+  action            String
+  targetUserId      String?
   targetWorkspaceId String?
-  metadata         Json?
-  actor            User      @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
-  targetUser       User?     @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
-  targetWorkspace  Workspace? @relation(fields: [targetWorkspaceId], references: [id], onDelete: SetNull)
-  createdAt        DateTime  @default(now())
+  metadata          Json?
+  actor             User       @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+  targetUser        User?      @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetWorkspace   Workspace? @relation(fields: [targetWorkspaceId], references: [id], onDelete: SetNull)
+  createdAt         DateTime   @default(now())
 }
 
 model Task {
-  id        String     @id @default(uuid())
-  title     String
-  description String    @default("")
-  points    Int
-  urgency   String
-  risk      String
-  status    TaskStatus @default(BACKLOG)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String         @id @default(uuid())
+  title       String
+  description String         @default("")
+  points      Int
+  urgency     String
+  risk        String
+  status      TaskStatus     @default(BACKLOG)
+  sprintId    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   suggestions AiSuggestion[]
-  userId     String?
-  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sprint      Sprint?        @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String?
-  workspace  Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model VelocityEntry {
-  id        String   @id @default(uuid())
-  name      String
-  points    Int
-  range     String
-  createdAt DateTime @default(now())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String     @id @default(uuid())
+  name        String
+  points      Int
+  range       String
+  createdAt   DateTime   @default(now())
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String?
-  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model AutomationSetting {
@@ -205,15 +214,15 @@ model AutomationSetting {
 }
 
 model UserAutomationSetting {
-  id        String   @id @default(cuid())
-  low       Int
-  high      Int
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  low         Int
+  high        Int
+  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime   @default(now())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String?
-  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
 }
@@ -231,4 +240,20 @@ model AiSuggestion {
   user             User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId      String?
   workspace        Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Sprint {
+  id             String       @id @default(cuid())
+  name           String
+  status         SprintStatus @default(ACTIVE)
+  capacityPoints Int
+  startedAt      DateTime     @default(now())
+  endedAt        DateTime?
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId    String
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }

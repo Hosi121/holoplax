@@ -40,3 +40,12 @@ export type AiSuggestionDTO = {
   output: string;
   createdAt?: string | Date;
 };
+
+export type SprintDTO = {
+  id: string;
+  name: string;
+  status: "ACTIVE" | "CLOSED";
+  capacityPoints: number;
+  startedAt?: string | Date;
+  endedAt?: string | Date | null;
+};

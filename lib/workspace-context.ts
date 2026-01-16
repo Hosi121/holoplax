@@ -26,6 +26,12 @@ export async function resolveWorkspaceId(userId: string) {
 
   // 初回ユーザー用に個人ワークスペースを自動作成する
   const createdId = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) return null;
+
     const existing = await tx.workspaceMember.findFirst({
       where: { userId },
       orderBy: { createdAt: "asc" },

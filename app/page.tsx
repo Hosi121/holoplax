@@ -6,54 +6,147 @@ import {
   ListTodo,
   Timer,
 } from "lucide-react";
+import { getServerSession } from "next-auth";
 import { Sidebar } from "./components/sidebar";
+import { authOptions } from "../lib/auth";
+import prisma from "../lib/prisma";
+import { resolveWorkspaceId } from "../lib/workspace-context";
 
-const kpis = [
-  {
-    label: "今週のコミット",
-    value: "18 pt",
-    delta: "+3",
-    icon: ListTodo,
-  },
-  {
-    label: "完了率",
-    value: "72%",
-    delta: "+6%",
-    icon: CheckCircle2,
-  },
-  {
-    label: "平均リードタイム",
-    value: "2.4 日",
-    delta: "-0.4",
-    icon: Timer,
-  },
-  {
-    label: "次のレビュー",
-    value: "金 18:00",
-    delta: "48h",
-    icon: CalendarDays,
-  },
-];
-
-const velocitySeries = [18, 22, 20, 24, 21, 26, 23];
-const burndownSeries = [24, 22, 19, 16, 13, 9, 4];
-
-const backlogSnapshot = [
-  { label: "高スコア", value: 6, accent: "bg-red-100 text-red-700" },
-  { label: "分解待ち", value: 4, accent: "bg-amber-100 text-amber-700" },
-  { label: "低スコア", value: 12, accent: "bg-emerald-100 text-emerald-700" },
-];
-
-const recentActivity = [
-  "スプリントに「ユーザーインタビュー設計」を追加",
-  "分解提案: DBバックアップ導線の検討 (3件)",
-  "完了: 新規LPのワイヤー作成",
-  "AIスコア推定: インフラ移行ロードマップ",
-];
+const fallbackVelocity = [18, 22, 20, 24, 21, 26, 23];
+const fallbackBurndown = [24, 22, 19, 16, 13, 9, 4];
 
 const splitThreshold = 8;
 
-export default function Home() {
+const formatPercent = (value: number) => `${Math.round(value)}%`;
+const formatDays = (value: number) => `${value.toFixed(1)} 日`;
+
+export default async function Home() {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user?.id ?? null;
+  const workspaceId = userId ? await resolveWorkspaceId(userId) : null;
+
+  const [sprint, tasks, velocityEntries] = workspaceId
+    ? await Promise.all([
+        prisma.sprint.findFirst({
+          where: { workspaceId, status: "ACTIVE" },
+          orderBy: { startedAt: "desc" },
+        }),
+        prisma.task.findMany({
+          where: { workspaceId },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.velocityEntry.findMany({
+          where: { workspaceId },
+          orderBy: { createdAt: "desc" },
+          take: 7,
+        }),
+      ])
+    : [null, [], []];
+
+  const sprintTasks = sprint
+    ? tasks.filter((task) => task.sprintId === sprint.id || task.status === "SPRINT")
+    : tasks.filter((task) => task.status === "SPRINT");
+  const sprintDone = sprintTasks.filter((task) => task.status === "DONE");
+  const sprintActive = sprintTasks.filter((task) => task.status !== "DONE");
+  const committedPoints = sprintActive.reduce((sum, task) => sum + task.points, 0);
+  const totalSprintPoints = sprintTasks.reduce((sum, task) => sum + task.points, 0);
+  const completionRate = totalSprintPoints
+    ? (sprintDone.reduce((sum, task) => sum + task.points, 0) / totalSprintPoints) * 100
+    : 0;
+
+  const doneTasks = tasks.filter((task) => task.status === "DONE");
+  const leadTimeSample = doneTasks.slice(0, 5);
+  const leadTimeDays =
+    leadTimeSample.length > 0
+      ? leadTimeSample.reduce((sum, task) => {
+          const created = task.createdAt?.getTime?.() ?? Date.now();
+          const updated = task.updatedAt?.getTime?.() ?? Date.now();
+          return sum + Math.max(0, updated - created);
+        }, 0) /
+        leadTimeSample.length /
+        (1000 * 60 * 60 * 24)
+      : 0;
+
+  const velocitySeries = velocityEntries.length
+    ? velocityEntries.map((entry) => entry.points).reverse()
+    : fallbackVelocity;
+
+  const burndownSeries =
+    totalSprintPoints > 0
+      ? Array.from({ length: 7 }, (_, idx) => {
+          const delta = (totalSprintPoints - committedPoints) / 6;
+          return Math.max(0, Math.round(totalSprintPoints - delta * idx));
+        })
+      : fallbackBurndown;
+
+  const backlogTasks = tasks.filter((task) => task.status === "BACKLOG");
+  const backlogSnapshot = [
+    {
+      label: "高スコア",
+      value: backlogTasks.filter((task) => task.points > splitThreshold).length,
+      accent: "bg-red-100 text-red-700",
+    },
+    {
+      label: "分解待ち",
+      value: backlogTasks.filter((task) => task.points > splitThreshold).length,
+      accent: "bg-amber-100 text-amber-700",
+    },
+    {
+      label: "低スコア",
+      value: backlogTasks.filter((task) => task.points <= 3).length,
+      accent: "bg-emerald-100 text-emerald-700",
+    },
+  ];
+
+  const recentActivity = tasks.length
+    ? tasks.slice(0, 4).map((task) => {
+        if (task.status === "DONE") return `完了: ${task.title}`;
+        if (task.status === "SPRINT") return `スプリントに「${task.title}」を追加`;
+        return `バックログ追加: ${task.title}`;
+      })
+    : [
+        "スプリントを開始してタスクをコミットしましょう。",
+        "バックログに最初のタスクを追加してください。",
+        "AI分解のしきい値を設定しておくと便利です。",
+        "次のレビューの準備を進めましょう。",
+      ];
+
+  const prevVelocity = velocitySeries.at(-2) ?? velocitySeries.at(-1) ?? 0;
+  const reviewDate = sprint?.startedAt ? new Date(sprint.startedAt) : new Date();
+  reviewDate.setDate(reviewDate.getDate() + 7);
+  const reviewLabel = `${reviewDate.toLocaleDateString("ja-JP", {
+    weekday: "short",
+  })} 18:00`;
+
+  const kpis = [
+    {
+      label: "今週のコミット",
+      value: `${committedPoints} pt`,
+      delta: `${committedPoints - (prevVelocity ?? 0) >= 0 ? "+" : ""}${
+        committedPoints - (prevVelocity ?? 0)
+      }`,
+      icon: ListTodo,
+    },
+    {
+      label: "完了率",
+      value: formatPercent(completionRate),
+      delta: `${completionRate >= 0 ? "+" : ""}${Math.round(completionRate - 60)}%`,
+      icon: CheckCircle2,
+    },
+    {
+      label: "平均リードタイム",
+      value: formatDays(leadTimeDays || 2.4),
+      delta: leadTimeDays ? `-${Math.max(0, leadTimeDays - 2).toFixed(1)}` : "-0.4",
+      icon: Timer,
+    },
+    {
+      label: "次のレビュー",
+      value: reviewLabel,
+      delta: "48h",
+      icon: CalendarDays,
+    },
+  ];
+
   const velocityMax = Math.max(...velocitySeries);
   const burndownMax = Math.max(...burndownSeries);
 
