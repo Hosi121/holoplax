@@ -7,13 +7,11 @@ import {
   Timer,
 } from "lucide-react";
 import { getServerSession } from "next-auth";
+import Link from "next/link";
 import { Sidebar } from "./components/sidebar";
 import { authOptions } from "../lib/auth";
 import prisma from "../lib/prisma";
 import { resolveWorkspaceId } from "../lib/workspace-context";
-
-const fallbackVelocity = [18, 22, 20, 24, 21, 26, 23];
-const fallbackBurndown = [24, 22, 19, 16, 13, 9, 4];
 
 const splitThreshold = 8;
 
@@ -69,15 +67,15 @@ export default async function Home() {
 
   const velocitySeries = velocityEntries.length
     ? velocityEntries.map((entry) => entry.points).reverse()
-    : fallbackVelocity;
+    : [];
 
-  const burndownSeries =
-    totalSprintPoints > 0
-      ? Array.from({ length: 7 }, (_, idx) => {
-          const delta = (totalSprintPoints - committedPoints) / 6;
-          return Math.max(0, Math.round(totalSprintPoints - delta * idx));
-        })
-      : fallbackBurndown;
+  const hasBurndown = totalSprintPoints > 0;
+  const burndownSeries = hasBurndown
+    ? Array.from({ length: 7 }, (_, idx) => {
+        const delta = (totalSprintPoints - committedPoints) / 6;
+        return Math.max(0, Math.round(totalSprintPoints - delta * idx));
+      })
+    : [];
 
   const backlogTasks = tasks.filter((task) => task.status === "BACKLOG");
   const backlogSnapshot = [
@@ -147,8 +145,8 @@ export default async function Home() {
     },
   ];
 
-  const velocityMax = Math.max(...velocitySeries);
-  const burndownMax = Math.max(...burndownSeries);
+  const velocityMax = velocitySeries.length ? Math.max(...velocitySeries) : 0;
+  const burndownMax = burndownSeries.length ? Math.max(...burndownSeries) : 0;
 
   return (
     <div className="relative isolate min-h-screen bg-white">
@@ -171,7 +169,7 @@ export default async function Home() {
               </div>
               <div className="flex flex-wrap gap-2 text-xs font-semibold">
                 <span className="border border-slate-200 bg-white px-3 py-1 text-slate-700">
-                  スプリント: 2026-W03
+                  スプリント: {sprint?.name ?? "未開始"}
                 </span>
                 <span className="border border-[#2323eb]/40 bg-[#2323eb]/10 px-3 py-1 text-[#2323eb]">
                   AI ready
@@ -206,25 +204,48 @@ export default async function Home() {
                 <h2 className="text-lg font-semibold text-slate-900">ベロシティ推移</h2>
                 <span className="text-xs text-slate-500">直近7スプリント</span>
               </div>
-              <div className="mt-4 grid grid-cols-7 items-end gap-2">
-                {velocitySeries.map((value, idx) => (
-                  <div key={`velocity-${idx}`} className="flex flex-col items-center gap-2">
-                    <div
-                      className="w-full rounded-sm bg-[#2323eb]/20"
-                      style={{ height: `${(value / velocityMax) * 120 + 12}px` }}
-                    />
-                    <span className="text-[10px] text-slate-500">{value}</span>
+              {velocitySeries.length ? (
+                <>
+                  <div className="mt-4 grid grid-cols-7 items-end gap-2">
+                    {velocitySeries.map((value, idx) => (
+                      <div key={`velocity-${idx}`} className="flex flex-col items-center gap-2">
+                        <div
+                          className="w-full rounded-sm bg-[#2323eb]/20"
+                          style={{ height: `${(value / velocityMax) * 120 + 12}px` }}
+                        />
+                        <span className="text-[10px] text-slate-500">{value}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 flex items-center gap-3 text-xs text-slate-600">
-                <span className="border border-slate-200 bg-slate-50 px-2 py-1">
-                  平均 22 pt
-                </span>
-                <span className="border border-slate-200 bg-slate-50 px-2 py-1">
-                  最高 26 pt
-                </span>
-              </div>
+                  <div className="mt-4 flex items-center gap-3 text-xs text-slate-600">
+                    <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                      平均 {Math.round(velocitySeries.reduce((a, b) => a + b, 0) / velocitySeries.length)} pt
+                    </span>
+                    <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                      最高 {Math.max(...velocitySeries)} pt
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-800">ベロシティデータがありません。</p>
+                  <p className="mt-1">スプリントを開始して完了すると自動で記録されます。</p>
+                  <div className="mt-3 flex gap-2 text-xs">
+                    <Link
+                      href="/sprint"
+                      className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    >
+                      スプリントを始める
+                    </Link>
+                    <Link
+                      href="/backlog"
+                      className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    >
+                      バックログにタスク追加
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border border-slate-200 bg-white p-6 shadow-sm">
@@ -232,42 +253,65 @@ export default async function Home() {
                 <h2 className="text-lg font-semibold text-slate-900">バーンダウン</h2>
                 <span className="text-xs text-slate-500">7日間</span>
               </div>
-              <div className="mt-4">
-                <svg viewBox="0 0 240 120" className="h-32 w-full">
-                  <defs>
-                    <linearGradient id="burn-gradient" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#2323eb" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#2323eb" stopOpacity="0.02" />
-                    </linearGradient>
-                  </defs>
-                  <polyline
-                    fill="none"
-                    stroke="#2323eb"
-                    strokeWidth="2"
-                    points={burndownSeries
-                      .map((value, idx) => {
-                        const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
-                        const y = 110 - (value / burndownMax) * 90;
-                        return `${x},${y}`;
-                      })
-                      .join(" ")}
-                  />
-                  <polygon
-                    fill="url(#burn-gradient)"
-                    points={`10,110 ${burndownSeries
-                      .map((value, idx) => {
-                        const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
-                        const y = 110 - (value / burndownMax) * 90;
-                        return `${x},${y}`;
-                      })
-                      .join(" ")} 230,110`}
-                  />
-                </svg>
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
-                <Activity size={14} className="text-slate-400" />
-                今週は計画より +2pt 先行
-              </div>
+              {burndownSeries.length ? (
+                <>
+                  <div className="mt-4">
+                    <svg viewBox="0 0 240 120" className="h-32 w-full">
+                      <defs>
+                        <linearGradient id="burn-gradient" x1="0" x2="0" y1="0" y2="1">
+                          <stop offset="0%" stopColor="#2323eb" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#2323eb" stopOpacity="0.02" />
+                        </linearGradient>
+                      </defs>
+                      <polyline
+                        fill="none"
+                        stroke="#2323eb"
+                        strokeWidth="2"
+                        points={burndownSeries
+                          .map((value, idx) => {
+                            const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
+                            const y = 110 - (value / burndownMax) * 90;
+                            return `${x},${y}`;
+                          })
+                          .join(" ")}
+                      />
+                      <polygon
+                        fill="url(#burn-gradient)"
+                        points={`10,110 ${burndownSeries
+                          .map((value, idx) => {
+                            const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
+                            const y = 110 - (value / burndownMax) * 90;
+                            return `${x},${y}`;
+                          })
+                          .join(" ")} 230,110`}
+                      />
+                    </svg>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+                    <Activity size={14} className="text-slate-400" />
+                    今週の消化ペースを確認できます
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-800">バーンダウンはまだありません。</p>
+                  <p className="mt-1">スプリントを開始し、タスクをコミットするとここに表示されます。</p>
+                  <div className="mt-3 flex gap-2 text-xs">
+                    <Link
+                      href="/sprint"
+                      className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    >
+                      スプリントを始める
+                    </Link>
+                    <Link
+                      href="/backlog"
+                      className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    >
+                      タスクをコミット
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

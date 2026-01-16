@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, Pencil, Trash2 } from "lucide-react";
+import { Sparkles, Pencil, Trash2, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/sidebar";
 import { useWorkspaceId } from "../components/use-workspace-id";
@@ -59,6 +59,9 @@ export default function BacklogPage() {
     tags: "",
     dependencyIds: [] as string[],
   });
+  const [suggestLoadingId, setSuggestLoadingId] = useState<string | null>(null);
+  const [splitLoadingId, setSplitLoadingId] = useState<string | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     if (!ready) return;
@@ -151,51 +154,66 @@ export default function BacklogPage() {
   };
 
   const getSuggestion = async (title: string, description?: string, taskId?: string) => {
-    const res = await fetch("/api/ai/suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, description, taskId }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setSuggestion(data.suggestion);
+    setSuggestLoadingId(taskId ?? title);
+    try {
+      const res = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description, taskId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestion(data.suggestion);
+      }
+    } finally {
+      setSuggestLoadingId(null);
     }
   };
 
   const estimateScore = async () => {
     if (!form.title.trim()) return;
     setScoreHint(null);
-    const res = await fetch("/api/ai/score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: form.title.trim(), description: form.description.trim() }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setForm((prev) => ({
-        ...prev,
-        points: Number(data.points) || prev.points,
-        urgency: data.urgency ?? prev.urgency,
-        risk: data.risk ?? prev.risk,
-      }));
-      setScoreHint(data.reason ?? `AI推定スコア: ${data.score}`);
+    setScoreLoading(true);
+    try {
+      const res = await fetch("/api/ai/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: form.title.trim(), description: form.description.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setForm((prev) => ({
+          ...prev,
+          points: Number(data.points) || prev.points,
+          urgency: data.urgency ?? prev.urgency,
+          risk: data.risk ?? prev.risk,
+        }));
+        setScoreHint(data.reason ?? `AI推定スコア: ${data.score}`);
+      }
+    } finally {
+      setScoreLoading(false);
     }
   };
 
   const requestSplit = async (item: TaskDTO) => {
-    const res = await fetch("/api/ai/split", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: item.title,
-        description: item.description ?? "",
-        points: item.points,
-        taskId: item.id,
-      }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setSplitMap((prev) => ({ ...prev, [item.id]: data.suggestions ?? [] }));
+    setSplitLoadingId(item.id);
+    try {
+      const res = await fetch("/api/ai/split", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description ?? "",
+          points: item.points,
+          taskId: item.id,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSplitMap((prev) => ({ ...prev, [item.id]: data.suggestions ?? [] }));
+      }
+    } finally {
+      setSplitLoadingId(null);
     }
   };
 
@@ -507,8 +525,14 @@ export default function BacklogPage() {
                     <button
                       className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                       onClick={() => getSuggestion(item.title, item.description, item.id)}
+                      disabled={suggestLoadingId === item.id}
                     >
-                      AI 提案を見る
+                      <span className="inline-flex items-center gap-1">
+                        {suggestLoadingId === item.id ? (
+                          <Loader2 size={14} className="animate-spin text-[#2323eb]" />
+                        ) : null}
+                        AI 提案を見る
+                      </span>
                     </button>
                     <button
                       className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
@@ -528,8 +552,14 @@ export default function BacklogPage() {
                       <button
                         className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                         onClick={() => requestSplit(item)}
+                        disabled={splitLoadingId === item.id}
                       >
-                        分解提案
+                        <span className="inline-flex items-center gap-1">
+                          {splitLoadingId === item.id ? (
+                            <Loader2 size={14} className="animate-spin text-[#2323eb]" />
+                          ) : null}
+                          分解提案
+                        </span>
                       </button>
                     ) : null}
                   </div>
@@ -777,9 +807,14 @@ export default function BacklogPage() {
                   </button>
                   <button
                     onClick={estimateScore}
-                    className="inline-flex items-center gap-2 border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                    disabled={scoreLoading}
+                    className="inline-flex items-center gap-2 border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-60"
                   >
-                    <Sparkles size={16} />
+                    {scoreLoading ? (
+                      <Loader2 size={16} className="animate-spin text-[#2323eb]" />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
                     AIでスコア推定
                   </button>
                 </div>
