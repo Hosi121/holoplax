@@ -1,45 +1,57 @@
 # 開発日誌 (2026-01-16)
 
 ## 進捗概要
-- Docker構成をDB/MinIO専用に整理（Nextはホスト起動）。`docker-compose.yml`
-- Taskに説明カラムを追加し、API/フロント対応。`prisma/schema.prisma`, `app/api/tasks/*`, `app/backlog/page.tsx`, `app/sprint/page.tsx`
-- Task CRUDはPATCH/DELETE対応済み（編集/削除UI実装）。
+- ダッシュボードをグラフ中心のUIへ刷新（KPI/ベロシティ/バーンダウン/バックログ状況/活動ログ）。
+- カンバン画面を追加し、ドラッグでステータス移動を実装。`app/kanban/page.tsx`
+- Taskに説明を追加し、編集/削除UIをバックログ/スプリントに実装。
 - AI機能を拡張：
-  - `/api/ai/score`：スコア/ポイント推定（OpenAI or ヒューリスティック）。
-  - `/api/ai/split`：分解提案（OpenAI or ヒューリスティック）。
-  - `/api/ai/logs`：AI提案ログの取得。
-  - `/api/ai/suggest` はログ保存対応。
-- バックログで「AIスコア推定」「分解提案→一括追加」を実装。分解確定時は元タスク削除。
-- 設定画面にAI提案ログを表示。
-- マイグレーション追加: `add_task_description`, `add_ai_suggestion_log`, `cascade_ai_suggestions`。
-- シードスクリプト追加（仮想データ/AIログ）。`scripts/seed-dev.mjs`
-- NextAuth導入の下地を追加（Email/Google/GitHub対応、ユーザー分離前提のスキーマ）。`lib/auth.ts`, `app/api/auth/[...nextauth]/route.ts`, `prisma/schema.prisma`
-- Task/Velocity/Automation/AIログはユーザーIDで分離（APIに認証必須）。`app/api/*`
-- 管理者ロールとパスワード認証を追加（Credentials）。管理者は全データ参照可能。`lib/auth.ts`, `app/api/*`, `prisma/schema.prisma`
+  - `/api/ai/score`：スコア/ポイント推定（OpenAI or ヒューリスティック）
+  - `/api/ai/split`：分解提案（OpenAI or ヒューリスティック）
+  - `/api/ai/logs`：AI提案ログ
+  - `/api/ai/suggest`：ログ保存対応
+- 分解提案は一定ポイント超過のみ表示、分解確定時は元タスク削除。
+- 設定画面にAI提案ログ＋アカウント編集（名前/メール/アイコン画像）を追加。
+- スプリント画面で完了タスクを別セクションに分離（DONEを薄く表示）。
+- 認証/ユーザー分離:
+  - NextAuth（Credentials + Google + GitHub）導入。`lib/auth.ts`
+  - `UserPassword` 追加でメール+パスワード認証
+  - Admin/ユーザー役割、管理者は全データ参照
+  - 未ログインは `/auth/signin` へリダイレクト（middleware）
+- 認証拡張:
+  - メール認証フロー（verify画面 + トークン）
+  - パスワード再設定フロー（forgot/reset）
+- 管理者向けユーザー管理ページを追加。`/admin/users`
+- 監査ログ画面を追加。`/admin/audit`
+- ワークスペース管理画面（作成/招待/メンバー管理）を追加。`/workspaces`
+- APIの共通化（認証/エラーレスポンス）を実施。`lib/api-response.ts`, `lib/api-auth.ts`
+- MinIOへのアイコン画像アップロード導線を追加（署名付きURL + 公開URL）。`lib/storage.ts`, `app/api/storage/avatar`
+- マイグレーション追加:
+  - `add_task_description`
+  - `add_ai_suggestion_log`
+  - `cascade_ai_suggestions`
+  - `add_nextauth_and_multiuser`
+  - `add_user_password`
+  - `add_user_role`
+- シードスクリプト拡張（admin/testアカウントとサンプルデータ）。`scripts/seed-dev.mjs`
 
-## 未実装/未接続の機能
-- NextAuth のUI（ログイン導線/認証画面）は未整備。
-- 自動化ルールは画面のみで、実際の自動処理ロジックは未接続。
-- スプリント開始/終了の状態管理は未実装（ボタンはUIのみ）。
-- 通知/ストレージ設定はUIのみ（MinIOの実利用や設定更新は未実装）。
-- インボックス連携（メモ/カレンダー/メール/チャット）は未実装。
-- AIスコア推定は手動トリガーのみ（作成時の自動推定・保存は未実装）。
- - チーム/ワークスペースの実機能は未実装（スキーマのみ準備）。
+## 未実装/未接続の機能整理
+- 自動化ルールの実処理（低/中/高スコアに応じた自動処理/分解/レビューの自動実行）。
+- スプリント開始/終了の状態管理（現在ボタンはUIのみ）。
+- 通知/ストレージ設定の実装（MinIO操作や設定保存は未接続）。
+- インボックス連携（メモ/カレンダー/メール/チャットの取り込み）。
+- AIスコア推定の自動適用（作成時に自動推定するフローは未実装）。
 
 ## 技術メモ
 - `.env` に `OPENAI_API_KEY` を入れるとAIエンドポイントが実呼び出しになる。
 - AIログは `AiSuggestion` テーブルに保存。Task削除時はCascadeで削除。
 
-## 再開手順メモ
-1. `.env` 作成: `cp .env.example .env`（DATABASE_URL はホストから `localhost:5433`）。
-2. `docker compose up -d db minio`
-3. `DATABASE_URL=postgresql://holoplax:holoplax@localhost:5433/holoplax npx prisma migrate dev`
-4. `node scripts/seed-dev.mjs`（必要なら仮想データ投入）
-5. `npm run dev` で起動。OpenAI利用時は `OPENAI_API_KEY` を `.env` にセット。
-6. NextAuth のプロバイダ設定（`EMAIL_SERVER` / `EMAIL_FROM` / OAuth）を `.env` に追加。
-
 ## 次にやること
 - AIスコア推定をタスク作成フローに自動適用するか決定。
 - 自動化ルールの実処理（低/中/高スコアのフロー）を実装。
-- 認証（NextAuth）とマルチユーザスキーマ設計を開始。
- - ログインUIとサインイン導線を追加。
+- チーム/ワークスペース機能のUI/権限管理を設計。
+
+## 引き継ぎメモ（今後やりたいこと）
+- ワークスペースに紐づくデータスコープ（Task/Velocity/AIログ）の切り替え実装。
+- 自動化ルールの実処理（分解提案の自動起動、AI委任キューなど）。
+- 画像アップロードをデータURLではなくS3/MinIO URL固定で扱う（現状はURL保存）。
+- パスワード再設定/メール認証のUI文言・UXを整備。

@@ -168,45 +168,91 @@ export default function SprintPage() {
 
         <section className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="grid gap-3">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
-              >
-                <div>
-                  <p className="font-semibold text-slate-900">{item.title}</p>
-                  {item.description ? (
-                    <p className="text-xs text-slate-600">{item.description}</p>
-                  ) : null}
-                  <p className="text-xs text-slate-600">ステータス: {item.status}</p>
+            {items
+              .filter((item) => item.status !== TASK_STATUS.DONE)
+              .map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-900">{item.title}</p>
+                    {item.description ? (
+                      <p className="text-xs text-slate-600">{item.description}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
+                      {item.points} pt
+                    </span>
+                    <button
+                      onClick={() => markDone(item.id)}
+                      className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    >
+                      完了
+                    </button>
+                    <button
+                      onClick={() => openEdit(item)}
+                      className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                      aria-label="編集"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-red-300 hover:text-red-600"
+                      aria-label="削除"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
-                    {item.points} pt
-                  </span>
-                  <button
-                    onClick={() => markDone(item.id)}
-                    className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                  >
-                    完了
-                  </button>
-                  <button
-                    onClick={() => openEdit(item)}
-                    className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                    aria-label="編集"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-red-300 hover:text-red-600"
-                    aria-label="削除"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+              ))}
+          </div>
+        </section>
+
+        <section className="border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">完了</h3>
+            <span className="text-xs text-slate-500">
+              {items.filter((item) => item.status === TASK_STATUS.DONE).length} 件
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {items
+              .filter((item) => item.status === TASK_STATUS.DONE)
+              .map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-700">{item.title}</p>
+                    {item.description ? (
+                      <p className="text-xs text-slate-500">{item.description}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
+                      {item.points} pt
+                    </span>
+                    <button
+                      onClick={() => openEdit(item)}
+                      className="border border-slate-200 bg-white p-1 text-slate-600 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                      aria-label="編集"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="border border-slate-200 bg-white p-1 text-slate-600 transition hover:border-red-300 hover:text-red-600"
+                      aria-label="削除"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </section>
 

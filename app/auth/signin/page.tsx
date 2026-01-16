@@ -123,7 +123,20 @@ export default function SignInPage() {
                         return;
                       }
                     }
-                    await signIn("credentials", { email, password, callbackUrl: "/" });
+                    const result = await signIn("credentials", {
+                      email,
+                      password,
+                      callbackUrl: "/",
+                      redirect: false,
+                    });
+                    if (result?.error) {
+                      setError("ログインに失敗しました。認証情報を確認してください。");
+                      setLoading(false);
+                      return;
+                    }
+                    if (result?.url) {
+                      window.location.href = result.url;
+                    }
                     setLoading(false);
                   }}
                   className="space-y-3"
@@ -170,6 +183,12 @@ export default function SignInPage() {
                       {error}
                     </div>
                   ) : null}
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>{mode === "signup" ? "登録後にメール確認が必要です。" : ""}</span>
+                    <Link href="/auth/forgot" className="hover:text-[#2323eb]">
+                      パスワードを忘れた
+                    </Link>
+                  </div>
                   <button
                     type="submit"
                     disabled={loading}

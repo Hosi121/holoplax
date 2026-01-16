@@ -16,6 +16,7 @@ const main = async () => {
       name: "Admin",
       email: adminEmail,
       role: "ADMIN",
+      emailVerified: new Date(),
     },
   });
 
@@ -26,6 +27,7 @@ const main = async () => {
       name: "Test User",
       email: testEmail,
       role: "USER",
+      emailVerified: new Date(),
     },
   });
 

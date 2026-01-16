@@ -1,11 +1,14 @@
 "use client";
 
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "../components/sidebar";
 import { AiSuggestionDTO } from "../../lib/types";
 
 export default function SettingsPage() {
+  const { update } = useSession();
+  const router = useRouter();
   const [low, setLow] = useState(35);
   const [high, setHigh] = useState(70);
   const [notifications, setNotifications] = useState(false);
@@ -127,16 +130,26 @@ export default function SettingsPage() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const result = String(reader.result ?? "");
-                      setAccount((p) => ({ ...p, image: result }));
-                      setAccountDirty(true);
-                    };
-                    reader.readAsDataURL(file);
+                    const res = await fetch("/api/storage/avatar", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        filename: file.name,
+                        contentType: file.type || "image/png",
+                      }),
+                    });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    await fetch(data.uploadUrl, {
+                      method: "PUT",
+                      headers: { "Content-Type": file.type || "image/png" },
+                      body: file,
+                    });
+                    setAccount((p) => ({ ...p, image: data.publicUrl }));
+                    setAccountDirty(true);
                   }}
                   className="mt-2 block text-xs text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-slate-700"
                 />
@@ -145,11 +158,21 @@ export default function SettingsPage() {
             <div className="mt-3 flex items-center gap-2">
               <button
                 onClick={async () => {
-                  await fetch("/api/account", {
+                  const res = await fetch("/api/account", {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(account),
                   });
+                  if (res.ok) {
+                    await update({
+                      user: {
+                        name: account.name || null,
+                        email: account.email || null,
+                        image: account.image || null,
+                      },
+                    });
+                    router.refresh();
+                  }
                   setAccountDirty(false);
                 }}
                 disabled={!accountDirty}

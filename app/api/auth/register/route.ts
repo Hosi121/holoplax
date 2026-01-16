@@ -1,5 +1,7 @@
+import { randomBytes } from "crypto";
 import { hash } from "bcryptjs";
 import { badRequest, conflict, ok, serverError } from "../../../../lib/api-response";
+import { sendEmail } from "../../../../lib/mailer";
 import prisma from "../../../../lib/prisma";
 
 export async function POST(request: Request) {
@@ -21,15 +23,39 @@ export async function POST(request: Request) {
     }
 
     const hashed = await hash(password, 10);
+    const shouldVerify = Boolean(process.env.EMAIL_SERVER && process.env.EMAIL_FROM);
     const user = await prisma.user.create({
       data: {
         email,
         name: name || null,
+        emailVerified: shouldVerify ? null : new Date(),
         password: {
           create: { hash: hashed },
         },
       },
     });
+
+    if (shouldVerify) {
+      try {
+        const token = randomBytes(32).toString("hex");
+        await prisma.emailVerificationToken.create({
+          data: {
+            userId: user.id,
+            token,
+            expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+          },
+        });
+        const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+        const verifyUrl = `${baseUrl}/auth/verify?token=${token}`;
+        await sendEmail({
+          to: user.email ?? email,
+          subject: "Holoplax メール認証",
+          html: `<p>以下のリンクからメール認証を完了してください。</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
+        });
+      } catch (mailError) {
+        console.error("Email verification send failed", mailError);
+      }
+    }
 
     return ok({ id: user.id, email: user.email });
   } catch (error) {

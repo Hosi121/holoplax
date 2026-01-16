@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "./auth";
+import prisma from "./prisma";
 
 export class AuthError extends Error {
   constructor(message = "unauthorized") {
@@ -14,6 +15,13 @@ export async function requireUserId() {
   if (!userId) {
     throw new AuthError();
   }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { disabledAt: true },
+  });
+  if (user?.disabledAt) {
+    throw new AuthError("disabled");
+  }
   return userId;
 }
 
@@ -23,5 +31,12 @@ export async function requireAuth() {
   if (!userId) {
     throw new AuthError();
   }
-  return { userId, role: session?.user?.role ?? "USER" };
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { disabledAt: true, role: true },
+  });
+  if (user?.disabledAt) {
+    throw new AuthError("disabled");
+  }
+  return { userId, role: user?.role ?? session?.user?.role ?? "USER" };
 }

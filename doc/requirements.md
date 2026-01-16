@@ -53,6 +53,13 @@
 - 通知／フォローアップ：MVP では無し。後続で検討。
 - 実行ガードレール：送信・予約・購入などは自動実行しない。ワンクリックで送れる状態まで準備する UI。
 - AI 委任のしきい値: 閾値をユーザが調整可能。
+- 認証: メール+パスワードに加え、Google/GitHubのOAuthも利用可能。
+- 管理者ロール: 管理者は全ユーザのデータ参照・管理が可能（MVPは閲覧中心）。
+- 認証拡張: メール認証とパスワード再設定フローを提供。
+- アイコン画像: 画像アップロードで設定（URL手入力はしない）。
+- スプリント画面: 完了タスクは別セクションで表示。
+- 管理者画面: ユーザー管理と監査ログを提供。
+- ワークスペース: 作成/招待/メンバー管理が可能。
 - ベロシティ集計: AI 完了タスクも含めチームのベロシティに計上。
 - 重複判定: インポート時に「同じタスクかも？」を提示し、〇/×でマージ可。
 - モックフェーズ: 匿名化や高度なセキュリティ要件は未対応で OK（NextAuth のみ）。
@@ -68,10 +75,15 @@
 - CI/CD: AWS 向けデプロイ（後で pipeline 設計）
 
 ## データの初期イメージ
-- Task: {id, title, body, score, status, sprintId?, source, tags[], createdAt, updatedAt}
+- Task: {id, title, description, points, urgency, risk, status, sprintId?, source, tags[], createdAt, updatedAt}
 - Sprint: {id, name, startDate, endDate, capacityPoints, plannedPoints, velocity}
 - IntakeSource: {id, type (calendar/email/note/chat/manual), authRef}
 - AutomationRule: {id, thresholdRange, actionType (auto-handle/split/defer), aiEnabled}
+- User: {id, name, email, role, createdAt}
+- EmailVerificationToken: {userId, token, expiresAt}
+- PasswordResetToken: {userId, token, expiresAt, used}
+- WorkspaceInvite: {workspaceId, email, role, token, expiresAt, acceptedAt}
+- AuditLog: {actorId, action, targetUserId?, targetWorkspaceId?, metadata?, createdAt}
 
 ## まだ決まっていないこと・壁打ちしたい質問
 - 緊急度/リスク以外に補助スライダーを追加するか？（外部依存など）
@@ -81,6 +93,7 @@
 - 手動上書きのポリシーは？（AI提案への同意／拒否ログ）
 - インポート時の重複判定ルール詳細は？（タイトル＋日時＋ソースでどこまで自動判定し、〇/×二択の UX をどう配置するか）
 - データ保持と削除: AI 学習ログや完了タスクの保持期間は？（MVP での最低限は？）
+- 管理者ができる範囲: 閲覧のみか、ユーザ管理（権限変更/停止）まで含めるか？
 
 ## 次のアクション例
 - 上記の未決事項を埋めて v0 スコープを確定。

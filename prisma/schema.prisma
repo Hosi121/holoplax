@@ -31,11 +31,16 @@ model User {
   emailVerified DateTime?
   image         String?
   role          UserRole          @default(USER)
+  disabledAt    DateTime?
   accounts      Account[]
   sessions      Session[]
   memberships   WorkspaceMember[]
   workspacesOwned Workspace[]
   password      UserPassword?
+  emailTokens   EmailVerificationToken[]
+  resetTokens   PasswordResetToken[]
+  auditLogsAsActor AuditLog[]     @relation("AuditActor")
+  auditLogsAsTarget AuditLog[]    @relation("AuditTargetUser")
   tasks         Task[]
   velocityEntries VelocityEntry[]
   userAutomationSettings UserAutomationSetting[]
@@ -83,6 +88,25 @@ model UserPassword {
   updatedAt DateTime @updatedAt
 }
 
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -101,6 +125,8 @@ model Workspace {
   velocityEntries VelocityEntry[]
   userAutomationSettings UserAutomationSetting[]
   aiSuggestions AiSuggestion[]
+  invites   WorkspaceInvite[]
+  auditLogs AuditLog[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 }
@@ -115,6 +141,31 @@ model WorkspaceMember {
   createdAt   DateTime @default(now())
 
   @@unique([workspaceId, userId])
+}
+
+model WorkspaceInvite {
+  id          String   @id @default(cuid())
+  workspaceId String
+  email       String
+  role        String   @default("member")
+  token       String   @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id               String    @id @default(cuid())
+  actorId          String
+  action           String
+  targetUserId     String?
+  targetWorkspaceId String?
+  metadata         Json?
+  actor            User      @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+  targetUser       User?     @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetWorkspace  Workspace? @relation(fields: [targetWorkspaceId], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
 }
 
 model Task {
