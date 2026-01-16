@@ -31,6 +31,12 @@ export default function KanbanPage() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoverColumn, setHoverColumn] = useState<TaskStatus | null>(null);
 
+  const isBlocked = useCallback(
+    (item: TaskDTO) =>
+      (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE),
+    [],
+  );
+
   const fetchTasks = useCallback(async () => {
     if (!ready) return;
     if (!workspaceId) {
@@ -73,6 +79,15 @@ export default function KanbanPage() {
 
   const handleDrop = async (status: TaskStatus) => {
     if (!draggingId) return;
+    const target = items.find((item) => item.id === draggingId);
+    if (target && (status === TASK_STATUS.SPRINT || status === TASK_STATUS.DONE)) {
+      if (isBlocked(target)) {
+        window.alert("依存タスクが未完了のため移動できません。");
+        setDraggingId(null);
+        setHoverColumn(null);
+        return;
+      }
+    }
     setHoverColumn(null);
     setItems((prev) =>
       prev.map((item) => (item.id === draggingId ? { ...item, status } : item)),
@@ -142,6 +157,22 @@ export default function KanbanPage() {
                     <p className="font-semibold text-slate-900">{item.title}</p>
                     {item.description ? (
                       <p className="mt-1 text-xs text-slate-600">{item.description}</p>
+                    ) : null}
+                    {item.dependencies && item.dependencies.length > 0 ? (
+                      <p
+                        className={`mt-1 text-xs ${
+                          isBlocked(item) ? "text-amber-700" : "text-slate-500"
+                        }`}
+                      >
+                        依存:{" "}
+                        {item.dependencies
+                          .map((dep) =>
+                            dep.status === TASK_STATUS.DONE
+                              ? dep.title
+                              : `${dep.title}*`,
+                          )
+                          .join(", ")}
+                      </p>
                     ) : null}
                     <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
                       <span className="border border-slate-200 bg-white px-2 py-1">

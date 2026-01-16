@@ -124,6 +124,8 @@ export default function SprintPage() {
     () => items.filter((i) => i.status !== TASK_STATUS.DONE).reduce((sum, i) => sum + i.points, 0),
     [items],
   );
+  const isBlocked = (item: TaskDTO) =>
+    (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE);
   const activeCapacity = sprint?.capacityPoints ?? capacity;
   const remaining = activeCapacity - used;
 
@@ -221,6 +223,11 @@ export default function SprintPage() {
   };
 
   const markDone = async (id: string) => {
+    const target = items.find((item) => item.id === id);
+    if (target && isBlocked(target)) {
+      window.alert("依存タスクが未完了のため完了にできません。");
+      return;
+    }
     await fetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -481,6 +488,22 @@ export default function SprintPage() {
                     <p className="font-semibold text-slate-900">{item.title}</p>
                     {item.description ? (
                       <p className="text-xs text-slate-600">{item.description}</p>
+                    ) : null}
+                    {item.dependencies && item.dependencies.length > 0 ? (
+                      <p
+                        className={`mt-1 text-xs ${
+                          isBlocked(item) ? "text-amber-700" : "text-slate-500"
+                        }`}
+                      >
+                        依存:{" "}
+                        {item.dependencies
+                          .map((dep) =>
+                            dep.status === TASK_STATUS.DONE
+                              ? dep.title
+                              : `${dep.title}*`,
+                          )
+                          .join(", ")}
+                      </p>
                     ) : null}
                   </div>
                 <div className="flex items-center gap-2">

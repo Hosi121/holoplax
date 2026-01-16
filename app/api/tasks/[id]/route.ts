@@ -1,5 +1,6 @@
 import { AuthError, requireAuth } from "../../../../lib/api-auth";
 import {
+  badRequest,
   handleAuthError,
   notFound,
   ok,
@@ -45,6 +46,18 @@ export async function PATCH(
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
       return notFound("workspace not selected");
+    }
+    if (statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE) {
+      const blocking = await prisma.taskDependency.findMany({
+        where: {
+          taskId: id,
+          dependsOn: { status: { not: TASK_STATUS.DONE } },
+        },
+        select: { dependsOn: { select: { id: true, title: true, status: true } } },
+      });
+      if (blocking.length > 0) {
+        return badRequest("dependencies must be done before moving");
+      }
     }
     if (body.assigneeId !== undefined) {
       const nextAssigneeId = body.assigneeId ? String(body.assigneeId) : null;

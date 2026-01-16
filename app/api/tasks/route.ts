@@ -22,13 +22,26 @@ export async function GET() {
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
       include: {
-        dependencies: { select: { dependsOnId: true } },
+        dependencies: {
+          select: {
+            dependsOnId: true,
+            dependsOn: { select: { id: true, title: true, status: true } },
+          },
+        },
       },
     });
     return ok({
       tasks: tasks.map((task) => ({
         ...task,
         dependencyIds: task.dependencies.map((dep) => dep.dependsOnId),
+        dependencies: task.dependencies
+          .map((dep) => dep.dependsOn)
+          .filter(
+            (
+              dep,
+            ): dep is { id: string; title: string; status: keyof typeof TASK_STATUS } =>
+              Boolean(dep),
+          ),
       })),
     });
   } catch (error) {
@@ -78,12 +91,18 @@ export async function POST(request: Request) {
     const allowedDependencies = dependencyList.length
       ? await prisma.task.findMany({
           where: { id: { in: dependencyList }, workspaceId },
-          select: { id: true },
+          select: { id: true, title: true, status: true },
         })
       : [];
     const statusValue = Object.values(TASK_STATUS).includes(status)
       ? status
       : TASK_STATUS.BACKLOG;
+    if (
+      statusValue !== TASK_STATUS.BACKLOG &&
+      allowedDependencies.some((dep) => dep.status !== TASK_STATUS.DONE)
+    ) {
+      return badRequest("dependencies must be done before moving to sprint");
+    }
     const activeSprint =
       statusValue === TASK_STATUS.SPRINT
         ? await prisma.sprint.findFirst({

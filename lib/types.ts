@@ -18,6 +18,7 @@ export type TaskDTO = {
   assigneeId?: string | null;
   tags?: string[];
   dependencyIds?: string[];
+  dependencies?: { id: string; title: string; status: TaskStatus }[];
   createdAt?: string | Date;
   updatedAt?: string | Date;
 };
