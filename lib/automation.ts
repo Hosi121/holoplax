@@ -7,6 +7,7 @@ import {
   PENDING_APPROVAL_TAG,
   SPLIT_CHILD_TAG,
   SPLIT_PARENT_TAG,
+  SPLIT_REJECTED_TAG,
   withTag,
 } from "./automation-constants";
 
@@ -143,6 +144,10 @@ export async function applyAutomationForTask(params: {
     return;
   }
 
+  if (score > thresholds.high && current.tags?.includes(SPLIT_REJECTED_TAG)) {
+    return;
+  }
+
   const suggestions = await generateSplitSuggestions({
     title: current.title,
     description: current.description,
@@ -169,7 +174,7 @@ export async function applyAutomationForTask(params: {
   }
 
   // 高スコア帯: 自動分解（承認モードなら保留タグだけ付ける）
-  if (current.tags?.includes(SPLIT_PARENT_TAG)) {
+  if (current.tags?.includes(SPLIT_PARENT_TAG) || current.tags?.includes(SPLIT_REJECTED_TAG)) {
     return; // 二重分解を防ぐ
   }
 
