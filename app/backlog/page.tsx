@@ -364,9 +364,9 @@ export default function BacklogPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-7xl gap-6 px-4 py-10 lg:px-6 lg:py-14">
+    <div className="relative min-h-screen bg-white">
       <Sidebar />
-      <main className="flex-1 space-y-6">
+      <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
         <header className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -382,21 +382,19 @@ export default function BacklogPage() {
               <div className="flex items-center gap-2 border border-slate-200 bg-white p-1 text-xs text-slate-700">
                 <button
                   onClick={() => setView("product")}
-                  className={`px-3 py-1 transition ${
-                    view === "product"
-                      ? "bg-[#2323eb]/10 text-[#2323eb]"
-                      : "text-slate-600 hover:text-[#2323eb]"
-                  }`}
+                  className={`px-3 py-1 transition ${view === "product"
+                    ? "bg-[#2323eb]/10 text-[#2323eb]"
+                    : "text-slate-600 hover:text-[#2323eb]"
+                    }`}
                 >
                   目標リスト
                 </button>
                 <button
                   onClick={() => setView("sprint")}
-                  className={`px-3 py-1 transition ${
-                    view === "sprint"
-                      ? "bg-[#2323eb]/10 text-[#2323eb]"
-                      : "text-slate-600 hover:text-[#2323eb]"
-                  }`}
+                  className={`px-3 py-1 transition ${view === "sprint"
+                    ? "bg-[#2323eb]/10 text-[#2323eb]"
+                    : "text-slate-600 hover:text-[#2323eb]"
+                    }`}
                 >
                   スプリントバックログ
                 </button>
@@ -642,11 +640,10 @@ export default function BacklogPage() {
                     ) : null}
                     {item.dependencies && item.dependencies.length > 0 ? (
                       <span
-                        className={`border px-2 py-1 ${
-                          isBlocked(item)
-                            ? "border-amber-200 bg-amber-50 text-amber-700"
-                            : "border-slate-200 bg-white"
-                        }`}
+                        className={`border px-2 py-1 ${isBlocked(item)
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-slate-200 bg-white"
+                          }`}
                       >
                         依存:{" "}
                         {item.dependencies
