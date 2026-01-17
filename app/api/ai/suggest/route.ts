@@ -32,9 +32,9 @@ export async function GET(request: Request) {
     const latest = await prisma.aiSuggestion.findFirst({
       where: { taskId, workspaceId, type: "TIP" },
       orderBy: { createdAt: "desc" },
-      select: { output: true },
+      select: { id: true, output: true },
     });
-    return ok({ suggestion: latest?.output ?? null });
+    return ok({ suggestion: latest?.output ?? null, suggestionId: latest?.id ?? null });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
         }
       }
       if (result?.content) {
-        await prisma.aiSuggestion.create({
+        const saved = await prisma.aiSuggestion.create({
           data: {
             type: "TIP",
             taskId,
@@ -102,14 +102,14 @@ export async function POST(request: Request) {
             workspaceId,
           },
         });
-        return ok({ suggestion: result.content });
+        return ok({ suggestion: result.content, suggestionId: saved.id });
       }
     } catch {
       // fall back to canned
     }
 
     const pick = canned[Math.floor(Math.random() * canned.length)];
-    await prisma.aiSuggestion.create({
+    const saved = await prisma.aiSuggestion.create({
       data: {
         type: "TIP",
         taskId,
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
         workspaceId,
       },
     });
-    return ok({ suggestion: `${title} のAI提案: ${pick}` });
+    return ok({ suggestion: `${title} のAI提案: ${pick}`, suggestionId: saved.id });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;

@@ -66,9 +66,26 @@ export default function BacklogPage() {
   });
   const [modalOpen, setModalOpen] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
-  const [suggestionMap, setSuggestionMap] = useState<Record<string, string>>({});
+  const [suggestionMap, setSuggestionMap] = useState<
+    Record<string, { text: string; suggestionId?: string | null }>
+  >({});
   const [scoreHint, setScoreHint] = useState<string | null>(null);
+  const [scoreMap, setScoreMap] = useState<
+    Record<
+      string,
+      {
+        points: number;
+        urgency: string;
+        risk: string;
+        reason?: string;
+        suggestionId?: string | null;
+      }
+    >
+  >({});
   const [splitMap, setSplitMap] = useState<Record<string, SplitSuggestion[]>>({});
+  const [splitSuggestionIdMap, setSplitSuggestionIdMap] = useState<
+    Record<string, string | null>
+  >({});
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
   const [editForm, setEditForm] = useState({
     title: "",
@@ -86,6 +103,7 @@ export default function BacklogPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [suggestLoadingId, setSuggestLoadingId] = useState<string | null>(null);
   const [splitLoadingId, setSplitLoadingId] = useState<string | null>(null);
+  const [scoreLoadingId, setScoreLoadingId] = useState<string | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [approvalLoadingId, setApprovalLoadingId] = useState<string | null>(null);
 
@@ -266,7 +284,10 @@ export default function BacklogPage() {
         if (cached.ok) {
           const data = await cached.json();
           if (data.suggestion !== null && data.suggestion !== undefined) {
-            setSuggestionMap((prev) => ({ ...prev, [taskId]: data.suggestion }));
+            setSuggestionMap((prev) => ({
+              ...prev,
+              [taskId]: { text: data.suggestion, suggestionId: data.suggestionId },
+            }));
             return;
           }
         }
@@ -279,7 +300,10 @@ export default function BacklogPage() {
       if (!res.ok) return;
       const data = await res.json();
       if (taskId) {
-        setSuggestionMap((prev) => ({ ...prev, [taskId]: data.suggestion }));
+        setSuggestionMap((prev) => ({
+          ...prev,
+          [taskId]: { text: data.suggestion, suggestionId: data.suggestionId },
+        }));
       } else {
         setSuggestion(data.suggestion);
       }
@@ -313,6 +337,71 @@ export default function BacklogPage() {
     }
   };
 
+  const estimateScoreForTask = async (item: TaskDTO) => {
+    setScoreLoadingId(item.id);
+    try {
+      const res = await fetch("/api/ai/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description ?? "",
+          taskId: item.id,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setScoreMap((prev) => ({
+        ...prev,
+        [item.id]: {
+          points: Number(data.points) || item.points,
+          urgency: data.urgency ?? item.urgency,
+          risk: data.risk ?? item.risk,
+          reason: data.reason,
+          suggestionId: data.suggestionId,
+        },
+      }));
+    } finally {
+      setScoreLoadingId(null);
+    }
+  };
+
+  const applyTipSuggestion = async (itemId: string) => {
+    const suggestion = suggestionMap[itemId];
+    if (!suggestion) return;
+    await fetch("/api/ai/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: itemId,
+        type: "TIP",
+        suggestionId: suggestion.suggestionId,
+        payload: { text: suggestion.text },
+      }),
+    });
+    void fetchTasks();
+  };
+
+  const applyScoreSuggestion = async (itemId: string) => {
+    const score = scoreMap[itemId];
+    if (!score) return;
+    await fetch("/api/ai/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: itemId,
+        type: "SCORE",
+        suggestionId: score.suggestionId,
+        payload: {
+          points: score.points,
+          urgency: score.urgency,
+          risk: score.risk,
+        },
+      }),
+    });
+    void fetchTasks();
+  };
+
   const requestSplit = async (item: TaskDTO) => {
     setSplitLoadingId(item.id);
     try {
@@ -329,6 +418,10 @@ export default function BacklogPage() {
       if (res.ok) {
         const data = await res.json();
         setSplitMap((prev) => ({ ...prev, [item.id]: data.suggestions ?? [] }));
+        setSplitSuggestionIdMap((prev) => ({
+          ...prev,
+          [item.id]: data.suggestionId ?? null,
+        }));
       }
     } finally {
       setSplitLoadingId(null);
@@ -343,6 +436,11 @@ export default function BacklogPage() {
       prev.map((t) => (t.id === item.id ? { ...t, tags: nextTags } : t)),
     );
     setSplitMap((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setSplitSuggestionIdMap((prev) => {
       const next = { ...prev };
       delete next[item.id];
       return next;
@@ -371,6 +469,15 @@ export default function BacklogPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tags: nextTags }),
+    });
+    await fetch("/api/ai/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: item.id,
+        type: "SPLIT",
+        suggestionId: splitSuggestionIdMap[item.id] ?? null,
+      }),
     });
     await fetchTasks();
   };
@@ -690,6 +797,13 @@ export default function BacklogPage() {
                         >
                           AI 提案を見る
                         </LoadingButton>
+                        <LoadingButton
+                          className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                          onClick={() => estimateScoreForTask(item)}
+                          loading={scoreLoadingId === item.id}
+                        >
+                          AIでスコア推定
+                        </LoadingButton>
                         <button
                           className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                           onClick={() => openEdit(item)}
@@ -716,7 +830,46 @@ export default function BacklogPage() {
                       </div>
                       {suggestionMap[item.id] ? (
                         <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                          {suggestionMap[item.id]}
+                          <p>{suggestionMap[item.id].text}</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              onClick={() => applyTipSuggestion(item.id)}
+                              className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition hover:border-emerald-300"
+                            >
+                              適用
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                      {scoreMap[item.id] ? (
+                        <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                            Score suggestion
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                              {scoreMap[item.id].points} pt
+                            </span>
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                              緊急度: {scoreMap[item.id].urgency}
+                            </span>
+                            <span className="border border-slate-200 bg-slate-50 px-2 py-1">
+                              リスク: {scoreMap[item.id].risk}
+                            </span>
+                          </div>
+                          {scoreMap[item.id].reason ? (
+                            <p className="mt-2 text-[11px] text-slate-500">
+                              {scoreMap[item.id].reason}
+                            </p>
+                          ) : null}
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              onClick={() => applyScoreSuggestion(item.id)}
+                              className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition hover:border-emerald-300"
+                            >
+                              適用
+                            </button>
+                          </div>
                         </div>
                       ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">

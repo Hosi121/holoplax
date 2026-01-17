@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await prisma.aiSuggestion.create({
+    const saved = await prisma.aiSuggestion.create({
       data: {
         type: "SPLIT",
         taskId,
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return ok({ suggestions: result.suggestions });
+    return ok({ suggestions: result.suggestions, suggestionId: saved.id });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;

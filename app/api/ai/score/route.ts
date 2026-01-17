@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       // fall back to heuristic
     }
 
-    await prisma.aiSuggestion.create({
+    const saved = await prisma.aiSuggestion.create({
       data: {
         type: "SCORE",
         taskId,
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return ok(payload);
+    return ok({ ...payload, suggestionId: saved.id });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;
