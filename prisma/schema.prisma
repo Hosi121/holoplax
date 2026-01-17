@@ -252,6 +252,18 @@ model AiProviderSetting {
   updatedAt DateTime  @updatedAt
 }
 
+model AiPricing {
+  id            String     @id @default(cuid())
+  provider      AiProvider
+  model         String
+  inputUsdPerM  Float
+  outputUsdPerM Float
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([provider, model])
+}
+
 model UserAutomationSetting {
   id          String     @id @default(cuid())
   low         Int
