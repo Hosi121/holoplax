@@ -5,6 +5,8 @@ import {
   ok,
   serverError,
 } from "../../../../lib/api-response";
+import { buildAiUsageMetadata } from "../../../../lib/ai-usage";
+import { logAudit } from "../../../../lib/audit";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
@@ -55,6 +57,7 @@ export async function POST(request: Request) {
 
     if (apiKey) {
       try {
+        const model = "gpt-4o-mini";
         const res = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
+            model,
             messages: [
               {
                 role: "system",
@@ -79,6 +82,19 @@ export async function POST(request: Request) {
         });
         if (res.ok) {
           const data = await res.json();
+          const usageMeta = buildAiUsageMetadata(model, data.usage);
+          if (usageMeta) {
+            await logAudit({
+              actorId: userId,
+              action: "AI_SCORE",
+              targetWorkspaceId: workspaceId,
+              metadata: {
+                ...usageMeta,
+                taskId,
+                source: "ai-score",
+              },
+            });
+          }
           const content = data.choices?.[0]?.message?.content;
           if (content) {
             const parsed = JSON.parse(extractJson(content));

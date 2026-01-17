@@ -1,4 +1,4 @@
-type SplitItem = {
+export type SplitItem = {
   title: string;
   points: number;
   urgency: string;
@@ -27,13 +27,23 @@ const extractJsonArray = (text: string) => {
   return text;
 };
 
+export type SplitSuggestionResult = {
+  suggestions: SplitItem[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  model: string;
+  source: "openai" | "fallback";
+};
+
 export async function generateSplitSuggestions(params: {
   title: string;
   description: string;
   points: number;
-}) {
+}): Promise<SplitSuggestionResult> {
   const { title, description, points } = params;
   let suggestions = fallbackSplit(title, description, points);
+  let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+  let usedAi = false;
+  const model = "gpt-4o-mini";
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (apiKey) {
@@ -45,7 +55,7 @@ export async function generateSplitSuggestions(params: {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model,
           messages: [
             {
               role: "system",
@@ -61,6 +71,8 @@ export async function generateSplitSuggestions(params: {
       });
       if (res.ok) {
         const data = await res.json();
+        usedAi = true;
+        usage = data.usage ?? undefined;
         const content = data.choices?.[0]?.message?.content;
         if (content) {
           const parsed = JSON.parse(extractJsonArray(content));
@@ -72,5 +84,10 @@ export async function generateSplitSuggestions(params: {
     }
   }
 
-  return suggestions;
+  return {
+    suggestions,
+    usage,
+    model,
+    source: usedAi ? "openai" : "fallback",
+  };
 }

@@ -7,6 +7,8 @@ import {
 } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+import { buildAiUsageMetadata } from "../../../../lib/ai-usage";
+import { logAudit } from "../../../../lib/audit";
 
 const canned = [
   "小さく分けて今日30分以内に終わる粒度にしてください。",
@@ -65,6 +67,7 @@ export async function POST(request: Request) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (apiKey) {
       try {
+        const model = "gpt-4o-mini";
         const res = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
+            model,
             messages: [
               { role: "system", content: "あなたはアジャイルなタスク分解のアシスタントです。" },
               {
@@ -85,6 +88,19 @@ export async function POST(request: Request) {
         });
         if (res.ok) {
           const data = await res.json();
+          const usageMeta = buildAiUsageMetadata(model, data.usage);
+          if (usageMeta) {
+            await logAudit({
+              actorId: userId,
+              action: "AI_SUGGEST",
+              targetWorkspaceId: workspaceId,
+              metadata: {
+                ...usageMeta,
+                taskId,
+                source: "ai-suggest",
+              },
+            });
+          }
           const content = data.choices?.[0]?.message?.content;
           if (content) {
             await prisma.aiSuggestion.create({

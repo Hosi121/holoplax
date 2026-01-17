@@ -1,5 +1,7 @@
 import prisma from "./prisma";
 import { generateSplitSuggestions } from "./ai-suggestions";
+import { buildAiUsageMetadata } from "./ai-usage";
+import { logAudit } from "./audit";
 import { TASK_STATUS, TASK_TYPE } from "./types";
 import {
   DELEGATE_TAG,
@@ -35,6 +37,7 @@ const llmDelegationDecision = async (task: {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   try {
+    const model = "gpt-4o-mini";
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -42,7 +45,7 @@ const llmDelegationDecision = async (task: {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model,
         messages: [
           {
             role: "system",
@@ -60,25 +63,48 @@ const llmDelegationDecision = async (task: {
     if (!res.ok) return null;
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
+    const usageMeta = buildAiUsageMetadata(model, data.usage);
+    if (!content) return { usageMeta };
     const parsed = JSON.parse(extractJson(content));
     if (typeof parsed?.delegatable === "boolean") {
-      return parsed as { delegatable: boolean; reason?: string };
+      return { delegatable: parsed.delegatable, reason: parsed.reason, usageMeta };
     }
+    return { usageMeta };
   } catch {
     return null;
   }
-  return null;
 };
 
-const shouldDelegate = async (task: {
-  title: string;
-  description: string;
-  tags?: string[] | null;
-}) => {
+const shouldDelegate = async (
+  task: {
+    id: string;
+    title: string;
+    description: string;
+    tags?: string[] | null;
+  },
+  context?: { userId: string; workspaceId: string },
+) => {
   if (task.tags?.includes(NO_DELEGATE_TAG)) return false;
   const aiDecision = await llmDelegationDecision(task);
-  if (aiDecision) return aiDecision.delegatable;
+  if (context && aiDecision?.usageMeta) {
+    await logAudit({
+      actorId: context.userId,
+      action: "AI_DELEGATE",
+      targetWorkspaceId: context.workspaceId,
+      metadata: {
+        ...aiDecision.usageMeta,
+        taskId: task.id,
+        decision:
+          typeof aiDecision.delegatable === "boolean"
+            ? aiDecision.delegatable
+            : null,
+        source: "automation",
+      },
+    });
+  }
+  if (aiDecision && typeof aiDecision.delegatable === "boolean") {
+    return aiDecision.delegatable;
+  }
   const text = `${task.title ?? ""}\n${task.description ?? ""}`;
   return !nonDelegatablePattern.test(text);
 };
@@ -119,7 +145,7 @@ export async function applyAutomationForTask(params: {
   const score = scoreFromPoints(current.points);
 
   if (score < thresholds.low) {
-    if (!(await shouldDelegate(current))) {
+    if (!(await shouldDelegate(current, { userId, workspaceId }))) {
       return;
     }
     await prisma.task.update({
@@ -148,11 +174,25 @@ export async function applyAutomationForTask(params: {
     return;
   }
 
-  const suggestions = await generateSplitSuggestions({
+  const splitResult = await generateSplitSuggestions({
     title: current.title,
     description: current.description,
     points: current.points,
   });
+  const usageMeta = buildAiUsageMetadata(splitResult.model, splitResult.usage);
+  if (usageMeta) {
+    await logAudit({
+      actorId: userId,
+      action: "AI_SPLIT",
+      targetWorkspaceId: workspaceId,
+      metadata: {
+        ...usageMeta,
+        taskId: current.id,
+        source: "automation",
+      },
+    });
+  }
+  const suggestions = splitResult.suggestions;
 
   const prefix =
     score > thresholds.high ? "高スコア: 分割必須" : "中スコア: 分解提案";
