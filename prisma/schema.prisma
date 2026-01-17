@@ -42,6 +42,20 @@ enum SprintStatus {
   CLOSED
 }
 
+enum IntakeSource {
+  MEMO
+  SLACK
+  DISCORD
+  EMAIL
+  CALENDAR
+}
+
+enum IntakeStatus {
+  PENDING
+  CONVERTED
+  DISMISSED
+}
+
 model User {
   id                     String                   @id @default(cuid())
   name                   String?
@@ -66,6 +80,8 @@ model User {
   userAutomationSettings UserAutomationSetting[]
   aiSuggestions          AiSuggestion[]
   sprints                Sprint[]
+  intakeItems            IntakeItem[]
+  taskStatusEvents       TaskStatusEvent[]        @relation("StatusEventActor")
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 }
@@ -149,6 +165,8 @@ model Workspace {
   invites                WorkspaceInvite[]
   auditLogs              AuditLog[]
   sprints                Sprint[]
+  intakeItems            IntakeItem[]
+  statusEvents           TaskStatusEvent[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 }
@@ -218,6 +236,8 @@ model Task {
   children     Task[]           @relation("TaskHierarchy")
   dependencies TaskDependency[] @relation("TaskDependencies")
   dependents   TaskDependency[] @relation("TaskDependents")
+  intakeItems  IntakeItem[]
+  statusEvents TaskStatusEvent[]
 
   @@index([parentId])
 }
@@ -317,4 +337,41 @@ model TaskDependency {
   dependsOn   Task   @relation("TaskDependents", fields: [dependsOnId], references: [id], onDelete: Cascade)
 
   @@id([taskId, dependsOnId])
+}
+
+model TaskStatusEvent {
+  id          String      @id @default(cuid())
+  taskId      String
+  fromStatus  TaskStatus?
+  toStatus    TaskStatus
+  actorId     String?
+  source      String?
+  workspaceId String?
+  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor       User?       @relation("StatusEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  workspace   Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model IntakeItem {
+  id          String        @id @default(uuid())
+  source      IntakeSource
+  status      IntakeStatus  @default(PENDING)
+  title       String
+  body        String
+  payload     Json?
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  taskId      String?
+  task        Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([userId, status])
 }
