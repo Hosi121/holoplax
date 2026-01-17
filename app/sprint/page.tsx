@@ -3,7 +3,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
-import { SprintDTO, TASK_STATUS, TaskDTO } from "../../lib/types";
+import { SprintDTO, TASK_STATUS, TASK_TYPE, TaskDTO, TaskType } from "../../lib/types";
 
 const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 type MemberRow = {
@@ -11,6 +11,13 @@ type MemberRow = {
   name: string | null;
   email: string | null;
   role: string;
+};
+
+const taskTypeLabels: Record<TaskType, string> = {
+  [TASK_TYPE.EPIC]: "目標",
+  [TASK_TYPE.PBI]: "PBI",
+  [TASK_TYPE.TASK]: "タスク",
+  [TASK_TYPE.ROUTINE]: "ルーティン",
 };
 
 export default function SprintPage() {
@@ -141,6 +148,7 @@ export default function SprintPage() {
         urgency: "中",
         risk: "中",
         status: TASK_STATUS.SPRINT,
+        type: TASK_TYPE.TASK,
         dueDate: newItem.dueDate || null,
         assigneeId: newItem.assigneeId || null,
         tags: newItem.tags
@@ -505,6 +513,9 @@ export default function SprintPage() {
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2">
+                  <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                    {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}
+                  </span>
                   <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
                     {item.points} pt
                   </span>
@@ -566,6 +577,9 @@ export default function SprintPage() {
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2">
+                  <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
+                    {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}
+                  </span>
                   <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
                     {item.points} pt
                   </span>

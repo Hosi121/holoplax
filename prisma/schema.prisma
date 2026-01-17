@@ -13,10 +13,23 @@ enum TaskStatus {
   DONE
 }
 
+enum TaskType {
+  EPIC
+  PBI
+  TASK
+  ROUTINE
+}
+
 enum AiSuggestionType {
   TIP
   SCORE
   SPLIT
+}
+
+enum AiProvider {
+  OPENAI
+  OPENAI_COMPATIBLE
+  ANTHROPIC
 }
 
 enum UserRole {
@@ -150,6 +163,7 @@ model WorkspaceMember {
   createdAt   DateTime  @default(now())
 
   @@unique([workspaceId, userId])
+  @@index([userId])
 }
 
 model WorkspaceInvite {
@@ -185,6 +199,8 @@ model Task {
   urgency      String
   risk         String
   status       TaskStatus       @default(BACKLOG)
+  type         TaskType         @default(PBI)
+  parentId     String?
   sprintId     String?
   dueDate      DateTime?
   assigneeId   String?
@@ -198,8 +214,12 @@ model Task {
   user         User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId  String?
   workspace    Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent       Task?            @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Task[]           @relation("TaskHierarchy")
   dependencies TaskDependency[] @relation("TaskDependencies")
   dependents   TaskDependency[] @relation("TaskDependents")
+
+  @@index([parentId])
 }
 
 model VelocityEntry {
@@ -219,6 +239,29 @@ model AutomationSetting {
   low       Int
   high      Int
   updatedAt DateTime @updatedAt
+}
+
+model AiProviderSetting {
+  id        Int       @id @default(1)
+  provider  AiProvider @default(OPENAI)
+  model     String
+  apiKey    String
+  baseUrl   String?
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model AiPricing {
+  id            String     @id @default(cuid())
+  provider      AiProvider
+  model         String
+  inputUsdPerM  Float
+  outputUsdPerM Float
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([provider, model])
 }
 
 model UserAutomationSetting {

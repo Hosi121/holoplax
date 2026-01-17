@@ -3,6 +3,7 @@ import { requireAuth } from "../../../lib/api-auth";
 import { badRequest, handleAuthError, ok, serverError } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
 import prisma from "../../../lib/prisma";
+import { TASK_TYPE } from "../../../lib/types";
 
 export async function POST(request: Request) {
   try {
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
         urgency: "中",
         risk: "中",
         status: "BACKLOG",
+        type: TASK_TYPE.EPIC,
         userId,
         workspaceId: workspace.id,
       },

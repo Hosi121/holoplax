@@ -13,6 +13,8 @@ type TaskWithDeps<T extends DepNode = DepNode> = {
   urgency: string;
   risk: string;
   status: TaskStatus;
+  type?: string | null;
+  parentId?: string | null;
   dueDate: Date | null;
   assigneeId: string | null;
   tags: string[];

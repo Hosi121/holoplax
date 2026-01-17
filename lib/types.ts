@@ -6,6 +6,15 @@ export const TASK_STATUS = {
 
 export type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS];
 
+export const TASK_TYPE = {
+  EPIC: "EPIC",
+  PBI: "PBI",
+  TASK: "TASK",
+  ROUTINE: "ROUTINE",
+} as const;
+
+export type TaskType = (typeof TASK_TYPE)[keyof typeof TASK_TYPE];
+
 export type TaskDTO = {
   id: string;
   title: string;
@@ -14,6 +23,8 @@ export type TaskDTO = {
   urgency: string;
   risk: string;
   status: TaskStatus;
+  type?: TaskType;
+  parentId?: string | null;
   dueDate?: string | Date | null;
   assigneeId?: string | null;
   tags?: string[];

@@ -1,6 +1,9 @@
 import prisma from "./prisma";
 import { generateSplitSuggestions } from "./ai-suggestions";
-import { TASK_STATUS } from "./types";
+import { requestAiChat } from "./ai-provider";
+import { buildAiUsageMetadata } from "./ai-usage";
+import { logAudit } from "./audit";
+import { TASK_STATUS, TASK_TYPE } from "./types";
 import {
   DELEGATE_TAG,
   NO_DELEGATE_TAG,
@@ -32,53 +35,58 @@ const llmDelegationDecision = async (task: {
   title: string;
   description: string;
 }) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "あなたはタスクのAI委任判定アシスタントです。個人の学習/暗記/練習など本人がやるべき作業は委任不可。JSONのみで返してください。",
-          },
-          {
-            role: "user",
-            content: `次のタスクをAI委任キューに入れるべきか判定し、JSONで返してください: { "delegatable": boolean, "reason": string }。\nタイトル: ${task.title}\n説明: ${task.description}`,
-          },
-        ],
-        max_tokens: 80,
-      }),
+    const result = await requestAiChat({
+      system:
+        "あなたはタスクのAI委任判定アシスタントです。個人の学習/暗記/練習など本人がやるべき作業は委任不可。JSONのみで返してください。",
+      user: `次のタスクをAI委任キューに入れるべきか判定し、JSONで返してください: { "delegatable": boolean, "reason": string }。\nタイトル: ${task.title}\n説明: ${task.description}`,
+      maxTokens: 80,
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(extractJson(content));
+    if (!result) return null;
+    const usageMeta = result
+      ? buildAiUsageMetadata(result.provider, result.model, result.usage)
+      : null;
+    if (!result.content) return { usageMeta };
+    const parsed = JSON.parse(extractJson(result.content));
     if (typeof parsed?.delegatable === "boolean") {
-      return parsed as { delegatable: boolean; reason?: string };
+      return { delegatable: parsed.delegatable, reason: parsed.reason, usageMeta };
     }
+    return { usageMeta };
   } catch {
     return null;
   }
-  return null;
 };
 
-const shouldDelegate = async (task: {
-  title: string;
-  description: string;
-  tags?: string[] | null;
-}) => {
+const shouldDelegate = async (
+  task: {
+    id: string;
+    title: string;
+    description: string;
+    tags?: string[] | null;
+  },
+  context?: { userId: string; workspaceId: string },
+) => {
   if (task.tags?.includes(NO_DELEGATE_TAG)) return false;
   const aiDecision = await llmDelegationDecision(task);
-  if (aiDecision) return aiDecision.delegatable;
+  if (context && aiDecision?.usageMeta) {
+    await logAudit({
+      actorId: context.userId,
+      action: "AI_DELEGATE",
+      targetWorkspaceId: context.workspaceId,
+      metadata: {
+        ...aiDecision.usageMeta,
+        taskId: task.id,
+        decision:
+          typeof aiDecision.delegatable === "boolean"
+            ? aiDecision.delegatable
+            : null,
+        source: "automation",
+      },
+    });
+  }
+  if (aiDecision && typeof aiDecision.delegatable === "boolean") {
+    return aiDecision.delegatable;
+  }
   const text = `${task.title ?? ""}\n${task.description ?? ""}`;
   return !nonDelegatablePattern.test(text);
 };
@@ -119,7 +127,7 @@ export async function applyAutomationForTask(params: {
   const score = scoreFromPoints(current.points);
 
   if (score < thresholds.low) {
-    if (!(await shouldDelegate(current))) {
+    if (!(await shouldDelegate(current, { userId, workspaceId }))) {
       return;
     }
     await prisma.task.update({
@@ -148,11 +156,31 @@ export async function applyAutomationForTask(params: {
     return;
   }
 
-  const suggestions = await generateSplitSuggestions({
+  const splitResult = await generateSplitSuggestions({
     title: current.title,
     description: current.description,
     points: current.points,
   });
+  if (splitResult.source === "provider") {
+    const usageMeta = buildAiUsageMetadata(
+      splitResult.provider,
+      splitResult.model,
+      splitResult.usage,
+    );
+    if (usageMeta) {
+      await logAudit({
+        actorId: userId,
+        action: "AI_SPLIT",
+        targetWorkspaceId: workspaceId,
+        metadata: {
+          ...usageMeta,
+          taskId: current.id,
+          source: "automation",
+        },
+      });
+    }
+  }
+  const suggestions = splitResult.suggestions;
 
   const prefix =
     score > thresholds.high ? "高スコア: 分割必須" : "中スコア: 分解提案";
@@ -218,6 +246,8 @@ export async function applyAutomationForTask(params: {
             risk: item.risk ?? "中",
             status: TASK_STATUS.BACKLOG,
             tags: withTag([], SPLIT_CHILD_TAG),
+            type: TASK_TYPE.TASK,
+            parentId: current.id,
             workspace: { connect: { id: workspaceId } },
             user: { connect: { id: userId } },
           },

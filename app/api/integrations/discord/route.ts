@@ -3,7 +3,7 @@ import { applyAutomationForTask } from "../../../../lib/automation";
 import { PENDING_APPROVAL_TAG } from "../../../../lib/automation-constants";
 import { validateSharedToken } from "../../../../lib/integrations/auth";
 import prisma from "../../../../lib/prisma";
-import { TASK_STATUS } from "../../../../lib/types";
+import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 export async function POST(request: Request) {
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       urgency,
       risk,
       status: TASK_STATUS.BACKLOG,
+      type: TASK_TYPE.PBI,
       tags: [PENDING_APPROVAL_TAG], // default to approval flow for high-score cases
       workspace: { connect: { id: workspaceId } },
       user: userId ? { connect: { id: userId } } : undefined,

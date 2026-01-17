@@ -1,4 +1,6 @@
-type SplitItem = {
+import { requestAiChat } from "./ai-provider";
+
+export type SplitItem = {
   title: string;
   points: number;
   urgency: string;
@@ -27,50 +29,49 @@ const extractJsonArray = (text: string) => {
   return text;
 };
 
+export type SplitSuggestionResult = {
+  suggestions: SplitItem[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  model: string;
+  provider: string;
+  source: "provider" | "fallback";
+};
+
 export async function generateSplitSuggestions(params: {
   title: string;
   description: string;
   points: number;
-}) {
+}): Promise<SplitSuggestionResult> {
   const { title, description, points } = params;
   let suggestions = fallbackSplit(title, description, points);
-  const apiKey = process.env.OPENAI_API_KEY;
+  let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+  let usedAi = false;
+  let model = "fallback";
+  let provider = "fallback";
 
-  if (apiKey) {
-    try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "あなたはタスク分解アシスタントです。JSON配列のみで返してください。",
-            },
-            {
-              role: "user",
-              content: `以下のタスクを2-4件に分解し、JSON配列で返してください: [{ "title": string, "points": number, "urgency": "低|中|高", "risk": "低|中|高", "detail": string }]\nタイトル: ${title}\n説明: ${description}\nポイント: ${points}`,
-            },
-          ],
-          max_tokens: 220,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const parsed = JSON.parse(extractJsonArray(content));
-          if (Array.isArray(parsed) && parsed.length > 0) suggestions = parsed;
-        }
-      }
-    } catch {
-      // fall back to heuristic
+  try {
+    const result = await requestAiChat({
+      system: "あなたはタスク分解アシスタントです。JSON配列のみで返してください。",
+      user: `以下のタスクを2-4件に分解し、JSON配列で返してください: [{ "title": string, "points": number, "urgency": "低|中|高", "risk": "低|中|高", "detail": string }]\nタイトル: ${title}\n説明: ${description}\nポイント: ${points}`,
+      maxTokens: 220,
+    });
+    if (result?.content) {
+      usedAi = true;
+      usage = result.usage ?? undefined;
+      model = result.model;
+      provider = result.provider;
+      const parsed = JSON.parse(extractJsonArray(result.content));
+      if (Array.isArray(parsed) && parsed.length > 0) suggestions = parsed;
     }
+  } catch {
+    // fall back to heuristic
   }
 
-  return suggestions;
+  return {
+    suggestions,
+    usage,
+    model,
+    provider,
+    source: usedAi ? "provider" : "fallback",
+  };
 }

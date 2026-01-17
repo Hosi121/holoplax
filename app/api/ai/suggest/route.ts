@@ -7,6 +7,9 @@ import {
 } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+import { buildAiUsageMetadata } from "../../../../lib/ai-usage";
+import { logAudit } from "../../../../lib/audit";
+import { requestAiChat } from "../../../../lib/ai-provider";
 
 const canned = [
   "小さく分けて今日30分以内に終わる粒度にしてください。",
@@ -62,48 +65,47 @@ export async function POST(request: Request) {
       }
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      try {
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              { role: "system", content: "あなたはアジャイルなタスク分解のアシスタントです。" },
-              {
-                role: "user",
-                content: `タスクを短く分解し、緊急度や依存を意識した提案を1文でください: ${title}`,
-              },
-            ],
-            max_tokens: 80,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const content = data.choices?.[0]?.message?.content;
-          if (content) {
-            await prisma.aiSuggestion.create({
-              data: {
-                type: "TIP",
-                taskId,
-                inputTitle: title,
-                inputDescription: description,
-                output: content,
-                userId,
-                workspaceId,
-              },
-            });
-            return ok({ suggestion: content });
-          }
+    try {
+      const result = await requestAiChat({
+        system: "あなたはアジャイルなタスク分解のアシスタントです。",
+        user: `タスクを短く分解し、緊急度や依存を意識した提案を1文でください: ${title}`,
+        maxTokens: 80,
+      });
+      if (result) {
+        const usageMeta = buildAiUsageMetadata(
+          result.provider,
+          result.model,
+          result.usage,
+        );
+        if (usageMeta) {
+          await logAudit({
+            actorId: userId,
+            action: "AI_SUGGEST",
+            targetWorkspaceId: workspaceId,
+            metadata: {
+              ...usageMeta,
+              taskId,
+              source: "ai-suggest",
+            },
+          });
         }
-      } catch {
-        // fall back to canned
       }
+      if (result?.content) {
+        await prisma.aiSuggestion.create({
+          data: {
+            type: "TIP",
+            taskId,
+            inputTitle: title,
+            inputDescription: description,
+            output: result.content,
+            userId,
+            workspaceId,
+          },
+        });
+        return ok({ suggestion: result.content });
+      }
+    } catch {
+      // fall back to canned
     }
 
     const pick = canned[Math.floor(Math.random() * canned.length)];

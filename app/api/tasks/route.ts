@@ -9,7 +9,7 @@ import { applyAutomationForTask } from "../../../lib/automation";
 import { badPoints } from "../../../lib/points";
 import { logAudit } from "../../../lib/audit";
 import prisma from "../../../lib/prisma";
-import { TASK_STATUS } from "../../../lib/types";
+import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
@@ -47,15 +47,17 @@ export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
     const body = await request.json();
-  const {
-    title,
-    description,
-    points,
-    urgency,
-    risk,
-    status,
-    dueDate,
-    assigneeId,
+    const {
+      title,
+      description,
+      points,
+      urgency,
+      risk,
+      status,
+      type,
+      parentId,
+      dueDate,
+      assigneeId,
       tags,
       dependencyIds,
     } = body;
@@ -91,6 +93,14 @@ export async function POST(request: Request) {
     const statusValue = Object.values(TASK_STATUS).includes(status)
       ? status
       : TASK_STATUS.BACKLOG;
+    const typeValue = Object.values(TASK_TYPE).includes(type) ? type : TASK_TYPE.PBI;
+    const parentCandidate = parentId ? String(parentId) : null;
+    const parent = parentCandidate
+      ? await prisma.task.findFirst({
+          where: { id: parentCandidate, workspaceId },
+          select: { id: true },
+        })
+      : null;
     if (
       statusValue !== TASK_STATUS.BACKLOG &&
       allowedDependencies.some((dep) => dep.status !== TASK_STATUS.DONE)
@@ -115,7 +125,9 @@ export async function POST(request: Request) {
         status: statusValue,
         dueDate: dueDate ? new Date(dueDate) : null,
         tags: Array.isArray(tags) ? tags.map((tag: string) => String(tag)) : [],
+        type: typeValue,
         sprint: activeSprint ? { connect: { id: activeSprint.id } } : undefined,
+        parent: parent ? { connect: { id: parent.id } } : undefined,
         assignee: safeAssigneeId ? { connect: { id: safeAssigneeId } } : undefined,
         user: { connect: { id: userId } },
         workspace: { connect: { id: workspaceId } },

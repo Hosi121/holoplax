@@ -9,7 +9,7 @@ import { applyAutomationForTask } from "../../../../lib/automation";
 import { badPoints } from "../../../../lib/points";
 import { logAudit } from "../../../../lib/audit";
 import prisma from "../../../../lib/prisma";
-import { TASK_STATUS } from "../../../../lib/types";
+import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 export async function PATCH(
@@ -30,6 +30,9 @@ export async function PATCH(
   }
   if (body.urgency) data.urgency = body.urgency;
   if (body.risk) data.risk = body.risk;
+  if (body.type !== undefined) {
+    data.type = Object.values(TASK_TYPE).includes(body.type) ? body.type : TASK_TYPE.PBI;
+  }
   if (body.dueDate !== undefined) {
     data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
   }
@@ -72,6 +75,18 @@ export async function PATCH(
         data.assigneeId = member ? nextAssigneeId : null;
       } else {
         data.assigneeId = null;
+      }
+    }
+    if (body.parentId !== undefined) {
+      const nextParentId = body.parentId ? String(body.parentId) : null;
+      if (nextParentId && nextParentId !== id) {
+        const parent = await prisma.task.findFirst({
+          where: { id: nextParentId, workspaceId },
+          select: { id: true },
+        });
+        data.parentId = parent ? parent.id : null;
+      } else {
+        data.parentId = null;
       }
     }
     if (statusValue === TASK_STATUS.SPRINT) {

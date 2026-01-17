@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
-import { TASK_STATUS, TaskDTO, TaskStatus } from "../../lib/types";
+import { TASK_STATUS, TASK_TYPE, TaskDTO, TaskStatus, TaskType } from "../../lib/types";
 import {
   DELEGATE_TAG,
   SPLIT_CHILD_TAG,
@@ -20,6 +20,13 @@ type Column = {
   key: TaskStatus;
   label: string;
   hint: string;
+};
+
+const taskTypeLabels: Record<TaskType, string> = {
+  [TASK_TYPE.EPIC]: "目標",
+  [TASK_TYPE.PBI]: "PBI",
+  [TASK_TYPE.TASK]: "タスク",
+  [TASK_TYPE.ROUTINE]: "ルーティン",
 };
 
 const columns: Column[] = [
@@ -166,14 +173,19 @@ export default function KanbanPage() {
                     <p className="break-words font-semibold text-slate-900">
                       {item.title}
                     </p>
-                    <span
-                      className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold ${isAiTask(item)
-                        ? "border-amber-200 bg-amber-50 text-amber-700"
-                        : "border-slate-200 bg-white text-slate-600"
-                        }`}
-                    >
-                      {isAiTask(item) ? "AI" : "人"}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="shrink-0 border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                        {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}
+                      </span>
+                      <span
+                        className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold ${isAiTask(item)
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-slate-200 bg-white text-slate-600"
+                          }`}
+                      >
+                        {isAiTask(item) ? "AI" : "人"}
+                      </span>
+                    </div>
                   </div>
                   {item.description ? (
                     <p className="mt-1 break-words text-xs text-slate-600">

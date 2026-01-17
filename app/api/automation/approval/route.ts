@@ -7,6 +7,7 @@ import {
   serverError,
 } from "../../../../lib/api-response";
 import { generateSplitSuggestions } from "../../../../lib/ai-suggestions";
+import { buildAiUsageMetadata } from "../../../../lib/ai-usage";
 import {
   PENDING_APPROVAL_TAG,
   SPLIT_REJECTED_TAG,
@@ -16,8 +17,9 @@ import {
   withoutTags,
 } from "../../../../lib/automation-constants";
 import prisma from "../../../../lib/prisma";
-import { TASK_STATUS } from "../../../../lib/types";
+import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+import { logAudit } from "../../../../lib/audit";
 
 type SplitSuggestion = {
   title: string;
@@ -94,12 +96,34 @@ export async function POST(request: Request) {
       select: { output: true },
     });
 
-    const fallback = await generateSplitSuggestions({
+    const fallbackResult = await generateSplitSuggestions({
       title: task.title,
       description: task.description ?? "",
       points: task.points,
     });
-    const suggestions = parseSuggestions(latest?.output ?? null, fallback);
+    const suggestions = parseSuggestions(
+      latest?.output ?? null,
+      fallbackResult.suggestions,
+    );
+    if (fallbackResult.source === "provider") {
+      const usageMeta = buildAiUsageMetadata(
+        fallbackResult.provider,
+        fallbackResult.model,
+        fallbackResult.usage,
+      );
+      if (usageMeta) {
+        await logAudit({
+          actorId: userId,
+          action: "AI_SPLIT",
+          targetWorkspaceId: workspaceId,
+          metadata: {
+            ...usageMeta,
+            taskId: task.id,
+            source: "approval",
+          },
+        });
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       const nextTags = withTag(
@@ -122,6 +146,8 @@ export async function POST(request: Request) {
               risk: item.risk ?? "中",
               status: TASK_STATUS.BACKLOG,
               tags: withTag([], SPLIT_CHILD_TAG),
+              type: TASK_TYPE.TASK,
+              parentId: task.id,
               workspace: { connect: { id: workspaceId } },
               user: { connect: { id: userId } },
             },

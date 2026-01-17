@@ -6,8 +6,10 @@ import {
   serverError,
 } from "../../../../lib/api-response";
 import { generateSplitSuggestions } from "../../../../lib/ai-suggestions";
+import { buildAiUsageMetadata } from "../../../../lib/ai-usage";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+import { logAudit } from "../../../../lib/audit";
 
 export async function POST(request: Request) {
   try {
@@ -34,11 +36,26 @@ export async function POST(request: Request) {
       }
     }
 
-    const suggestions = await generateSplitSuggestions({
+    const result = await generateSplitSuggestions({
       title,
       description,
       points,
     });
+    if (result.source === "provider") {
+      const usageMeta = buildAiUsageMetadata(result.provider, result.model, result.usage);
+      if (usageMeta) {
+        await logAudit({
+          actorId: userId,
+          action: "AI_SPLIT",
+          targetWorkspaceId: workspaceId,
+          metadata: {
+            ...usageMeta,
+            taskId,
+            source: "ai-split",
+          },
+        });
+      }
+    }
 
     await prisma.aiSuggestion.create({
       data: {
@@ -46,13 +63,13 @@ export async function POST(request: Request) {
         taskId,
         inputTitle: title,
         inputDescription: description,
-        output: JSON.stringify(suggestions),
+        output: JSON.stringify(result.suggestions),
         userId,
         workspaceId,
       },
     });
 
-    return ok({ suggestions });
+    return ok({ suggestions: result.suggestions });
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;

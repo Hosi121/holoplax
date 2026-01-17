@@ -9,7 +9,11 @@ export async function GET() {
     const { userId } = await requireAuth();
     const memberships = await prisma.workspaceMember.findMany({
       where: { userId },
-      include: { workspace: true },
+      select: {
+        role: true,
+        workspaceId: true,
+        workspace: { select: { id: true, name: true, ownerId: true } },
+      },
       orderBy: { createdAt: "asc" },
     });
     const workspaces = memberships.map((m) => ({

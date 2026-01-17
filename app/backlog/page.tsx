@@ -1,10 +1,10 @@
 "use client";
 
 import { Sparkles, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { LoadingButton } from "../components/loading-button";
-import { TASK_STATUS, TaskDTO } from "../../lib/types";
+import { TASK_STATUS, TASK_TYPE, TaskDTO, TaskType } from "../../lib/types";
 import {
   DELEGATE_TAG,
   PENDING_APPROVAL_TAG,
@@ -12,6 +12,24 @@ import {
 } from "../../lib/automation-constants";
 
 const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
+const taskTypeLabels: Record<TaskType, string> = {
+  [TASK_TYPE.EPIC]: "目標",
+  [TASK_TYPE.PBI]: "PBI",
+  [TASK_TYPE.TASK]: "タスク",
+  [TASK_TYPE.ROUTINE]: "ルーティン",
+};
+const taskTypeOptions = [
+  { value: TASK_TYPE.EPIC, label: "目標 (EPIC)" },
+  { value: TASK_TYPE.PBI, label: "PBI" },
+  { value: TASK_TYPE.TASK, label: "タスク" },
+  { value: TASK_TYPE.ROUTINE, label: "ルーティン" },
+];
+const taskTypeOrder: TaskType[] = [
+  TASK_TYPE.EPIC,
+  TASK_TYPE.PBI,
+  TASK_TYPE.TASK,
+  TASK_TYPE.ROUTINE,
+];
 type SplitSuggestion = {
   title: string;
   points: number;
@@ -39,6 +57,8 @@ export default function BacklogPage() {
     points: 3,
     urgency: "中",
     risk: "中",
+    type: TASK_TYPE.PBI,
+    parentId: "",
     dueDate: "",
     assigneeId: "",
     tags: "",
@@ -56,6 +76,8 @@ export default function BacklogPage() {
     points: 3,
     urgency: "中",
     risk: "中",
+    type: TASK_TYPE.PBI,
+    parentId: "",
     dueDate: "",
     assigneeId: "",
     tags: "",
@@ -94,6 +116,57 @@ export default function BacklogPage() {
     void fetchMembers();
   }, [fetchTasks, fetchMembers]);
 
+  const taskById = useMemo(() => {
+    const map = new Map<string, TaskDTO>();
+    items.forEach((item) => map.set(item.id, item));
+    return map;
+  }, [items]);
+
+  const childCount = useMemo(() => {
+    const map = new Map<string, number>();
+    items.forEach((item) => {
+      if (!item.parentId) return;
+      map.set(item.parentId, (map.get(item.parentId) ?? 0) + 1);
+    });
+    return map;
+  }, [items]);
+
+  const visibleItems = useMemo(
+    () =>
+      items
+        .filter((item) =>
+          view === "product"
+            ? item.status === TASK_STATUS.BACKLOG
+            : item.status === TASK_STATUS.SPRINT,
+        )
+        .filter((item) => !item.tags?.includes(DELEGATE_TAG))
+        .filter((item) => !item.tags?.includes(SPLIT_PARENT_TAG)),
+    [items, view],
+  );
+
+  const groupedByType = useMemo(() => {
+    const grouped: Record<TaskType, TaskDTO[]> = {
+      [TASK_TYPE.EPIC]: [],
+      [TASK_TYPE.PBI]: [],
+      [TASK_TYPE.TASK]: [],
+      [TASK_TYPE.ROUTINE]: [],
+    };
+    visibleItems.forEach((item) => {
+      const type = (item.type ?? TASK_TYPE.PBI) as TaskType;
+      grouped[type].push(item);
+    });
+    return grouped;
+  }, [visibleItems]);
+
+  const parentCandidates = useMemo(
+    () =>
+      items.filter((item) => {
+        const type = (item.type ?? TASK_TYPE.PBI) as TaskType;
+        return type === TASK_TYPE.EPIC || type === TASK_TYPE.PBI;
+      }),
+    [items],
+  );
+
   const isBlocked = (item: TaskDTO) =>
     (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE);
 
@@ -113,6 +186,8 @@ export default function BacklogPage() {
           urgency: form.urgency,
           risk: form.risk,
           status: statusValue,
+          type: form.type,
+          parentId: form.parentId || null,
           dueDate: form.dueDate || null,
           assigneeId: form.assigneeId || null,
           tags: form.tags
@@ -135,6 +210,8 @@ export default function BacklogPage() {
           points: 3,
           urgency: "中",
           risk: "中",
+          type: view === "sprint" ? TASK_TYPE.TASK : TASK_TYPE.PBI,
+          parentId: "",
           dueDate: "",
           assigneeId: "",
           tags: "",
@@ -261,7 +338,10 @@ export default function BacklogPage() {
   const applySplit = async (item: TaskDTO) => {
     const suggestions = splitMap[item.id] ?? [];
     if (!suggestions.length) return;
-    setItems((prev) => prev.filter((t) => t.id !== item.id));
+    const nextTags = Array.from(new Set([...(item.tags ?? []), SPLIT_PARENT_TAG]));
+    setItems((prev) =>
+      prev.map((t) => (t.id === item.id ? { ...t, tags: nextTags } : t)),
+    );
     setSplitMap((prev) => {
       const next = { ...prev };
       delete next[item.id];
@@ -281,11 +361,17 @@ export default function BacklogPage() {
             urgency: split.urgency ?? "中",
             risk: split.risk ?? "中",
             status: statusValue,
+            type: TASK_TYPE.TASK,
+            parentId: item.id,
           }),
         }),
       ),
     );
-    await fetch(`/api/tasks/${item.id}`, { method: "DELETE" });
+    await fetch(`/api/tasks/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: nextTags }),
+    });
     await fetchTasks();
   };
 
@@ -303,6 +389,8 @@ export default function BacklogPage() {
       points: item.points,
       urgency: item.urgency,
       risk: item.risk,
+      type: item.type ?? TASK_TYPE.PBI,
+      parentId: item.parentId ?? "",
       dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : "",
       assigneeId: item.assigneeId ?? "",
       tags: item.tags?.join(", ") ?? "",
@@ -321,6 +409,8 @@ export default function BacklogPage() {
         points: Number(editForm.points),
         urgency: editForm.urgency,
         risk: editForm.risk,
+        type: editForm.type,
+        parentId: editForm.parentId || null,
         dueDate: editForm.dueDate || null,
         assigneeId: editForm.assigneeId || null,
         tags: editForm.tags
@@ -399,6 +489,11 @@ export default function BacklogPage() {
             <button
               onClick={() => {
                 fetchTasks();
+                setForm((prev) => ({
+                  ...prev,
+                  type: view === "sprint" ? TASK_TYPE.TASK : TASK_TYPE.PBI,
+                  parentId: "",
+                }));
                 setModalOpen(true);
               }}
               className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30"
@@ -523,166 +618,190 @@ export default function BacklogPage() {
       ) : null}
 
       <section className="border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-3">
-          {items
-            .filter((item) =>
-              view === "product"
-                ? item.status === TASK_STATUS.BACKLOG
-                : item.status === TASK_STATUS.SPRINT,
-            )
-            .filter((item) => !item.tags?.includes(DELEGATE_TAG))
-            .filter((item) => !item.tags?.includes(SPLIT_PARENT_TAG))
-            .map((item) => (
-              <div
-                key={item.id}
-                className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
-              >
+        <div className="grid gap-5">
+          {taskTypeOrder.map((type) => {
+            const bucket = groupedByType[type];
+            if (!bucket.length) return null;
+            return (
+              <div key={type} className="grid gap-3">
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold text-slate-900">{item.title}</p>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
-                      {item.points} pt
-                    </span>
-                    <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
-                      緊急度: {item.urgency}
-                    </span>
-                    <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
-                      リスク: {item.risk}
-                    </span>
-                    {item.tags?.includes(PENDING_APPROVAL_TAG) ? (
-                      <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-                        承認待ち
-                      </span>
-                    ) : null}
-                  </div>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    {taskTypeLabels[type]}
+                  </h2>
+                  <span className="text-xs text-slate-500">{bucket.length} 件</span>
                 </div>
-                {item.description ? (
-                  <p className="mt-1 text-sm text-slate-700">{item.description}</p>
-                ) : null}
-                <div className="mt-2 flex items-center gap-2 text-xs">
-                  {view === "product" ? (
-                    <button
-                      className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                      onClick={() => {
-                        if (isBlocked(item)) {
-                          window.alert("依存タスクが未完了のため移動できません。");
-                          return;
-                        }
-                        moveToSprint(item.id);
-                      }}
+                <div className="grid gap-3">
+                  {bucket.map((item) => (
+                    <div
+                      key={item.id}
+                      className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
                     >
-                      スプリントに送る
-                    </button>
-                  ) : (
-                    <button
-                      className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                      onClick={() => moveToBacklog(item.id)}
-                    >
-                      目標リストに戻す
-                    </button>
-                  )}
-                  <LoadingButton
-                    className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                    onClick={() => getSuggestion(item.title, item.description, item.id)}
-                    loading={suggestLoadingId === item.id}
-                  >
-                    AI 提案を見る
-                  </LoadingButton>
-                  <button
-                    className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                    onClick={() => openEdit(item)}
-                    aria-label="編集"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-red-300 hover:text-red-600"
-                    onClick={() => deleteItem(item.id)}
-                    aria-label="削除"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                  {item.points > splitThreshold ? (
-                    <LoadingButton
-                      className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                      onClick={() => requestSplit(item)}
-                      loading={splitLoadingId === item.id}
-                    >
-                      分解提案
-                    </LoadingButton>
-                  ) : null}
-                </div>
-                {suggestionMap[item.id] ? (
-                  <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                    {suggestionMap[item.id]}
-                  </div>
-                ) : null}
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                  {item.dueDate ? (
-                    <span className="border border-slate-200 bg-white px-2 py-1">
-                      期限: {new Date(item.dueDate).toLocaleDateString()}
-                    </span>
-                  ) : null}
-                  {item.assigneeId ? (
-                    <span className="border border-slate-200 bg-white px-2 py-1">
-                      担当:{" "}
-                      {members.find((member) => member.id === item.assigneeId)?.name ??
-                        "未設定"}
-                    </span>
-                  ) : null}
-                  {item.tags && item.tags.length > 0 ? (
-                    <span className="border border-slate-200 bg-white px-2 py-1">
-                      #{item.tags.join(" #")}
-                    </span>
-                  ) : null}
-                  {item.dependencies && item.dependencies.length > 0 ? (
-                    <span
-                      className={`border px-2 py-1 ${isBlocked(item)
-                        ? "border-amber-200 bg-amber-50 text-amber-700"
-                        : "border-slate-200 bg-white"
-                        }`}
-                    >
-                      依存:{" "}
-                      {item.dependencies
-                        .map((dep) =>
-                          dep.status === TASK_STATUS.DONE
-                            ? dep.title
-                            : `${dep.title}*`,
-                        )
-                        .join(", ")}
-                    </span>
-                  ) : null}
-                </div>
-                {splitMap[item.id]?.length ? (
-                  <div className="mt-3 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                      Split suggestions
-                    </p>
-                    <div className="mt-2 grid gap-2">
-                      {splitMap[item.id].map((split, idx) => (
-                        <div key={`${item.id}-${idx}`} className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-900">{split.title}</p>
-                            <p className="text-[11px] text-slate-600">{split.detail}</p>
-                          </div>
-                          <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
-                            {split.points} pt
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-slate-900">{item.title}</p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-slate-600">
+                            {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}
                           </span>
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
+                            {item.points} pt
+                          </span>
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
+                            緊急度: {item.urgency}
+                          </span>
+                          <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
+                            リスク: {item.risk}
+                          </span>
+                          {item.tags?.includes(PENDING_APPROVAL_TAG) ? (
+                            <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
+                              承認待ち
+                            </span>
+                          ) : null}
                         </div>
-                      ))}
+                      </div>
+                      {item.description ? (
+                        <p className="mt-1 text-sm text-slate-700">{item.description}</p>
+                      ) : null}
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        {view === "product" ? (
+                          <button
+                            className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                            onClick={() => {
+                              if (isBlocked(item)) {
+                                window.alert("依存タスクが未完了のため移動できません。");
+                                return;
+                              }
+                              moveToSprint(item.id);
+                            }}
+                          >
+                            スプリントに送る
+                          </button>
+                        ) : (
+                          <button
+                            className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                            onClick={() => moveToBacklog(item.id)}
+                          >
+                            目標リストに戻す
+                          </button>
+                        )}
+                        <LoadingButton
+                          className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                          onClick={() => getSuggestion(item.title, item.description, item.id)}
+                          loading={suggestLoadingId === item.id}
+                        >
+                          AI 提案を見る
+                        </LoadingButton>
+                        <button
+                          className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                          onClick={() => openEdit(item)}
+                          aria-label="編集"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-red-300 hover:text-red-600"
+                          onClick={() => deleteItem(item.id)}
+                          aria-label="削除"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        {item.points > splitThreshold ? (
+                          <LoadingButton
+                            className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                            onClick={() => requestSplit(item)}
+                            loading={splitLoadingId === item.id}
+                          >
+                            分解提案
+                          </LoadingButton>
+                        ) : null}
+                      </div>
+                      {suggestionMap[item.id] ? (
+                        <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                          {suggestionMap[item.id]}
+                        </div>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                        {item.parentId ? (
+                          <span className="border border-slate-200 bg-white px-2 py-1">
+                            親: {taskById.get(item.parentId)?.title ?? "未設定"}
+                          </span>
+                        ) : null}
+                        {childCount.get(item.id) ? (
+                          <span className="border border-slate-200 bg-white px-2 py-1">
+                            子: {childCount.get(item.id)} 件
+                          </span>
+                        ) : null}
+                        {item.dueDate ? (
+                          <span className="border border-slate-200 bg-white px-2 py-1">
+                            期限: {new Date(item.dueDate).toLocaleDateString()}
+                          </span>
+                        ) : null}
+                        {item.assigneeId ? (
+                          <span className="border border-slate-200 bg-white px-2 py-1">
+                            担当:{" "}
+                            {members.find((member) => member.id === item.assigneeId)?.name ??
+                              "未設定"}
+                          </span>
+                        ) : null}
+                        {item.tags && item.tags.length > 0 ? (
+                          <span className="border border-slate-200 bg-white px-2 py-1">
+                            #{item.tags.join(" #")}
+                          </span>
+                        ) : null}
+                        {item.dependencies && item.dependencies.length > 0 ? (
+                          <span
+                            className={`border px-2 py-1 ${isBlocked(item)
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : "border-slate-200 bg-white"
+                              }`}
+                          >
+                            依存:{" "}
+                            {item.dependencies
+                              .map((dep) =>
+                                dep.status === TASK_STATUS.DONE
+                                  ? dep.title
+                                  : `${dep.title}*`,
+                              )
+                              .join(", ")}
+                          </span>
+                        ) : null}
+                      </div>
+                      {splitMap[item.id]?.length ? (
+                        <div className="mt-3 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                            Split suggestions
+                          </p>
+                          <div className="mt-2 grid gap-2">
+                            {splitMap[item.id].map((split, idx) => (
+                              <div
+                                key={`${item.id}-${idx}`}
+                                className="flex items-start justify-between gap-3"
+                              >
+                                <div>
+                                  <p className="font-semibold text-slate-900">{split.title}</p>
+                                  <p className="text-[11px] text-slate-600">{split.detail}</p>
+                                </div>
+                                <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                                  {split.points} pt
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              onClick={() => applySplit(item)}
+                              className="border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                            >
+                              この分解をバックログに追加
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        onClick={() => applySplit(item)}
-                        className="border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-                      >
-                        この分解をバックログに追加
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+                  ))}
+                </div>
               </div>
-            ))}
+            );
+          })}
         </div>
       </section>
 
@@ -795,6 +914,39 @@ export default function BacklogPage() {
                   >
                     {["低", "中", "高"].map((v) => (
                       <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs text-slate-500">
+                  種別
+                  <select
+                    value={form.type}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, type: e.target.value as TaskType }))
+                    }
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    {taskTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs text-slate-500">
+                  親アイテム
+                  <select
+                    value={form.parentId}
+                    onChange={(e) => setForm((p) => ({ ...p, parentId: e.target.value }))}
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="">未設定</option>
+                    {parentCandidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.title}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -959,6 +1111,41 @@ export default function BacklogPage() {
                     <option key={v}>{v}</option>
                   ))}
                 </select>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs text-slate-500">
+                  種別
+                  <select
+                    value={editForm.type}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, type: e.target.value as TaskType }))
+                    }
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    {taskTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs text-slate-500">
+                  親アイテム
+                  <select
+                    value={editForm.parentId}
+                    onChange={(e) => setEditForm((p) => ({ ...p, parentId: e.target.value }))}
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="">未設定</option>
+                    {parentCandidates
+                      .filter((candidate) => candidate.id !== editItem?.id)
+                      .map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.title}
+                        </option>
+                      ))}
+                  </select>
+                </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 text-xs text-slate-500">
