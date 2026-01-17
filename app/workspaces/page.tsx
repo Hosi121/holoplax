@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 
 type WorkspaceRow = {
   id: string;
@@ -81,16 +82,7 @@ export default function WorkspacesPage() {
                 key={workspace.id}
                 onClick={async () => {
                   setSelectedId(workspace.id);
-                  await fetch("/api/workspaces/current", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ workspaceId: workspace.id }),
-                  });
-                  window.dispatchEvent(
-                    new CustomEvent("workspace:changed", {
-                      detail: { workspaceId: workspace.id },
-                    }),
-                  );
+                  await useWorkspaceStore.getState().setWorkspaceId(workspace.id);
                 }}
                 className={`border px-3 py-2 text-left text-sm transition ${selectedId === workspace.id
                   ? "border-[#2323eb]/40 bg-[#2323eb]/10 text-[#2323eb]"
@@ -127,16 +119,8 @@ export default function WorkspacesPage() {
                     fetchWorkspaces();
                     if (data?.workspace?.id) {
                       setSelectedId(data.workspace.id);
-                      await fetch("/api/workspaces/current", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ workspaceId: data.workspace.id }),
-                      });
-                      window.dispatchEvent(
-                        new CustomEvent("workspace:changed", {
-                          detail: { workspaceId: data.workspace.id },
-                        }),
-                      );
+                      await useWorkspaceStore.getState().setWorkspaceId(data.workspace.id);
+                      useWorkspaceStore.getState().fetchWorkspaces();
                     }
                   }
                 }}
