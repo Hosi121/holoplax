@@ -43,14 +43,14 @@ export default function SignInPage() {
 
       <div className="relative mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-12">
         <div className="grid w-full max-w-4xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-5 text-slate-900">
+          <div className="space-y-5 text-slate-900 pt-15">
             <Image
-              src="/logo_holoplax.webp"
+              src="/logo_holoplax.png"
               alt="Holoplax logo"
-              width={160}
-              height={48}
+              width={240}
+              height={72}
               className="h-auto"
-              style={{ width: "10rem", height: "auto" }}
+              style={{ width: "14rem", height: "auto" }}
               priority
             />
             <h1 className="text-4xl font-semibold leading-tight">
@@ -84,11 +84,10 @@ export default function SignInPage() {
                     setMode("login");
                     setError(null);
                   }}
-                  className={`w-1/2 px-3 py-2 text-xs font-semibold ${
-                    mode === "login"
-                      ? "bg-[#2323eb] text-white"
-                      : "bg-white text-slate-600"
-                  }`}
+                  className={`w-1/2 px-3 py-2 text-xs font-semibold ${mode === "login"
+                    ? "bg-[#2323eb] text-white"
+                    : "bg-white text-slate-600"
+                    }`}
                 >
                   ログイン
                 </button>
@@ -98,11 +97,10 @@ export default function SignInPage() {
                     setMode("signup");
                     setError(null);
                   }}
-                  className={`w-1/2 px-3 py-2 text-xs font-semibold ${
-                    mode === "signup"
-                      ? "bg-[#2323eb] text-white"
-                      : "bg-white text-slate-600"
-                  }`}
+                  className={`w-1/2 px-3 py-2 text-xs font-semibold ${mode === "signup"
+                    ? "bg-[#2323eb] text-white"
+                    : "bg-white text-slate-600"
+                    }`}
                 >
                   新規登録
                 </button>
