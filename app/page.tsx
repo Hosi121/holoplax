@@ -25,7 +25,7 @@ export default async function Home() {
   const userId = session?.user?.id ?? null;
   const workspaceId = userId ? await resolveWorkspaceId(userId) : null;
 
-  const [sprint, tasks, velocityEntries] = workspaceId
+  const [sprint, tasks, velocityEntries, openDependencies] = workspaceId
     ? await Promise.all([
       prisma.sprint.findFirst({
         where: { workspaceId, status: "ACTIVE" },
@@ -40,8 +40,14 @@ export default async function Home() {
         orderBy: { createdAt: "desc" },
         take: 7,
       }),
+      prisma.taskDependency.count({
+        where: {
+          task: { workspaceId },
+          dependsOn: { status: { not: "DONE" } },
+        },
+      }),
     ])
-    : [null, [], []];
+    : [null, [], [], 0];
 
   const sprintTasks = sprint
     ? tasks.filter(
@@ -79,19 +85,32 @@ export default async function Home() {
       }, 0) /
       leadTimeSample.length /
       (1000 * 60 * 60 * 24)
-      : 0;
+      : null;
 
   const velocitySeries = velocityEntries.length
     ? velocityEntries.map((entry) => entry.points).reverse()
     : [];
 
   const hasBurndown = totalSprintPoints > 0;
-  const burndownSeries = hasBurndown
-    ? Array.from({ length: 7 }, (_, idx) => {
-      const delta = (totalSprintPoints - committedPoints) / 6;
-      return Math.max(0, Math.round(totalSprintPoints - delta * idx));
-    })
-    : [];
+  const burndownSeries = (() => {
+    if (!hasBurndown || !sprint?.startedAt) return [];
+    const days = 7;
+    const start = new Date(sprint.startedAt);
+    const dailyDone = Array.from({ length: days }, () => 0);
+    sprintDone.forEach((task) => {
+      const doneAt = task.updatedAt ? new Date(task.updatedAt) : null;
+      if (!doneAt) return;
+      const diff = Math.floor((doneAt.getTime() - start.getTime()) / MS_PER_DAY);
+      if (diff >= 0 && diff < days) {
+        dailyDone[diff] += task.points;
+      }
+    });
+    let remaining = totalSprintPoints;
+    return dailyDone.map((points) => {
+      remaining = Math.max(0, remaining - points);
+      return remaining;
+    });
+  })();
 
   const backlogTasks = tasks.filter((task) => task.status === "BACKLOG");
   const backlogSnapshot = [
@@ -119,21 +138,20 @@ export default async function Home() {
         return `スプリントに「${task.title}」を追加`;
       return `バックログ追加: ${task.title}`;
     })
-    : [
-      "スプリントを開始してタスクをコミットしましょう。",
-      "バックログに最初のタスクを追加してください。",
-      "AI分解のしきい値を設定しておくと便利です。",
-      "次のレビューの準備を進めましょう。",
-    ];
+    : [];
 
   const prevVelocity = velocitySeries.at(-2) ?? velocitySeries.at(-1) ?? 0;
-  const reviewDate = sprint?.startedAt
-    ? new Date(sprint.startedAt)
-    : new Date();
-  reviewDate.setDate(reviewDate.getDate() + 7);
-  const reviewLabel = `${reviewDate.toLocaleDateString("ja-JP", {
-    weekday: "short",
-  })} 18:00`;
+  const reviewDate = sprint?.startedAt ? new Date(sprint.startedAt) : null;
+  if (reviewDate) {
+    reviewDate.setDate(reviewDate.getDate() + 7);
+  }
+  const reviewLabel = reviewDate
+    ? `${reviewDate.toLocaleDateString("ja-JP", { weekday: "short" })} 18:00`
+    : "未設定";
+  const reviewEta =
+    reviewDate && reviewDate.getTime() > now.getTime()
+      ? `${Math.round((reviewDate.getTime() - now.getTime()) / (1000 * 60 * 60))}h`
+      : null;
 
   const now = new Date();
   const focusCandidates = tasks.filter((task) => task.status !== "DONE");
@@ -155,7 +173,13 @@ export default async function Home() {
     .sort((a, b) => b.priority - a.priority)
     .slice(0, 3);
 
-  const kpis = [
+  const kpis: {
+    label: string;
+    value: string;
+    delta: string | null;
+    icon: typeof ListTodo;
+    arrowDir: "positive" | "negative";
+  }[] = [
     {
       label: "今週のコミット",
       value: `${committedPoints} pt`,
@@ -168,21 +192,21 @@ export default async function Home() {
     {
       label: "完了率",
       value: formatPercent(completionRate),
-      delta: `${completionRate - 60 >= 0 ? "+" : ""}${Math.round(completionRate - 60)}%`,
+      delta: null,
       icon: CheckCircle2,
-      arrowDir: completionRate - 60 >= 0 ? "positive" : "negative",
+      arrowDir: "positive",
     },
     {
       label: "平均リードタイム",
-      value: formatDays(leadTimeDays || 2.4),
-      delta: `${(leadTimeDays || 2.4) - 2 > 0 ? "+" : ""}${((leadTimeDays || 2.4) - 2).toFixed(1)}`,
+      value: leadTimeDays !== null ? formatDays(leadTimeDays) : "—",
+      delta: null,
       icon: Timer,
-      arrowDir: (leadTimeDays || 2.4) - 2 >= 0 ? "positive" : "negative",
+      arrowDir: "positive",
     },
     {
       label: "次のレビュー",
       value: reviewLabel,
-      delta: "48h",
+      delta: reviewEta,
       icon: CalendarDays,
       arrowDir: "positive",
     },
@@ -234,19 +258,21 @@ export default async function Home() {
               <p className="text-2xl font-semibold text-slate-900">
                 {kpi.value}
               </p>
-              <span
-                className={`flex items-center gap-1 text-xs ${kpi.arrowDir === "negative"
-                  ? "text-rose-600"
-                  : "text-emerald-600"
-                  }`}
-              >
-                {kpi.delta.startsWith("-") ? (
-                  <ArrowDownRight size={12} />
-                ) : (
-                  <ArrowUpRight size={12} />
-                )}
-                {kpi.delta}
-              </span>
+              {kpi.delta ? (
+                <span
+                  className={`flex items-center gap-1 text-xs ${kpi.arrowDir === "negative"
+                    ? "text-rose-600"
+                    : "text-emerald-600"
+                    }`}
+                >
+                  {kpi.delta.startsWith("-") ? (
+                    <ArrowDownRight size={12} />
+                  ) : (
+                    <ArrowUpRight size={12} />
+                  )}
+                  {kpi.delta}
+                </span>
+              ) : null}
             </div>
           </div>
         ))}
@@ -446,7 +472,7 @@ export default async function Home() {
                 バーンダウンはまだありません。
               </p>
               <p className="mt-1">
-                スプリントを開始し、タスクをコミットするとここに表示されます。
+                スプリントを開始し、タスクの進行が蓄積されると表示されます。
               </p>
               <div className="mt-3 flex gap-2 text-xs">
                 <Link
@@ -495,6 +521,33 @@ export default async function Home() {
               </div>
             ))}
           </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p className="text-xs text-slate-500">キャパ使用率</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {sprint?.capacityPoints
+                  ? `${Math.min(
+                      999,
+                      Math.round((totalSprintPoints / sprint.capacityPoints) * 100),
+                    )}%`
+                  : "—"}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                {sprint?.capacityPoints
+                  ? `${Math.max(0, sprint.capacityPoints - totalSprintPoints)} pt 余裕`
+                  : "アクティブなスプリントが必要"}
+              </p>
+            </div>
+            <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <p className="text-xs text-slate-500">未解決依存数</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {openDependencies}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                依存が残るタスク数の目安
+              </p>
+            </div>
+          </div>
           <p className="mt-3 text-xs text-slate-500">
             直近は高スコアが増加。分解提案の優先度を上げると回転が速くなります。
           </p>
@@ -507,17 +560,36 @@ export default async function Home() {
             </h2>
             <span className="text-xs text-slate-500">直近24時間</span>
           </div>
-          <div className="mt-4 space-y-3 text-sm text-slate-700">
-            {recentActivity.map((item, idx) => (
-              <div
-                key={`${item}-${idx}`}
-                className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3"
-              >
-                <span className="mt-1 h-2 w-2 rounded-full bg-[#2323eb]" />
-                <p>{item}</p>
+          {recentActivity.length ? (
+            <div className="mt-4 space-y-3 text-sm text-slate-700">
+              {recentActivity.map((item, idx) => (
+                <div
+                  key={`${item}-${idx}`}
+                  className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <span className="mt-1 h-2 w-2 rounded-full bg-[#2323eb]" />
+                  <p>{item}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+              <p className="font-semibold text-slate-800">
+                アクティビティはまだありません。
+              </p>
+              <p className="mt-1">
+                タスクを追加すると履歴が表示されます。
+              </p>
+              <div className="mt-3 flex gap-2 text-xs">
+                <Link
+                  href="/backlog"
+                  className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                >
+                  タスクを追加
+                </Link>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       </section>
 

@@ -236,6 +236,9 @@ export default function BacklogPage() {
           dependencyIds: [],
         });
         setModalOpen(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        window.alert(data?.error ?? "タスクの追加に失敗しました。");
       }
     } finally {
       setAddLoading(false);
@@ -252,6 +255,8 @@ export default function BacklogPage() {
       body: JSON.stringify({ status: TASK_STATUS.SPRINT }),
     });
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      window.alert(data?.error ?? "スプリントへの移動に失敗しました。");
       void fetchTasks();
       return;
     }

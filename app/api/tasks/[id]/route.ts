@@ -53,10 +53,10 @@ export async function PATCH(
     if (!workspaceId) {
       return notFound("workspace not selected");
     }
-    const previousStatus = statusValue
+    const currentTask = statusValue
       ? await prisma.task.findFirst({
           where: { id, workspaceId },
-          select: { status: true },
+          select: { status: true, points: true },
         })
       : null;
     if (statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE) {
@@ -99,8 +99,21 @@ export async function PATCH(
       const activeSprint = await prisma.sprint.findFirst({
         where: { workspaceId, status: "ACTIVE" },
         orderBy: { startedAt: "desc" },
-        select: { id: true },
+        select: { id: true, capacityPoints: true },
       });
+      if (!activeSprint) {
+        return badRequest("active sprint not found");
+      }
+      const current = await prisma.task.aggregate({
+        where: { workspaceId, status: TASK_STATUS.SPRINT, id: { not: id } },
+        _sum: { points: true },
+      });
+      const currentPoints = currentTask?.points ?? 0;
+      const nextPoints =
+        (current._sum.points ?? 0) + (typeof data.points === "number" ? data.points : currentPoints);
+      if (nextPoints > activeSprint.capacityPoints) {
+        return badRequest("sprint capacity exceeded");
+      }
       data.sprintId = activeSprint?.id ?? null;
     }
     if (statusValue === TASK_STATUS.BACKLOG) {
@@ -141,11 +154,11 @@ export async function PATCH(
       targetWorkspaceId: workspaceId,
       metadata: { taskId: id },
     });
-    if (task && statusValue && previousStatus?.status !== statusValue) {
+    if (task && statusValue && currentTask?.status !== statusValue) {
       await prisma.taskStatusEvent.create({
         data: {
           taskId: task.id,
-          fromStatus: previousStatus?.status ?? null,
+          fromStatus: currentTask?.status ?? null,
           toStatus: statusValue,
           actorId: userId,
           source: "api",

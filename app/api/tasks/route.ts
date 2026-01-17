@@ -112,9 +112,19 @@ export async function POST(request: Request) {
         ? await prisma.sprint.findFirst({
             where: { workspaceId, status: "ACTIVE" },
             orderBy: { startedAt: "desc" },
-            select: { id: true },
+            select: { id: true, capacityPoints: true },
           })
         : null;
+    if (statusValue === TASK_STATUS.SPRINT && activeSprint) {
+      const current = await prisma.task.aggregate({
+        where: { workspaceId, status: TASK_STATUS.SPRINT },
+        _sum: { points: true },
+      });
+      const nextTotal = (current._sum.points ?? 0) + Number(points);
+      if (nextTotal > activeSprint.capacityPoints) {
+        return badRequest("sprint capacity exceeded");
+      }
+    }
     const task = await prisma.task.create({
       data: {
         title,
