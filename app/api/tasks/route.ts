@@ -145,6 +145,16 @@ export async function POST(request: Request) {
         skipDuplicates: true,
       });
     }
+    await prisma.taskStatusEvent.create({
+      data: {
+        taskId: task.id,
+        fromStatus: null,
+        toStatus: task.status,
+        actorId: userId,
+        source: "api",
+        workspaceId,
+      },
+    });
     await logAudit({
       actorId: userId,
       action: "TASK_CREATE",

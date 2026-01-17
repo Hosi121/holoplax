@@ -53,6 +53,12 @@ export async function PATCH(
     if (!workspaceId) {
       return notFound("workspace not selected");
     }
+    const previousStatus = statusValue
+      ? await prisma.task.findFirst({
+          where: { id, workspaceId },
+          select: { status: true },
+        })
+      : null;
     if (statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE) {
       const blocking = await prisma.taskDependency.findMany({
         where: {
@@ -135,6 +141,18 @@ export async function PATCH(
       targetWorkspaceId: workspaceId,
       metadata: { taskId: id },
     });
+    if (task && statusValue && previousStatus?.status !== statusValue) {
+      await prisma.taskStatusEvent.create({
+        data: {
+          taskId: task.id,
+          fromStatus: previousStatus?.status ?? null,
+          toStatus: statusValue,
+          actorId: userId,
+          source: "api",
+          workspaceId,
+        },
+      });
+    }
     if (task) {
       await applyAutomationForTask({
         userId,
