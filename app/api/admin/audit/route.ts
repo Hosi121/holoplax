@@ -42,6 +42,7 @@ export async function GET(request: Request) {
             ? (log.metadata as Record<string, unknown>)
             : null;
         const model = typeof meta?.model === "string" ? meta.model : null;
+        const provider = typeof meta?.provider === "string" ? meta.provider : null;
         const promptTokens = toNumber(meta?.promptTokens) ?? 0;
         const completionTokens = toNumber(meta?.completionTokens) ?? 0;
         const totalTokens = toNumber(meta?.totalTokens) ?? 0;
@@ -51,6 +52,16 @@ export async function GET(request: Request) {
         acc.promptTokens += promptTokens;
         acc.completionTokens += completionTokens;
         acc.totalTokens += totalTokens;
+
+        if (provider) {
+          const bucket = acc.byProvider[provider] ?? {
+            totalCostUsd: 0,
+            totalTokens: 0,
+          };
+          bucket.totalCostUsd += costUsd;
+          bucket.totalTokens += totalTokens;
+          acc.byProvider[provider] = bucket;
+        }
 
         if (model) {
           const bucket = acc.byModel[model] ?? {
@@ -69,6 +80,7 @@ export async function GET(request: Request) {
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
+        byProvider: {} as Record<string, { totalCostUsd: number; totalTokens: number }>,
         byModel: {} as Record<string, { totalCostUsd: number; totalTokens: number }>,
       },
     );

@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       description,
       points,
     });
-    const usageMeta = buildAiUsageMetadata(result.model, result.usage);
+    const usageMeta = buildAiUsageMetadata(result.provider, result.model, result.usage);
     if (usageMeta) {
       await logAudit({
         actorId: userId,

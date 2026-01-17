@@ -17,6 +17,7 @@ type AiStats = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  byProvider: Record<string, { totalCostUsd: number; totalTokens: number }>;
   byModel: Record<string, { totalCostUsd: number; totalTokens: number }>;
 };
 
@@ -129,6 +130,21 @@ export default function AdminAuditPage() {
               </p>
             </div>
           </div>
+          {Object.keys(stats.byProvider).length ? (
+            <div className="mt-4 grid gap-2 text-xs text-slate-600">
+              {Object.entries(stats.byProvider).map(([provider, data]) => (
+                <div
+                  key={provider}
+                  className="flex items-center justify-between border border-slate-200 bg-white px-3 py-2"
+                >
+                  <span className="font-semibold text-slate-800">{provider}</span>
+                  <span>
+                    {formatUsd(data.totalCostUsd)} / {data.totalTokens.toLocaleString()} tok
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
           {Object.keys(stats.byModel).length ? (
             <div className="mt-4 grid gap-2 text-xs text-slate-600">
               {Object.entries(stats.byModel).map(([model, data]) => (
@@ -166,6 +182,8 @@ export default function AdminAuditPage() {
                   ? (log.metadata as Record<string, unknown>)
                   : null;
               const model = typeof meta?.model === "string" ? meta.model : null;
+              const provider =
+                typeof meta?.provider === "string" ? meta.provider : null;
               const promptTokens =
                 typeof meta?.promptTokens === "number" ? meta.promptTokens : null;
               const completionTokens =
@@ -186,6 +204,7 @@ export default function AdminAuditPage() {
                     </span>
                     {model ? (
                       <span className="text-[11px] text-slate-500">
+                        {provider ? `${provider} · ` : ""}
                         {model}
                         {typeof totalTokens === "number"
                           ? ` · ${totalTokens.toLocaleString()} tok`

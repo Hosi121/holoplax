@@ -106,6 +106,7 @@ export async function POST(request: Request) {
       fallbackResult.suggestions,
     );
     const usageMeta = buildAiUsageMetadata(
+      fallbackResult.provider,
       fallbackResult.model,
       fallbackResult.usage,
     );

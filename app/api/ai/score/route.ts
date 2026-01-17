@@ -7,6 +7,7 @@ import {
 } from "../../../../lib/api-response";
 import { buildAiUsageMetadata } from "../../../../lib/ai-usage";
 import { logAudit } from "../../../../lib/audit";
+import { requestAiChat } from "../../../../lib/ai-provider";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
@@ -52,58 +53,40 @@ export async function POST(request: Request) {
       }
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
     let payload = fallbackEstimate(title, description);
 
-    if (apiKey) {
-      try {
-        const model = "gpt-4o-mini";
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: "system",
-                content:
-                  "あなたはアジャイルなタスク見積もりアシスタントです。JSONのみで返してください。",
-              },
-              {
-                role: "user",
-                content: `以下を見積もり、JSONで返してください: { "points": number(1-13), "urgency": "低|中|高", "risk": "低|中|高", "score": number(0-100), "reason": string }。\nタイトル: ${title}\n説明: ${description}`,
-              },
-            ],
-            max_tokens: 120,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const usageMeta = buildAiUsageMetadata(model, data.usage);
-          if (usageMeta) {
-            await logAudit({
-              actorId: userId,
-              action: "AI_SCORE",
-              targetWorkspaceId: workspaceId,
-              metadata: {
-                ...usageMeta,
-                taskId,
-                source: "ai-score",
-              },
-            });
-          }
-          const content = data.choices?.[0]?.message?.content;
-          if (content) {
-            const parsed = JSON.parse(extractJson(content));
-            if (parsed?.points) payload = parsed;
-          }
+    try {
+      const result = await requestAiChat({
+        system:
+          "あなたはアジャイルなタスク見積もりアシスタントです。JSONのみで返してください。",
+        user: `以下を見積もり、JSONで返してください: { "points": number(1-13), "urgency": "低|中|高", "risk": "低|中|高", "score": number(0-100), "reason": string }。\nタイトル: ${title}\n説明: ${description}`,
+        maxTokens: 120,
+      });
+      if (result?.usage) {
+        const usageMeta = buildAiUsageMetadata(
+          result.provider,
+          result.model,
+          result.usage,
+        );
+        if (usageMeta) {
+          await logAudit({
+            actorId: userId,
+            action: "AI_SCORE",
+            targetWorkspaceId: workspaceId,
+            metadata: {
+              ...usageMeta,
+              taskId,
+              source: "ai-score",
+            },
+          });
         }
-      } catch {
-        // fall back to heuristic
       }
+      if (result?.content) {
+        const parsed = JSON.parse(extractJson(result.content));
+        if (parsed?.points) payload = parsed;
+      }
+    } catch {
+      // fall back to heuristic
     }
 
     await prisma.aiSuggestion.create({

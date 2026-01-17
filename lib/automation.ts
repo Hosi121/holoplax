@@ -1,5 +1,6 @@
 import prisma from "./prisma";
 import { generateSplitSuggestions } from "./ai-suggestions";
+import { requestAiChat } from "./ai-provider";
 import { buildAiUsageMetadata } from "./ai-usage";
 import { logAudit } from "./audit";
 import { TASK_STATUS, TASK_TYPE } from "./types";
@@ -34,38 +35,19 @@ const llmDelegationDecision = async (task: {
   title: string;
   description: string;
 }) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
   try {
-    const model = "gpt-4o-mini";
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "あなたはタスクのAI委任判定アシスタントです。個人の学習/暗記/練習など本人がやるべき作業は委任不可。JSONのみで返してください。",
-          },
-          {
-            role: "user",
-            content: `次のタスクをAI委任キューに入れるべきか判定し、JSONで返してください: { "delegatable": boolean, "reason": string }。\nタイトル: ${task.title}\n説明: ${task.description}`,
-          },
-        ],
-        max_tokens: 80,
-      }),
+    const result = await requestAiChat({
+      system:
+        "あなたはタスクのAI委任判定アシスタントです。個人の学習/暗記/練習など本人がやるべき作業は委任不可。JSONのみで返してください。",
+      user: `次のタスクをAI委任キューに入れるべきか判定し、JSONで返してください: { "delegatable": boolean, "reason": string }。\nタイトル: ${task.title}\n説明: ${task.description}`,
+      maxTokens: 80,
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content;
-    const usageMeta = buildAiUsageMetadata(model, data.usage);
-    if (!content) return { usageMeta };
-    const parsed = JSON.parse(extractJson(content));
+    if (!result) return null;
+    const usageMeta = result.usage
+      ? buildAiUsageMetadata(result.provider, result.model, result.usage)
+      : null;
+    if (!result.content) return { usageMeta };
+    const parsed = JSON.parse(extractJson(result.content));
     if (typeof parsed?.delegatable === "boolean") {
       return { delegatable: parsed.delegatable, reason: parsed.reason, usageMeta };
     }
@@ -179,7 +161,11 @@ export async function applyAutomationForTask(params: {
     description: current.description,
     points: current.points,
   });
-  const usageMeta = buildAiUsageMetadata(splitResult.model, splitResult.usage);
+  const usageMeta = buildAiUsageMetadata(
+    splitResult.provider,
+    splitResult.model,
+    splitResult.usage,
+  );
   if (usageMeta) {
     await logAudit({
       actorId: userId,

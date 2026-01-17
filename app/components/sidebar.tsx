@@ -27,6 +27,7 @@ export const navItems = [
   { label: "設定", href: "/settings", icon: Settings },
   { label: "ユーザー管理", href: "/admin/users", icon: Users, adminOnly: true },
   { label: "監査ログ", href: "/admin/audit", icon: BarChart3, adminOnly: true },
+  { label: "AI設定", href: "/admin/ai", icon: Zap, adminOnly: true },
 ];
 
 

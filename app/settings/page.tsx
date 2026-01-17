@@ -4,7 +4,6 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspaceId } from "../components/use-workspace-id";
-import { AiSuggestionDTO } from "../../lib/types";
 
 export default function SettingsPage() {
   const { update } = useSession();
@@ -14,7 +13,6 @@ export default function SettingsPage() {
   const [high, setHigh] = useState(70);
   const [notifications, setNotifications] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [aiLogs, setAiLogs] = useState<AiSuggestionDTO[]>([]);
   const [account, setAccount] = useState({ name: "", email: "", image: "" });
   const [accountDirty, setAccountDirty] = useState(false);
 
@@ -33,17 +31,6 @@ export default function SettingsPage() {
     setDirty(false);
   }, [ready, workspaceId]);
 
-  const fetchAiLogs = useCallback(async () => {
-    if (!ready) return;
-    if (!workspaceId) {
-      setAiLogs([]);
-      return;
-    }
-    const res = await fetch("/api/ai/logs");
-    const data = await res.json();
-    setAiLogs(data.logs ?? []);
-  }, [ready, workspaceId]);
-
   const fetchAccount = useCallback(async () => {
     const res = await fetch("/api/account");
     if (!res.ok) return;
@@ -59,9 +46,8 @@ export default function SettingsPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchThresholds();
-    void fetchAiLogs();
     void fetchAccount();
-  }, [fetchThresholds, fetchAiLogs, fetchAccount]);
+  }, [fetchThresholds, fetchAccount]);
 
   const saveThresholds = async () => {
     await fetch("/api/automation", {
@@ -263,45 +249,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">AI 提案ログ</h3>
-            <button
-              onClick={fetchAiLogs}
-              className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-            >
-              更新
-            </button>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {aiLogs.length ? (
-              aiLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
-                >
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <span>{log.type}</span>
-                    <span>
-                      {log.createdAt
-                        ? new Date(log.createdAt).toLocaleString()
-                        : ""}
-                    </span>
-                  </div>
-                  <p className="mt-2 font-semibold text-slate-900">{log.inputTitle}</p>
-                  {log.inputDescription ? (
-                    <p className="text-xs text-slate-600">{log.inputDescription}</p>
-                  ) : null}
-                  <p className="mt-2 text-xs text-slate-600">
-                    {log.output.length > 120 ? `${log.output.slice(0, 120)}...` : log.output}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-slate-500">ログがまだありません。</div>
-            )}
-          </div>
-        </div>
       </section>
     </main>
   );
