@@ -58,24 +58,9 @@ export async function GET() {
         reason: item.reason,
       }));
 
-      await prisma.focusQueue.create({
-        data: {
-          workspaceId,
-          items: itemsPayload,
-        },
-      });
-
-      const history = await prisma.focusQueue.findMany({
-        where: { workspaceId },
-        orderBy: { computedAt: "desc" },
-        take: 3,
-        select: { computedAt: true, items: true },
-      });
-
       return ok({
         items: scored,
         computedAt: new Date().toISOString(),
-        history,
       });
     },
   );
