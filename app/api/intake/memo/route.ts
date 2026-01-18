@@ -1,23 +1,20 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 import { deriveIntakeTitle, findDuplicateTasks } from "../../../../lib/intake-helpers";
+import { IntakeMemoSchema } from "../../../../lib/contracts/intake";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
+
+const errors = createDomainErrors("INTAKE");
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
-    const text = String(body.text ?? "").trim();
-    const requestedWorkspaceId = body.workspaceId ? String(body.workspaceId) : null;
-    if (!text) {
-      return badRequest("text is required");
-    }
+    const body = await parseBody(request, IntakeMemoSchema, { code: "INTAKE_VALIDATION" });
+    const text = body.text;
+    const requestedWorkspaceId = body.workspaceId ?? null;
 
     let workspaceId = requestedWorkspaceId;
     if (workspaceId) {
@@ -26,7 +23,7 @@ export async function POST(request: Request) {
         select: { workspaceId: true },
       });
       if (!membership) {
-        return badRequest("invalid workspaceId");
+        return errors.badRequest("invalid workspaceId");
       }
     } else {
       // fallback for memo capture if caller wants current workspace
@@ -57,6 +54,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/intake/memo error", error);
-    return serverError("failed to create intake item");
+    return errorResponse(error, {
+      code: "INTAKE_INTERNAL",
+      message: "failed to create intake item",
+      status: 500,
+    });
   }
 }

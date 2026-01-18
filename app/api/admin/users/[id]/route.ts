@@ -1,14 +1,13 @@
 import { requireAuth } from "../../../../../lib/api-auth";
-import {
-  badRequest,
-  forbidden,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../../lib/api-response";
 import { logAudit } from "../../../../../lib/audit";
+import { AdminUserUpdateSchema } from "../../../../../lib/contracts/admin";
+import { createDomainErrors, errorResponse } from "../../../../../lib/http/errors";
+import { parseBody } from "../../../../../lib/http/validation";
 import prisma from "../../../../../lib/prisma";
 import { UserRole } from "@prisma/client";
+
+const errors = createDomainErrors("ADMIN");
 
 export async function PATCH(
   request: Request,
@@ -17,15 +16,17 @@ export async function PATCH(
   try {
     const { role, userId } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
     const { id } = await params;
-    const body = await request.json();
+    const body = await parseBody(request, AdminUserUpdateSchema, {
+      code: "ADMIN_VALIDATION",
+    });
     const nextRole = body.role ? String(body.role).toUpperCase() : null;
     const disabled = body.disabled;
 
     if (nextRole && !["ADMIN", "USER"].includes(nextRole)) {
-      return badRequest("invalid role");
+      return errors.badRequest("invalid role");
     }
 
     const updated = await prisma.user.update({
@@ -52,6 +53,10 @@ export async function PATCH(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("PATCH /api/admin/users/[id] error", error);
-    return serverError("failed to update user");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to update user",
+      status: 500,
+    });
   }
 }

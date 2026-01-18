@@ -1,12 +1,9 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  notFound,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { SprintStartSchema } from "../../../../lib/contracts/sprint";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
@@ -14,6 +11,7 @@ const defaultSprintName = () => {
   const today = new Date().toISOString().slice(0, 10);
   return `Sprint-${today}`;
 };
+const errors = createDomainErrors("SPRINT");
 
 export async function GET() {
   try {
@@ -40,7 +38,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/sprints/current error", error);
-    return serverError("failed to load sprint");
+    return errorResponse(error, {
+      code: "SPRINT_INTERNAL",
+      message: "failed to load sprint",
+      status: 500,
+    });
   }
 }
 
@@ -49,14 +51,17 @@ export async function POST(request: Request) {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json().catch(() => ({}));
+    const body = await parseBody(request, SprintStartSchema, {
+      code: "SPRINT_VALIDATION",
+      allowEmpty: true,
+    });
     const name = String(body.name ?? "").trim() || defaultSprintName();
     const capacityPoints = Number(body.capacityPoints ?? 24);
     const plannedEndAt = body.plannedEndAt ? new Date(body.plannedEndAt) : null;
     if (!Number.isFinite(capacityPoints) || capacityPoints <= 0) {
-      return badRequest("capacityPoints must be positive");
+      return errors.badRequest("capacityPoints must be positive");
     }
 
     const sprint = await prisma.$transaction(async (tx) => {
@@ -100,7 +105,11 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/sprints/current error", error);
-    return serverError("failed to start sprint");
+    return errorResponse(error, {
+      code: "SPRINT_INTERNAL",
+      message: "failed to start sprint",
+      status: 500,
+    });
   }
 }
 
@@ -109,7 +118,7 @@ export async function PATCH() {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
     const sprint = await prisma.sprint.findFirst({
       where: { workspaceId, status: "ACTIVE" },
@@ -117,7 +126,7 @@ export async function PATCH() {
       select: { id: true },
     });
     if (!sprint) {
-      return notFound("active sprint not found");
+      return errors.notFound("active sprint not found");
     }
     const closed = await prisma.$transaction(async (tx) => {
       const updated = await tx.sprint.update({
@@ -193,6 +202,10 @@ export async function PATCH() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("PATCH /api/sprints/current error", error);
-    return serverError("failed to end sprint");
+    return errorResponse(error, {
+      code: "SPRINT_INTERNAL",
+      message: "failed to end sprint",
+      status: 500,
+    });
   }
 }

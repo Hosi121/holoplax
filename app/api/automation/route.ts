@@ -1,14 +1,13 @@
 import { requireAuth } from "../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
+import { AutomationUpdateSchema } from "../../../lib/contracts/automation";
+import { createDomainErrors, errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
 const STAGE_STEP = 5;
+const errors = createDomainErrors("AUTOMATION");
 
 export async function GET() {
   try {
@@ -35,7 +34,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/automation error", error);
-    return serverError("failed to load automation");
+    return errorResponse(error, {
+      code: "AUTOMATION_INTERNAL",
+      message: "failed to load automation",
+      status: 500,
+    });
   }
 }
 
@@ -44,15 +47,16 @@ export async function POST(request: Request) {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json();
+    const body = await parseBody(request, AutomationUpdateSchema, {
+      code: "AUTOMATION_VALIDATION",
+    });
     const low = Number(body.low);
     const high = Number(body.high);
-    const stage =
-      body.stage !== undefined && body.stage !== null ? Number(body.stage) : undefined;
+    const stage = body.stage !== undefined ? Number(body.stage) : undefined;
     if (!Number.isFinite(low) || !Number.isFinite(high)) {
-      return badRequest("low/high are required");
+      return errors.badRequest("low/high are required");
     }
     const existing = await prisma.userAutomationSetting.findFirst({
       where: { userId, workspaceId },
@@ -84,6 +88,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/automation error", error);
-    return serverError("failed to update automation");
+    return errorResponse(error, {
+      code: "AUTOMATION_INTERNAL",
+      message: "failed to update automation",
+      status: 500,
+    });
   }
 }

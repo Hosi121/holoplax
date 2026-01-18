@@ -1,5 +1,6 @@
 import { requireAuth } from "../../../lib/api-auth";
-import { handleAuthError, ok, serverError } from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
+import { errorResponse } from "../../../lib/http/errors";
 import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
@@ -30,6 +31,10 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/intake error", error);
-    return serverError("failed to load intake items");
+    return errorResponse(error, {
+      code: "INTAKE_INTERNAL",
+      message: "failed to load intake items",
+      status: 500,
+    });
   }
 }

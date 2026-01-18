@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "../../../lib/api-auth";
-import { badRequest, handleAuthError, ok, serverError } from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
+import { OnboardingSchema } from "../../../lib/contracts/onboarding";
+import { errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 import { TASK_TYPE } from "../../../lib/types";
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
-    const workspaceName = String(body.workspaceName ?? "").trim();
-    const goalTitle = String(body.goalTitle ?? "").trim();
-    const goalDescription = String(body.goalDescription ?? "").trim();
-    const intent = String(body.intent ?? "").trim();
+    const body = await parseBody(request, OnboardingSchema, {
+      code: "ONBOARDING_VALIDATION",
+    });
+    const workspaceName = body.workspaceName;
+    const goalTitle = body.goalTitle;
+    const goalDescription = body.goalDescription ?? "";
+    const intent = body.intent ?? "";
     const points = Number(body.points ?? 3);
-    const routineTitle = String(body.routineTitle ?? "").trim();
-    const routineDescription = String(body.routineDescription ?? "").trim();
+    const routineTitle = body.routineTitle ?? "";
+    const routineDescription = body.routineDescription ?? "";
     const routineCadence =
       body.routineCadence === "DAILY" || body.routineCadence === "WEEKLY"
         ? body.routineCadence
@@ -23,10 +28,6 @@ export async function POST(request: Request) {
     const focusTasks: string[] = Array.isArray(body.focusTasks)
       ? body.focusTasks.map((task: string) => String(task).trim()).filter(Boolean)
       : [];
-
-    if (!workspaceName || !goalTitle) {
-      return badRequest("workspaceName and goalTitle are required");
-    }
 
     const existing = await prisma.user.findUnique({
       where: { id: userId },
@@ -143,6 +144,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/onboarding error", error);
-    return serverError("failed to complete onboarding");
+    return errorResponse(error, {
+      code: "ONBOARDING_INTERNAL",
+      message: "failed to complete onboarding",
+      status: 500,
+    });
   }
 }

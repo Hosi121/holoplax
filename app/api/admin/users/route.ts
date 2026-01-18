@@ -1,22 +1,20 @@
 import { hash } from "bcryptjs";
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  conflict,
-  forbidden,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { AdminUserCreateSchema } from "../../../../lib/contracts/admin";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { UserRole } from "@prisma/client";
+
+const errors = createDomainErrors("ADMIN");
 
 export async function GET() {
   try {
     const { role } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "desc" },
@@ -42,7 +40,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/admin/users error", error);
-    return serverError("failed to load users");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to load users",
+      status: 500,
+    });
   }
 }
 
@@ -50,28 +52,24 @@ export async function POST(request: Request) {
   try {
     const { role, userId } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
 
-    const body = await request.json();
-    const email = String(body.email ?? "").toLowerCase().trim();
-    const password = String(body.password ?? "");
+    const body = await parseBody(request, AdminUserCreateSchema, {
+      code: "ADMIN_VALIDATION",
+    });
+    const email = body.email;
+    const password = body.password;
     const name = String(body.name ?? "").trim();
     const nextRole = body.role ? String(body.role).toUpperCase() : "USER";
 
-    if (!email || !password) {
-      return badRequest("email and password are required");
-    }
-    if (password.length < 8) {
-      return badRequest("password must be at least 8 characters");
-    }
     if (!["ADMIN", "USER"].includes(nextRole)) {
-      return badRequest("invalid role");
+      return errors.badRequest("invalid role");
     }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return conflict("email already registered");
+      return errors.conflict("email already registered");
     }
 
     const hashed = await hash(password, 10);
@@ -98,6 +96,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/admin/users error", error);
-    return serverError("failed to create user");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to create user",
+      status: 500,
+    });
   }
 }

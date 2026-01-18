@@ -1,11 +1,9 @@
 import { requireAuth } from "../../../../../../lib/api-auth";
-import {
-  forbidden,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../../../lib/api-response";
+import { createDomainErrors, errorResponse } from "../../../../../../lib/http/errors";
 import prisma from "../../../../../../lib/prisma";
+
+const errors = createDomainErrors("ADMIN");
 
 export async function GET(
   _request: Request,
@@ -14,7 +12,7 @@ export async function GET(
   try {
     const { role } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
     const { id } = await params;
     const tasks = await prisma.task.findMany({
@@ -44,6 +42,10 @@ export async function GET(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/admin/users/[id]/tasks error", error);
-    return serverError("failed to load tasks");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to load tasks",
+      status: 500,
+    });
   }
 }

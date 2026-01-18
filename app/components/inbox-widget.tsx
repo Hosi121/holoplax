@@ -92,7 +92,7 @@ export function InboxWidget() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error ?? "インボックス登録に失敗しました。");
+        setError(data?.error?.message ?? "インボックス登録に失敗しました。");
         return;
       }
       const data = await res.json();

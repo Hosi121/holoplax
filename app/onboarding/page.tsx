@@ -76,7 +76,7 @@ export default function OnboardingPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error ?? "オンボーディングに失敗しました。");
+        setError(data?.error?.message ?? "オンボーディングに失敗しました。");
         return;
       }
       const completedAt = new Date().toISOString();

@@ -316,7 +316,7 @@ export default function BacklogPage() {
         setModalOpen(false);
       } else {
         const data = await res.json().catch(() => ({}));
-        window.alert(data?.error ?? "タスクの追加に失敗しました。");
+        window.alert(data?.error?.message ?? "タスクの追加に失敗しました。");
       }
     } finally {
       setAddLoading(false);
@@ -334,7 +334,7 @@ export default function BacklogPage() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      window.alert(data?.error ?? "スプリントへの移動に失敗しました。");
+      window.alert(data?.error?.message ?? "スプリントへの移動に失敗しました。");
       void fetchTasks();
       return;
     }

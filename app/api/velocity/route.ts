@@ -1,13 +1,13 @@
 import { requireAuth } from "../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
+import { VelocityCreateSchema } from "../../../lib/contracts/velocity";
+import { createDomainErrors, errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
+
+const errors = createDomainErrors("VELOCITY");
 
 export async function GET() {
   try {
@@ -70,7 +70,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/velocity error", error);
-    return serverError("failed to load velocity");
+    return errorResponse(error, {
+      code: "VELOCITY_INTERNAL",
+      message: "failed to load velocity",
+      status: 500,
+    });
   }
 }
 
@@ -79,13 +83,12 @@ export async function POST(request: Request) {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json();
+    const body = await parseBody(request, VelocityCreateSchema, {
+      code: "VELOCITY_VALIDATION",
+    });
     const { name, points, range } = body;
-    if (!name || !points || !range) {
-      return badRequest("name, points, range are required");
-    }
     const entry = await prisma.velocityEntry.create({
       data: {
         name,
@@ -106,6 +109,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/velocity error", error);
-    return serverError("failed to create entry");
+    return errorResponse(error, {
+      code: "VELOCITY_INTERNAL",
+      message: "failed to create entry",
+      status: 500,
+    });
   }
 }

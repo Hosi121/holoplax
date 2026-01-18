@@ -1,12 +1,12 @@
 import { requireAuth } from "../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
+import { MemoryClaimCreateSchema, MemoryClaimDeleteSchema } from "../../../lib/contracts/memory";
+import { createDomainErrors, errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
+
+const errors = createDomainErrors("MEMORY");
 
 const defaultMemoryTypes = [
   {
@@ -174,7 +174,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/memory error", error);
-    return serverError("failed to load memory");
+    return errorResponse(error, {
+      code: "MEMORY_INTERNAL",
+      message: "failed to load memory",
+      status: 500,
+    });
   }
 }
 
@@ -182,28 +186,26 @@ export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
-    const body = await request.json();
-    const typeId = String(body.typeId ?? "");
+    const body = await parseBody(request, MemoryClaimCreateSchema, {
+      code: "MEMORY_VALIDATION",
+    });
+    const typeId = body.typeId;
     const rawValue = body.value;
-
-    if (!typeId) {
-      return badRequest("typeId is required");
-    }
 
     const type = await prisma.memoryType.findFirst({
       where: { id: typeId },
     });
     if (!type) {
-      return badRequest("invalid typeId");
+      return errors.badRequest("invalid typeId");
     }
 
     if (type.scope === "WORKSPACE" && !workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
 
     const parsed = parseValue(rawValue, type.valueType);
     if (!parsed.ok) {
-      return badRequest(parsed.reason);
+      return errors.badRequest(parsed.reason);
     }
 
     const now = new Date();
@@ -234,7 +236,11 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/memory error", error);
-    return serverError("failed to save memory");
+    return errorResponse(error, {
+      code: "MEMORY_INTERNAL",
+      message: "failed to save memory",
+      status: 500,
+    });
   }
 }
 
@@ -242,23 +248,22 @@ export async function DELETE(request: Request) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
-    const body = await request.json();
-    const claimId = String(body.claimId ?? "");
-    if (!claimId) {
-      return badRequest("claimId is required");
-    }
+    const body = await parseBody(request, MemoryClaimDeleteSchema, {
+      code: "MEMORY_VALIDATION",
+    });
+    const claimId = body.claimId;
 
     const claim = await prisma.memoryClaim.findFirst({
       where: { id: claimId },
     });
     if (!claim) {
-      return badRequest("invalid claimId");
+      return errors.badRequest("invalid claimId");
     }
 
     const isOwner = claim.userId === userId;
     const isWorkspaceMember = workspaceId && claim.workspaceId === workspaceId;
     if (!isOwner && !isWorkspaceMember) {
-      return badRequest("not allowed");
+      return errors.badRequest("not allowed");
     }
 
     const updated = await prisma.memoryClaim.update({
@@ -271,6 +276,10 @@ export async function DELETE(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("DELETE /api/memory error", error);
-    return serverError("failed to delete memory claim");
+    return errorResponse(error, {
+      code: "MEMORY_INTERNAL",
+      message: "failed to delete memory claim",
+      status: 500,
+    });
   }
 }

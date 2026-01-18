@@ -1,10 +1,8 @@
 import { requireAuth } from "../../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../../lib/api-response";
+import { MemoryQuestionActionSchema } from "../../../../../lib/contracts/memory";
+import { createDomainErrors, errorResponse } from "../../../../../lib/http/errors";
+import { parseBody } from "../../../../../lib/http/validation";
 import prisma from "../../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../../lib/workspace-context";
 
@@ -21,6 +19,7 @@ const pickClaimValue = (question: {
     valueJson: question.valueJson as object | null,
   };
 };
+const errors = createDomainErrors("MEMORY");
 
 export async function PATCH(
   request: Request,
@@ -30,10 +29,12 @@ export async function PATCH(
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     const questionId = params.id;
-    const body = await request.json();
-    const action = String(body.action ?? "");
-    if (!questionId || !action) {
-      return badRequest("id and action are required");
+    const body = await parseBody(request, MemoryQuestionActionSchema, {
+      code: "MEMORY_VALIDATION",
+    });
+    const action = body.action;
+    if (!questionId) {
+      return errors.badRequest("id is required");
     }
 
     const question = await prisma.memoryQuestion.findFirst({
@@ -41,13 +42,13 @@ export async function PATCH(
       include: { type: true },
     });
     if (!question) {
-      return badRequest("invalid question");
+      return errors.badRequest("invalid question");
     }
 
     const belongsToUser = question.userId === userId;
     const belongsToWorkspace = workspaceId && question.workspaceId === workspaceId;
     if (!belongsToUser && !belongsToWorkspace) {
-      return badRequest("not allowed");
+      return errors.badRequest("not allowed");
     }
 
     const now = new Date();
@@ -59,7 +60,7 @@ export async function PATCH(
     } else if (action === "hold") {
       nextStatus = "HOLD";
     } else {
-      return badRequest("invalid action");
+      return errors.badRequest("invalid action");
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -101,6 +102,10 @@ export async function PATCH(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("PATCH /api/memory/questions/[id] error", error);
-    return serverError("failed to update memory question");
+    return errorResponse(error, {
+      code: "MEMORY_INTERNAL",
+      message: "failed to update memory question",
+      status: 500,
+    });
   }
 }

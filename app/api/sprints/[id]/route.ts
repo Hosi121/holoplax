@@ -1,14 +1,13 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  notFound,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { SprintUpdateSchema } from "../../../../lib/contracts/sprint";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+
+const errors = createDomainErrors("SPRINT");
 
 export async function PATCH(
   request: Request,
@@ -18,20 +17,22 @@ export async function PATCH(
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
     const { id } = await params;
-    const body = await request.json();
+    const body = await parseBody(request, SprintUpdateSchema, {
+      code: "SPRINT_VALIDATION",
+    });
     const data: Record<string, unknown> = {};
     if (body.name !== undefined) {
       const name = String(body.name ?? "").trim();
-      if (!name) return badRequest("name is required");
+      if (!name) return errors.badRequest("name is required");
       data.name = name;
     }
     if (body.capacityPoints !== undefined) {
       const capacity = Number(body.capacityPoints);
       if (!Number.isFinite(capacity) || capacity <= 0) {
-        return badRequest("capacityPoints must be positive");
+        return errors.badRequest("capacityPoints must be positive");
       }
       data.capacityPoints = capacity;
     }
@@ -47,7 +48,7 @@ export async function PATCH(
       data,
     });
     if (!updated.count) {
-      return notFound("sprint not found");
+      return errors.notFound("sprint not found");
     }
     const sprint = await prisma.sprint.findFirst({ where: { id, workspaceId } });
     await logAudit({
@@ -61,6 +62,10 @@ export async function PATCH(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("PATCH /api/sprints/[id] error", error);
-    return serverError("failed to update sprint");
+    return errorResponse(error, {
+      code: "SPRINT_INTERNAL",
+      message: "failed to update sprint",
+      status: 500,
+    });
   }
 }

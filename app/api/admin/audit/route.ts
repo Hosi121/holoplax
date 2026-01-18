@@ -1,12 +1,7 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  forbidden,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import { calculateAiUsageCost, loadAiPricingTable } from "../../../../lib/ai-pricing";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
 import prisma from "../../../../lib/prisma";
 
 type UsageSummary = {
@@ -27,6 +22,7 @@ type UsageBucket = {
   unknownUsageCount: number;
   missingPricingCount: number;
 };
+const errors = createDomainErrors("ADMIN");
 
 const toNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -251,14 +247,14 @@ export async function GET(request: Request) {
   try {
     const { role } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
     const { searchParams } = new URL(request.url);
     const filter = searchParams.get("filter");
     const format = searchParams.get("format");
     const range = resolveRange(searchParams);
     if (!range) {
-      return badRequest("invalid range");
+      return errors.badRequest("invalid range");
     }
     const limit = Math.min(
       Math.max(Number(searchParams.get("limit") ?? 200), 1),
@@ -609,7 +605,7 @@ export async function GET(request: Request) {
     }
 
     if (format === "csv") {
-      return badRequest("csv export is only available for ai filter");
+      return errors.badRequest("csv export is only available for ai filter");
     }
 
     const logs = await prisma.auditLog.findMany({
@@ -633,6 +629,10 @@ export async function GET(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/admin/audit error", error);
-    return serverError("failed to load audit logs");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to load audit logs",
+      status: 500,
+    });
   }
 }

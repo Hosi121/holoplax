@@ -1,10 +1,8 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { AiScoreSchema } from "../../../../lib/contracts/ai";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import { requestAiChat } from "../../../../lib/ai-provider";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
@@ -26,28 +24,26 @@ const extractJson = (text: string) => {
   }
   return text;
 };
+const errors = createDomainErrors("AI");
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json();
-    const title = String(body.title ?? "").trim();
-    const description = String(body.description ?? "").trim();
+    const body = await parseBody(request, AiScoreSchema, { code: "AI_VALIDATION" });
+    const title = body.title;
+    const description = body.description ?? "";
     const taskId = body.taskId ?? null;
-    if (!title) {
-      return badRequest("title is required");
-    }
     if (taskId) {
       const task = await prisma.task.findFirst({
         where: { id: taskId, workspaceId },
         select: { id: true },
       });
       if (!task) {
-        return badRequest("invalid taskId");
+        return errors.badRequest("invalid taskId");
       }
     }
 
@@ -92,6 +88,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/ai/score error", error);
-    return serverError("failed to estimate score");
+    return errorResponse(error, {
+      code: "AI_INTERNAL",
+      message: "failed to estimate score",
+      status: 500,
+    });
   }
 }

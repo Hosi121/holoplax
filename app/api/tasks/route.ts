@@ -1,14 +1,15 @@
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../../lib/api-auth";
 import {
-  badRequest,
   handleAuthError,
   ok,
-  serverError,
 } from "../../../lib/api-response";
 import { applyAutomationForTask } from "../../../lib/automation";
 import { badPoints } from "../../../lib/points";
 import { logAudit } from "../../../lib/audit";
+import { TaskCreateSchema } from "../../../lib/contracts/task";
+import { createDomainErrors, errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
@@ -34,6 +35,7 @@ const nextRoutineAt = (cadence: "DAILY" | "WEEKLY", base: Date) => {
   }
   return next;
 };
+const errors = createDomainErrors("TASK");
 
 export async function GET() {
   try {
@@ -64,14 +66,20 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/tasks error", error);
-    return serverError("failed to load tasks");
+    return errorResponse(error, {
+      code: "TASK_INTERNAL",
+      message: "failed to load tasks",
+      status: 500,
+    });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
+    const body = await parseBody(request, TaskCreateSchema, {
+      code: "TASK_VALIDATION",
+    });
     const {
       title,
       description,
@@ -90,15 +98,12 @@ export async function POST(request: Request) {
       routineCadence,
       routineNextAt,
     } = body;
-    if (!title || points === undefined || points === null) {
-      return badRequest("title and points are required");
-    }
     if (badPoints(points)) {
-      return badRequest("points must be one of 1,2,3,5,8,13,21,34");
+      return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
     }
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
     let safeAssigneeId: string | null = assigneeId ?? null;
     if (safeAssigneeId) {
@@ -134,7 +139,7 @@ export async function POST(request: Request) {
       statusValue !== TASK_STATUS.BACKLOG &&
       allowedDependencies.some((dep) => dep.status !== TASK_STATUS.DONE)
     ) {
-      return badRequest("dependencies must be done before moving to sprint");
+      return errors.badRequest("dependencies must be done before moving to sprint");
     }
     const activeSprint =
       statusValue === TASK_STATUS.SPRINT
@@ -151,7 +156,7 @@ export async function POST(request: Request) {
       });
       const nextTotal = (current._sum.points ?? 0) + Number(points);
       if (nextTotal > activeSprint.capacityPoints) {
-        return badRequest("sprint capacity exceeded");
+        return errors.badRequest("sprint capacity exceeded");
       }
     }
     const task = await prisma.task.create({
@@ -231,6 +236,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/tasks error", error);
-    return serverError("failed to create task");
+    return errorResponse(error, {
+      code: "TASK_INTERNAL",
+      message: "failed to create task",
+      status: 500,
+    });
   }
 }

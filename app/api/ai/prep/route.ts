@@ -1,10 +1,8 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { AiPrepSchema } from "../../../../lib/contracts/ai";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import { requestAiChat } from "../../../../lib/ai-provider";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
@@ -41,6 +39,7 @@ const prepPrompts: Record<
 };
 
 const isValidPrepType = (value: string) => Object.keys(prepPrompts).includes(value);
+const errors = createDomainErrors("AI");
 
 export async function GET(request: Request) {
   try {
@@ -52,7 +51,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get("taskId");
     if (!taskId) {
-      return badRequest("taskId is required");
+      return errors.badRequest("taskId is required");
     }
     const outputs = await prisma.aiPrepOutput.findMany({
       where: { taskId, workspaceId },
@@ -70,7 +69,11 @@ export async function GET(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/ai/prep error", error);
-    return serverError("failed to load ai prep outputs");
+    return errorResponse(error, {
+      code: "AI_INTERNAL",
+      message: "failed to load ai prep outputs",
+      status: 500,
+    });
   }
 }
 
@@ -79,16 +82,13 @@ export async function POST(request: Request) {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json();
-    const taskId = String(body.taskId ?? "");
-    const type = String(body.type ?? "");
-    if (!taskId || !type) {
-      return badRequest("taskId and type are required");
-    }
+    const body = await parseBody(request, AiPrepSchema, { code: "AI_VALIDATION" });
+    const taskId = body.taskId;
+    const type = body.type;
     if (!isValidPrepType(type)) {
-      return badRequest("invalid type");
+      return errors.badRequest("invalid type");
     }
 
     const task = await prisma.task.findFirst({
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       select: { id: true, title: true, description: true },
     });
     if (!task) {
-      return badRequest("invalid taskId");
+      return errors.badRequest("invalid taskId");
     }
 
     const prompt = prepPrompts[type];
@@ -137,6 +137,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/ai/prep error", error);
-    return serverError("failed to generate ai prep output");
+    return errorResponse(error, {
+      code: "AI_INTERNAL",
+      message: "failed to generate ai prep output",
+      status: 500,
+    });
   }
 }

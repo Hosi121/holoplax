@@ -120,7 +120,7 @@ export default function SignInPage() {
                       });
                       if (!res.ok) {
                         const data = await res.json().catch(() => ({}));
-                        setError(data.error ?? "登録に失敗しました");
+                        setError(data?.error?.message ?? "登録に失敗しました");
                         setLoading(false);
                         return;
                       }

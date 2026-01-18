@@ -106,7 +106,7 @@ export default function AdminUsersPage() {
               });
               if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                setCreateError(data?.error ?? "作成に失敗しました。");
+                setCreateError(data?.error?.message ?? "作成に失敗しました。");
                 return;
               }
               setFormName("");

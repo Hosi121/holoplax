@@ -1,14 +1,13 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { MemoryQuestionCreateSchema } from "../../../../lib/contracts/memory";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const CONFIDENCE_THRESHOLD = 0.7;
+const errors = createDomainErrors("MEMORY");
 
 export async function GET() {
   try {
@@ -49,7 +48,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/memory/questions error", error);
-    return serverError("failed to load memory questions");
+    return errorResponse(error, {
+      code: "MEMORY_INTERNAL",
+      message: "failed to load memory questions",
+      status: 500,
+    });
   }
 }
 
@@ -57,24 +60,22 @@ export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
-    const body = await request.json();
-    const typeId = String(body.typeId ?? "");
+    const body = await parseBody(request, MemoryQuestionCreateSchema, {
+      code: "MEMORY_VALIDATION",
+    });
+    const typeId = body.typeId;
     const confidence = Number(body.confidence ?? CONFIDENCE_THRESHOLD);
     const valueStr = body.valueStr ?? null;
     const valueNum = body.valueNum ?? null;
     const valueBool = body.valueBool ?? null;
     const valueJson = body.valueJson ?? null;
 
-    if (!typeId) {
-      return badRequest("typeId is required");
-    }
-
     const type = await prisma.memoryType.findFirst({ where: { id: typeId } });
     if (!type) {
-      return badRequest("invalid typeId");
+      return errors.badRequest("invalid typeId");
     }
     if (type.scope === "WORKSPACE" && !workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
 
     const question = await prisma.memoryQuestion.create({
@@ -95,6 +96,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/memory/questions error", error);
-    return serverError("failed to create memory question");
+    return errorResponse(error, {
+      code: "MEMORY_INTERNAL",
+      message: "failed to create memory question",
+      status: 500,
+    });
   }
 }

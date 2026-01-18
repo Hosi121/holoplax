@@ -1,5 +1,6 @@
 import { requireAuth } from "../../../lib/api-auth";
-import { handleAuthError, ok, serverError } from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
+import { errorResponse } from "../../../lib/http/errors";
 import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
@@ -43,6 +44,10 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/sprints error", error);
-    return serverError("failed to load sprints");
+    return errorResponse(error, {
+      code: "SPRINT_INTERNAL",
+      message: "failed to load sprints",
+      status: 500,
+    });
   }
 }

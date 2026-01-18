@@ -1,11 +1,5 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  notFound,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import { generateSplitSuggestions } from "../../../../lib/ai-suggestions";
 import {
   PENDING_APPROVAL_TAG,
@@ -15,6 +9,9 @@ import {
   withTag,
   withoutTags,
 } from "../../../../lib/automation-constants";
+import { AutomationApprovalSchema } from "../../../../lib/contracts/automation";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
@@ -22,6 +19,7 @@ import { logAudit } from "../../../../lib/audit";
 
 const STAGE_COOLDOWN_DAYS = 7;
 const MAX_STAGE = 3;
+const errors = createDomainErrors("AUTOMATION");
 
 type SplitSuggestion = {
   title: string;
@@ -85,15 +83,15 @@ export async function POST(request: Request) {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
 
-    const body = await request.json().catch(() => ({}));
-    const taskId = String(body.taskId ?? "");
-    const action = String(body.action ?? "").toLowerCase();
-    if (!taskId || !["approve", "reject"].includes(action)) {
-      return badRequest("taskId and action (approve|reject) are required");
-    }
+    const body = await parseBody(request, AutomationApprovalSchema, {
+      code: "AUTOMATION_VALIDATION",
+      allowEmpty: true,
+    });
+    const taskId = body.taskId;
+    const action = body.action;
 
     const task = await prisma.task.findFirst({
       where: { id: taskId, workspaceId },
@@ -107,7 +105,7 @@ export async function POST(request: Request) {
         tags: true,
       },
     });
-    if (!task) return notFound("task not found");
+    if (!task) return errors.notFound("task not found");
 
     if (action === "reject") {
       const nextTags = withTag(
@@ -184,6 +182,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/automation/approval error", error);
-    return serverError("failed to process approval");
+    return errorResponse(error, {
+      code: "AUTOMATION_INTERNAL",
+      message: "failed to process approval",
+      status: 500,
+    });
   }
 }

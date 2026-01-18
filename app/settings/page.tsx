@@ -143,6 +143,8 @@ export default function SettingsPage() {
     if (!ready) return;
     setMemoryLoading(true);
     try {
+      const currentWorkspaceId = workspaceId;
+      void currentWorkspaceId;
       const res = await fetch("/api/memory");
       if (!res.ok) return;
       const data = await res.json();
@@ -180,7 +182,6 @@ export default function SettingsPage() {
   }, [ready]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchThresholds();
     void fetchAccount();
     void fetchMemory();

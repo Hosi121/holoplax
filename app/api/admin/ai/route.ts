@@ -1,15 +1,13 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  forbidden,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { AdminAiUpdateSchema } from "../../../../lib/contracts/admin";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
+const errors = createDomainErrors("ADMIN");
 
 const getEnvFallback = () => ({
   model:
@@ -33,7 +31,7 @@ export async function GET() {
   try {
     const { role } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
     const setting = await prisma.aiProviderSetting.findUnique({
       where: { id: 1 },
@@ -55,7 +53,11 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/admin/ai error", error);
-    return serverError("failed to load ai settings");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to load ai settings",
+      status: 500,
+    });
   }
 }
 
@@ -63,9 +65,12 @@ export async function POST(request: Request) {
   try {
     const { userId, role } = await requireAuth();
     if (role !== "ADMIN") {
-      return forbidden();
+      return errors.forbidden();
     }
-    const body = await request.json().catch(() => ({}));
+    const body = await parseBody(request, AdminAiUpdateSchema, {
+      code: "ADMIN_VALIDATION",
+      allowEmpty: true,
+    });
     const rawModel = String(body.model ?? "").trim();
     const model =
       rawModel ||
@@ -74,7 +79,7 @@ export async function POST(request: Request) {
       process.env.OPENAI_MODEL ||
       DEFAULT_MODEL;
     if (!model) {
-      return badRequest("model is required");
+      return errors.badRequest("model is required");
     }
     const baseUrl = String(body.baseUrl ?? "").trim() || null;
     const enabled = Boolean(body.enabled);
@@ -86,7 +91,7 @@ export async function POST(request: Request) {
     });
     const nextApiKey = apiKey || existing?.apiKey || "";
     if (!nextApiKey) {
-      return badRequest("apiKey is required");
+      return errors.badRequest("apiKey is required");
     }
 
     const setting = await prisma.aiProviderSetting.upsert({
@@ -122,6 +127,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/admin/ai error", error);
-    return serverError("failed to update ai settings");
+    return errorResponse(error, {
+      code: "ADMIN_INTERNAL",
+      message: "failed to update ai settings",
+      status: 500,
+    });
   }
 }

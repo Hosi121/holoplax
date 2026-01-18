@@ -1,10 +1,8 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { AiSuggestSchema } from "../../../../lib/contracts/ai";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 import { requestAiChat } from "../../../../lib/ai-provider";
@@ -14,6 +12,7 @@ const canned = [
   "外部依存を先に洗い出し、リスクを下げるタスクを先頭に置きましょう。",
   "完了条件を1文で定義し、レビュー手順を添えましょう。",
 ];
+const errors = createDomainErrors("AI");
 
 export async function GET(request: Request) {
   try {
@@ -25,7 +24,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get("taskId");
     if (!taskId) {
-      return badRequest("taskId is required");
+      return errors.badRequest("taskId is required");
     }
     const latest = await prisma.aiSuggestion.findFirst({
       where: { taskId, workspaceId, type: "TIP" },
@@ -37,7 +36,11 @@ export async function GET(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/ai/suggest error", error);
-    return serverError("failed to load suggestion");
+    return errorResponse(error, {
+      code: "AI_INTERNAL",
+      message: "failed to load suggestion",
+      status: 500,
+    });
   }
 }
 
@@ -46,12 +49,12 @@ export async function POST(request: Request) {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json();
-    const title: string = body.title ?? "タスク";
-    const description: string = body.description ?? "";
-    const taskId: string | null = body.taskId ?? null;
+    const body = await parseBody(request, AiSuggestSchema, { code: "AI_VALIDATION" });
+    const title = body.title ?? "タスク";
+    const description = body.description ?? "";
+    const taskId = body.taskId ?? null;
 
     if (taskId) {
       const task = await prisma.task.findFirst({
@@ -59,7 +62,7 @@ export async function POST(request: Request) {
         select: { id: true },
       });
       if (!task) {
-        return badRequest("invalid taskId");
+        return errors.badRequest("invalid taskId");
       }
     }
 
@@ -111,6 +114,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/ai/suggest error", error);
-    return serverError("failed to generate suggestion");
+    return errorResponse(error, {
+      code: "AI_INTERNAL",
+      message: "failed to generate suggestion",
+      status: 500,
+    });
   }
 }

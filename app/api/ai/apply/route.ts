@@ -1,42 +1,38 @@
 import { requireAuth } from "../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { AiApplySchema } from "../../../../lib/contracts/ai";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import { logAudit } from "../../../../lib/audit";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+
+const errors = createDomainErrors("AI");
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
-      return badRequest("workspace is required");
+      return errors.badRequest("workspace is required");
     }
-    const body = await request.json();
-    const taskId = String(body.taskId ?? "");
-    const type = String(body.type ?? "");
+    const body = await parseBody(request, AiApplySchema, { code: "AI_VALIDATION" });
+    const taskId = body.taskId;
+    const type = body.type;
     const suggestionId = body.suggestionId ? String(body.suggestionId) : null;
     const payload = body.payload ?? {};
-
-    if (!taskId || !type) {
-      return badRequest("taskId and type are required");
-    }
 
     const task = await prisma.task.findFirst({
       where: { id: taskId, workspaceId },
     });
     if (!task) {
-      return badRequest("invalid taskId");
+      return errors.badRequest("invalid taskId");
     }
 
     if (type === "TIP") {
       const text = String(payload.text ?? "").trim();
       if (!text) {
-        return badRequest("payload.text is required");
+        return errors.badRequest("payload.text is required");
       }
       const alreadyApplied = task.description?.includes(text);
       if (!alreadyApplied) {
@@ -51,7 +47,7 @@ export async function POST(request: Request) {
       const urgency = String(payload.urgency ?? "");
       const risk = String(payload.risk ?? "");
       if (!points || !urgency || !risk) {
-        return badRequest("payload.points/urgency/risk are required");
+        return errors.badRequest("payload.points/urgency/risk are required");
       }
       await prisma.task.update({
         where: { id: taskId },
@@ -60,7 +56,7 @@ export async function POST(request: Request) {
     } else if (type === "SPLIT") {
       // split itself is applied elsewhere; keep this endpoint for audit logging
     } else {
-      return badRequest("invalid type");
+      return errors.badRequest("invalid type");
     }
 
     await logAudit({
@@ -80,6 +76,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/ai/apply error", error);
-    return serverError("failed to apply suggestion");
+    return errorResponse(error, {
+      code: "AI_INTERNAL",
+      message: "failed to apply suggestion",
+      status: 500,
+    });
   }
 }
