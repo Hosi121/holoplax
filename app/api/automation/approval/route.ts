@@ -1,6 +1,7 @@
 import { withApiHandler } from "../../../../lib/api-handler";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { ok } from "../../../../lib/api-response";
+import type { SplitItem } from "../../../../lib/ai-suggestions";
 import { generateSplitSuggestions } from "../../../../lib/ai-suggestions";
 import {
   PENDING_APPROVAL_TAG,
@@ -10,6 +11,7 @@ import {
   withTag,
   withoutTags,
 } from "../../../../lib/automation-constants";
+import { sanitizeSplitSuggestion } from "../../../../lib/ai-normalization";
 import { AutomationApprovalSchema } from "../../../../lib/contracts/automation";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -21,24 +23,22 @@ const STAGE_COOLDOWN_DAYS = 7;
 const MAX_STAGE = 3;
 const errors = createDomainErrors("AUTOMATION");
 
-type SplitSuggestion = {
-  title: string;
-  points: number;
-  urgency?: string;
-  risk?: string;
-  detail?: string;
-};
-
-const parseSuggestions = (output: string | null, fallback: SplitSuggestion[]) => {
-  if (!output) return fallback;
+const parseSuggestions = (output: string | null, fallback: SplitItem[]) => {
+  if (!output) {
+    return fallback.map(sanitizeSplitSuggestion);
+  }
   try {
     const parsed = JSON.parse(output);
-    if (Array.isArray(parsed)) return parsed as SplitSuggestion[];
-    if (Array.isArray(parsed?.suggestions)) return parsed.suggestions as SplitSuggestion[];
+    if (Array.isArray(parsed)) {
+      return parsed.map(sanitizeSplitSuggestion);
+    }
+    if (Array.isArray(parsed?.suggestions)) {
+      return parsed.suggestions.map(sanitizeSplitSuggestion);
+    }
   } catch {
     // ignore
   }
-  return fallback;
+  return fallback.map(sanitizeSplitSuggestion);
 };
 
 const maybeRaiseStage = async (userId: string, workspaceId: string) => {

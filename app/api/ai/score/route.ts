@@ -6,6 +6,10 @@ import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { requestAiChat } from "../../../../lib/ai-provider";
 import prisma from "../../../../lib/prisma";
+import {
+  normalizePriorityLevel,
+  normalizeStoryPoint,
+} from "../../../../lib/ai-normalization";
 
 const fallbackEstimate = (title: string, description: string) => {
   const base = title.length + description.length;
@@ -79,19 +83,26 @@ export async function POST(request: Request) {
         // fall back to heuristic
       }
 
+      const normalizedPayload = {
+        ...payload,
+        points: normalizeStoryPoint(payload.points),
+        urgency: normalizePriorityLevel(payload.urgency),
+        risk: normalizePriorityLevel(payload.risk),
+      };
+
       const saved = await prisma.aiSuggestion.create({
         data: {
           type: "SCORE",
           taskId,
           inputTitle: title,
           inputDescription: description,
-          output: JSON.stringify(payload),
+          output: JSON.stringify(normalizedPayload),
           userId,
           workspaceId,
         },
       });
 
-      return ok({ ...payload, suggestionId: saved.id });
+      return ok({ ...normalizedPayload, suggestionId: saved.id });
     },
   );
 }

@@ -6,6 +6,10 @@ import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { logAudit } from "../../../../lib/audit";
 import prisma from "../../../../lib/prisma";
+import {
+  normalizePriorityLevel,
+  normalizeStoryPoint,
+} from "../../../../lib/ai-normalization";
 
 const errors = createDomainErrors("AI");
 
@@ -53,14 +57,21 @@ export async function POST(request: Request) {
         }
       } else if (type === "SCORE") {
         const points = Number(payload.points ?? 0);
-        const urgency = String(payload.urgency ?? "");
-        const risk = String(payload.risk ?? "");
+        const urgency = payload.urgency;
+        const risk = payload.risk;
         if (!points || !urgency || !risk) {
           return errors.badRequest("payload.points/urgency/risk are required");
         }
+        const normalizedPoints = normalizeStoryPoint(points);
+        const normalizedUrgency = normalizePriorityLevel(urgency);
+        const normalizedRisk = normalizePriorityLevel(risk);
         await prisma.task.update({
           where: { id: taskId },
-          data: { points, urgency, risk },
+          data: {
+            points: normalizedPoints,
+            urgency: normalizedUrgency,
+            risk: normalizedRisk,
+          },
         });
       } else if (type === "SPLIT") {
         // split itself is applied elsewhere; keep this endpoint for audit logging

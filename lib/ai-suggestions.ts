@@ -1,12 +1,7 @@
 import { requestAiChat } from "./ai-provider";
 import type { AiUsageContext } from "./ai-usage";
 import { storyPointOptions } from "./points";
-
-const getNearestStoryPoint = (val: number) => {
-  return storyPointOptions.reduce((prev: number, curr: number) =>
-    Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev
-  );
-};
+import { normalizeStoryPoint, sanitizeSplitSuggestion } from "./ai-normalization";
 
 export type SplitItem = {
   title: string;
@@ -23,8 +18,8 @@ const fallbackSplit = (title: string, description: string, points: number): Spli
     title: `${title} / 分割${idx + 1}`,
     points:
       idx === count - 1
-        ? getNearestStoryPoint(Math.max(1, points - basePoints * (count - 1)))
-        : getNearestStoryPoint(basePoints),
+        ? normalizeStoryPoint(Math.max(1, points - basePoints * (count - 1)))
+        : normalizeStoryPoint(basePoints),
     urgency: "中",
     risk: description.includes("外部") ? "高" : "中",
     detail: "小さく完了条件を定義し、依存を先に解消。",
@@ -80,8 +75,9 @@ export async function generateSplitSuggestions(params: {
     // fall back to heuristic
   }
 
+  const normalized = suggestions.map(sanitizeSplitSuggestion);
   return {
-    suggestions,
+    suggestions: normalized,
     usage,
     model,
     provider,
