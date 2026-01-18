@@ -13,13 +13,12 @@ import { authOptions } from "../lib/auth";
 import prisma from "../lib/prisma";
 import { resolveWorkspaceId } from "../lib/workspace-context";
 import { InboxWidget } from "./components/inbox-widget";
+import { FocusQueue } from "./components/focus-queue";
 
 const splitThreshold = 8;
 
 const formatPercent = (value: number) => `${Math.round(value)}%`;
 const formatDays = (value: number) => `${value.toFixed(1)} 日`;
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
 export default async function Home() {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id ?? null;
@@ -140,6 +139,7 @@ export default async function Home() {
     })
     : [];
 
+  const now = new Date();
   const prevVelocity = velocitySeries.at(-2) ?? velocitySeries.at(-1) ?? 0;
   const reviewDate = sprint?.startedAt ? new Date(sprint.startedAt) : null;
   if (reviewDate) {
@@ -152,26 +152,6 @@ export default async function Home() {
     reviewDate && reviewDate.getTime() > now.getTime()
       ? `${Math.round((reviewDate.getTime() - now.getTime()) / (1000 * 60 * 60))}h`
       : null;
-
-  const now = new Date();
-  const focusCandidates = tasks.filter((task) => task.status !== "DONE");
-  const focusItems = focusCandidates
-    .map((task) => {
-      const baseScore = task.points * 9;
-      const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-      const dueScore = (() => {
-        if (!dueDate) return 0;
-        const daysLeft = (dueDate.getTime() - now.getTime()) / MS_PER_DAY;
-        const clamped = Math.min(14, Math.max(0, daysLeft));
-        return Math.max(0, Math.min(100, 100 * (1 - clamped / 14)));
-      })();
-      const priority = baseScore * 0.7 + dueScore * 0.3;
-      const reason =
-        dueScore >= 50 ? "期限が近い" : "高スコア";
-      return { task, priority, reason, dueDate };
-    })
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 3);
 
   const kpis: {
     label: string;
@@ -278,63 +258,7 @@ export default async function Home() {
         ))}
       </section>
 
-      <section className="border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
-              Focus Queue
-            </p>
-            <h2 className="text-lg font-semibold text-slate-900">
-              いまやるべきこと 3件
-            </h2>
-          </div>
-          <Link
-            href="/backlog"
-            className="text-xs font-semibold text-slate-500 hover:text-[#2323eb]"
-          >
-            Planへ
-          </Link>
-        </div>
-        {focusItems.length ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {focusItems.map((item) => (
-              <div
-                key={item.task.id}
-                className="border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700"
-              >
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                  {item.reason}
-                </p>
-                <p className="mt-2 text-base font-semibold text-slate-900">
-                  {item.task.title}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">
-                  {item.dueDate
-                    ? `期限 ${item.dueDate.toLocaleDateString("ja-JP")}`
-                    : "期限なし"}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-            <p className="font-semibold text-slate-800">
-              まだ候補がありません。
-            </p>
-            <p className="mt-1">
-              バックログにタスクを追加するとここに表示されます。
-            </p>
-            <div className="mt-3 flex gap-2 text-xs">
-              <Link
-                href="/backlog"
-                className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-              >
-                タスクを追加
-              </Link>
-            </div>
-          </div>
-        )}
-      </section>
+      <FocusQueue />
 
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
