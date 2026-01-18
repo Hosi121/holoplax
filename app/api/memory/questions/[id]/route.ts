@@ -36,12 +36,12 @@ const errors = createDomainErrors("MEMORY");
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
-    const questionId = params.id;
+    const { id: questionId } = await params;
     const body = await parseBody(request, MemoryQuestionActionSchema, {
       code: "MEMORY_VALIDATION",
     });
