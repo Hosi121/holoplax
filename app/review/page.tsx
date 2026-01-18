@@ -167,44 +167,44 @@ export default async function ReviewPage() {
     icon: typeof ListTodo;
     arrowDir: "positive" | "negative";
   }[] = [
-    {
-      label: "今週のコミット",
-      value: `${committedPoints} pt`,
-      delta: `${committedPoints - (prevVelocity ?? 0) >= 0 ? "+" : ""}${committedPoints - (prevVelocity ?? 0)
-        }`,
-      icon: ListTodo,
-      arrowDir:
-        committedPoints - (prevVelocity ?? 0) >= 0 ? "positive" : "negative",
-    },
-    {
-      label: "完了率",
-      value: formatPercent(completionRate),
-      delta: null,
-      icon: CheckCircle2,
-      arrowDir: "positive",
-    },
-    {
-      label: "平均リードタイム",
-      value: leadTimeDays !== null ? formatDays(leadTimeDays) : "—",
-      delta: null,
-      icon: Timer,
-      arrowDir: "positive",
-    },
-    {
-      label: "次のレビュー",
-      value: reviewLabel,
-      delta: reviewEta,
-      icon: CalendarDays,
-      arrowDir: "positive",
-    },
-    {
-      label: "PBI消化",
-      value: `${sprintPbiDone.length}/${sprintPbis.length}`,
-      delta: `${Math.round(pbiCompletionRate)}%`,
-      icon: CheckCircle2,
-      arrowDir: "positive",
-    },
-  ];
+      {
+        label: "今週のコミット",
+        value: `${committedPoints} pt`,
+        delta: `${committedPoints - (prevVelocity ?? 0) >= 0 ? "+" : ""}${committedPoints - (prevVelocity ?? 0)
+          }`,
+        icon: ListTodo,
+        arrowDir:
+          committedPoints - (prevVelocity ?? 0) >= 0 ? "positive" : "negative",
+      },
+      {
+        label: "完了率",
+        value: formatPercent(completionRate),
+        delta: null,
+        icon: CheckCircle2,
+        arrowDir: "positive",
+      },
+      {
+        label: "平均リードタイム",
+        value: leadTimeDays !== null ? formatDays(leadTimeDays) : "—",
+        delta: null,
+        icon: Timer,
+        arrowDir: "positive",
+      },
+      {
+        label: "次のレビュー",
+        value: reviewLabel,
+        delta: reviewEta,
+        icon: CalendarDays,
+        arrowDir: "positive",
+      },
+      {
+        label: "PBI消化",
+        value: `${sprintPbiDone.length}/${sprintPbis.length}`,
+        delta: `${Math.round(pbiCompletionRate)}%`,
+        icon: CheckCircle2,
+        arrowDir: "positive",
+      },
+    ];
 
   const velocityMax = velocitySeries.length ? Math.max(...velocitySeries) : 0;
   const burndownMax = burndownSeries.length ? Math.max(...burndownSeries) : 0;
@@ -242,7 +242,7 @@ export default async function ReviewPage() {
         </div>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-4 lg:grid-cols-5">
         {kpis.map((kpi) => (
           <div
             key={kpi.label}
@@ -471,9 +471,9 @@ export default async function ReviewPage() {
               <p className="mt-2 text-2xl font-semibold text-slate-900">
                 {sprint?.capacityPoints
                   ? `${Math.min(
-                      999,
-                      Math.round((totalSprintPoints / sprint.capacityPoints) * 100),
-                    )}%`
+                    999,
+                    Math.round((totalSprintPoints / sprint.capacityPoints) * 100),
+                  )}%`
                   : "—"}
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
