@@ -9,9 +9,9 @@ import {
 } from "lucide-react";
 import { getServerSession } from "next-auth";
 import Link from "next/link";
-import { authOptions } from "../lib/auth";
-import prisma from "../lib/prisma";
-import { resolveWorkspaceId } from "../lib/workspace-context";
+import { authOptions } from "@/lib/auth";
+import prisma from "@/lib/prisma";
+import { resolveWorkspaceId } from "@/lib/workspace-context";
 import { InboxWidget } from "../components/inbox-widget";
 import { FocusQueue } from "../components/focus-queue";
 
