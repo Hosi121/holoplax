@@ -227,8 +227,49 @@ def compute_flow_state(lead_time_ms: float | None, wip: float, throughput: float
     return max(0, raw)
 
 
-def compute_ai_trust_state() -> float | None:
-    return None
+def compute_ai_trust_state(conn, workspace_id: str) -> float | None:
+    cutoff = now_utc() - timedelta(days=30)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM "AiSuggestion"
+            WHERE "workspaceId" = %s AND "createdAt" >= %s
+            """,
+            (workspace_id, cutoff),
+        )
+        suggestion_count = cur.fetchone()[0] or 0
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM "AiPrepOutput"
+            WHERE "workspaceId" = %s AND "createdAt" >= %s
+            """,
+            (workspace_id, cutoff),
+        )
+        prep_count = cur.fetchone()[0] or 0
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM "AuditLog"
+            WHERE "targetWorkspaceId" = %s
+              AND "createdAt" >= %s
+              AND "action" = 'AI_APPLY'
+            """,
+            (workspace_id, cutoff),
+        )
+        apply_count = cur.fetchone()[0] or 0
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM "AiPrepOutput"
+            WHERE "workspaceId" = %s AND "updatedAt" >= %s AND status = 'APPLIED'
+            """,
+            (workspace_id, cutoff),
+        )
+        prep_applied = cur.fetchone()[0] or 0
+
+    total_outputs = suggestion_count + prep_count
+    total_applies = apply_count + prep_applied
+    if total_outputs <= 0:
+        return None
+    return min(1.0, total_applies / total_outputs)
 
 
 def fetch_tasks(conn, where_clause: str, params: tuple):
@@ -344,7 +385,7 @@ def main():
                 type_ids[("ai_trust_state", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
-                compute_ai_trust_state(),
+                compute_ai_trust_state(conn, workspace_id),
             )
 
 
