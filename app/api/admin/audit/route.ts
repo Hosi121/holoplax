@@ -200,37 +200,6 @@ const getWeekStart = (date: Date) => {
 const getMonthStart = (date: Date) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
 
-const buildTrendBuckets = (
-  logs: Array<{ createdAt: Date; metadata: unknown }>,
-  pricingTable: Awaited<ReturnType<typeof loadAiPricingTable>>["table"],
-  interval: "week" | "month",
-) => {
-  const map = new Map<string, UsageBucket & { start: string; end: string; label: string }>();
-  for (const log of logs) {
-    const start =
-      interval === "week" ? getWeekStart(log.createdAt) : getMonthStart(log.createdAt);
-    const key =
-      interval === "week" ? toIsoDate(start) : start.toISOString().slice(0, 7);
-    let bucket = map.get(key);
-    if (!bucket) {
-      const end =
-        interval === "week"
-          ? endOfUtcDay(new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000))
-          : endOfUtcDay(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)));
-      bucket = {
-        ...createBucket(),
-        start: start.toISOString(),
-        end: end.toISOString(),
-        label: interval === "week" ? toIsoDate(start) : start.toISOString().slice(0, 7),
-      };
-      map.set(key, bucket);
-    }
-    const usage = normalizeUsage(log.metadata, pricingTable);
-    bumpBucket(bucket, usage);
-  }
-  return Array.from(map.values()).sort((a, b) => a.start.localeCompare(b.start));
-};
-
 const buildTrendBucketsFromUsage = (
   logs: Array<{
     createdAt: Date;
@@ -303,6 +272,19 @@ export async function GET(request: Request) {
       },
     };
     if (filter === "ai") {
+      const earliestUsage = await prisma.aiUsage.findFirst({
+        where: rangeWhere,
+        orderBy: { createdAt: "asc" },
+        select: { createdAt: true },
+      });
+      const legacyRangeWhere = earliestUsage
+        ? {
+            createdAt: {
+              gte: range.start,
+              lt: earliestUsage.createdAt,
+            },
+          }
+        : rangeWhere;
       if (format === "csv") {
         const usageLogs = await prisma.aiUsage.findMany({
           where: rangeWhere,
@@ -321,6 +303,20 @@ export async function GET(request: Request) {
             workspace: { select: { name: true } },
           },
         });
+        const legacyLogs = await prisma.auditLog.findMany({
+          where: {
+            action: { startsWith: "AI_" },
+            ...legacyRangeWhere,
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            action: true,
+            metadata: true,
+            createdAt: true,
+            actor: { select: { name: true, email: true } },
+            targetWorkspace: { select: { name: true } },
+          },
+        });
         const rows = [
           [
             "createdAt",
@@ -337,23 +333,50 @@ export async function GET(request: Request) {
             "workspaceName",
           ],
         ];
+        const csvRows: Array<{ createdAt: Date; row: string[] }> = [];
         for (const log of usageLogs) {
           const usage = normalizeUsageRow(log, pricingTable);
-          rows.push([
-            log.createdAt.toISOString(),
-            log.action,
-            usage.provider ?? "",
-            usage.model ?? "",
-            usage.promptTokens?.toString() ?? "",
-            usage.completionTokens?.toString() ?? "",
-            usage.totalTokens?.toString() ?? "",
-            typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
-            usage.usageSource,
-            log.user?.name ?? "",
-            log.user?.email ?? "",
-            log.workspace?.name ?? "",
-          ]);
+          csvRows.push({
+            createdAt: log.createdAt,
+            row: [
+              log.createdAt.toISOString(),
+              log.action,
+              usage.provider ?? "",
+              usage.model ?? "",
+              usage.promptTokens?.toString() ?? "",
+              usage.completionTokens?.toString() ?? "",
+              usage.totalTokens?.toString() ?? "",
+              typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
+              usage.usageSource,
+              log.user?.name ?? "",
+              log.user?.email ?? "",
+              log.workspace?.name ?? "",
+            ],
+          });
         }
+        for (const log of legacyLogs) {
+          const usage = normalizeUsage(log.metadata, pricingTable);
+          csvRows.push({
+            createdAt: log.createdAt,
+            row: [
+              log.createdAt.toISOString(),
+              log.action,
+              usage.provider ?? "",
+              usage.model ?? "",
+              usage.promptTokens?.toString() ?? "",
+              usage.completionTokens?.toString() ?? "",
+              usage.totalTokens?.toString() ?? "",
+              typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
+              usage.usageSource,
+              log.actor?.name ?? "",
+              log.actor?.email ?? "",
+              log.targetWorkspace?.name ?? "",
+            ],
+          });
+        }
+        csvRows
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .forEach((item) => rows.push(item.row));
         const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
         return new Response(csv, {
           status: 200,
@@ -376,7 +399,19 @@ export async function GET(request: Request) {
           workspace: { select: { name: true } },
         },
       });
-      const mappedLogs = usageLogs.map((log) => ({
+      const legacyLogs = await prisma.auditLog.findMany({
+        where: {
+          action: { startsWith: "AI_" },
+          ...legacyRangeWhere,
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        include: {
+          actor: { select: { id: true, name: true, email: true } },
+          targetWorkspace: { select: { id: true, name: true } },
+        },
+      });
+      const mappedUsageLogs = usageLogs.map((log) => ({
         id: log.id,
         action: log.action,
         createdAt: log.createdAt,
@@ -386,6 +421,19 @@ export async function GET(request: Request) {
         metadata: { taskId: log.taskId, source: log.source },
         usage: normalizeUsageRow(log, pricingTable),
       }));
+      const mappedLegacyLogs = legacyLogs.map((log) => ({
+        id: log.id,
+        action: log.action,
+        createdAt: log.createdAt,
+        actor: { name: log.actor?.name ?? null, email: log.actor?.email ?? null },
+        targetUser: null,
+        targetWorkspace: log.targetWorkspace ? { name: log.targetWorkspace.name } : null,
+        metadata: log.metadata && typeof log.metadata === "object" ? log.metadata : null,
+        usage: normalizeUsage(log.metadata, pricingTable),
+      }));
+      const mappedLogs = [...mappedUsageLogs, ...mappedLegacyLogs]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, limit);
 
       const usageRows = await prisma.aiUsage.findMany({
         where: rangeWhere,
@@ -400,6 +448,18 @@ export async function GET(request: Request) {
           createdAt: true,
           user: { select: { id: true, name: true, email: true } },
           workspace: { select: { id: true, name: true } },
+        },
+      });
+      const legacyUsageLogs = await prisma.auditLog.findMany({
+        where: {
+          action: { startsWith: "AI_" },
+          ...legacyRangeWhere,
+        },
+        select: {
+          metadata: true,
+          createdAt: true,
+          actor: { select: { id: true, name: true, email: true } },
+          targetWorkspace: { select: { id: true, name: true } },
         },
       });
 
@@ -449,6 +509,75 @@ export async function GET(request: Request) {
         byUser[userKey] = userBucket;
       }
 
+      const trendRows: Array<{
+        createdAt: Date;
+        provider: string;
+        model: string;
+        promptTokens: number | null;
+        completionTokens: number | null;
+        totalTokens: number | null;
+        costUsd: number | null;
+        usageSource: string;
+      }> = usageRows.map((log) => ({
+        createdAt: log.createdAt,
+        provider: log.provider,
+        model: log.model,
+        promptTokens: log.promptTokens,
+        completionTokens: log.completionTokens,
+        totalTokens: log.totalTokens,
+        costUsd: log.costUsd,
+        usageSource: log.usageSource,
+      }));
+
+      for (const log of legacyUsageLogs) {
+        const usage = normalizeUsage(log.metadata, pricingTable);
+        bumpBucket(totals, usage);
+        if (usage.promptTokens !== null) promptTokensTotal += usage.promptTokens;
+        if (usage.completionTokens !== null) completionTokensTotal += usage.completionTokens;
+
+        const providerKey = usage.provider ?? "unknown";
+        const providerBucket = byProvider[providerKey] ?? createBucket();
+        bumpBucket(providerBucket, usage);
+        byProvider[providerKey] = providerBucket;
+
+        const modelKey = usage.model ?? "unknown";
+        const modelBucket = byModel[modelKey] ?? createBucket();
+        bumpBucket(modelBucket, usage);
+        byModel[modelKey] = modelBucket;
+
+        const workspaceKey = log.targetWorkspace?.id ?? "unknown";
+        const workspaceBucket =
+          byWorkspace[workspaceKey] ??
+          ({
+            ...createBucket(),
+            name: log.targetWorkspace?.name ?? null,
+          } as UsageBucket & { name: string | null });
+        bumpBucket(workspaceBucket, usage);
+        byWorkspace[workspaceKey] = workspaceBucket;
+
+        const userKey = log.actor?.id ?? "unknown";
+        const userBucket =
+          byUser[userKey] ??
+          ({
+            ...createBucket(),
+            name: log.actor?.name ?? null,
+            email: log.actor?.email ?? null,
+          } as UsageBucket & { name: string | null; email: string | null });
+        bumpBucket(userBucket, usage);
+        byUser[userKey] = userBucket;
+
+        trendRows.push({
+          createdAt: log.createdAt,
+          provider: usage.provider ?? "unknown",
+          model: usage.model ?? "unknown",
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
+          costUsd: usage.costUsd,
+          usageSource: usage.usageSource,
+        });
+      }
+
       const stats = {
         range: {
           start: range.start.toISOString(),
@@ -470,8 +599,8 @@ export async function GET(request: Request) {
         byWorkspace,
         byUser,
         trends: {
-          weekly: buildTrendBucketsFromUsage(usageRows, pricingTable, "week"),
-          monthly: buildTrendBucketsFromUsage(usageRows, pricingTable, "month"),
+          weekly: buildTrendBucketsFromUsage(trendRows, pricingTable, "week"),
+          monthly: buildTrendBucketsFromUsage(trendRows, pricingTable, "month"),
         },
         pricingSource,
       };

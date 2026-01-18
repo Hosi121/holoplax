@@ -319,7 +319,6 @@ model AutomationSetting {
 
 model AiProviderSetting {
   id        Int       @id @default(1)
-  provider  AiProvider @default(OPENAI)
   model     String
   apiKey    String
   baseUrl   String?

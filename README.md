@@ -28,3 +28,7 @@
 - OpenAI を直接使うときは `.env` に `OPENAI_API_KEY` を設定する（キーはコミットしないこと）。
 - NextAuth のプロバイダは `.env` に `EMAIL_SERVER` / `EMAIL_FROM` / `GOOGLE_CLIENT_ID` / `GITHUB_ID` などを設定する。
 - Prisma マイグレーション: `DATABASE_URL=postgresql://holoplax:holoplax@localhost:5433/holoplax npx prisma migrate dev --name init`
+
+## AIゲートウェイ設定
+- `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` が最優先。未設定なら `LITELLM_*` → `OPENAI_*` の順でフォールバックする。
+- LiteLLM を使う場合、`litellm.config.yaml` の `model_list` にモデル名を追加してから、`AI_MODEL` を一致させる。

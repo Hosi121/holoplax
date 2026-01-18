@@ -28,6 +28,23 @@ export type AiUsageMetadata = {
 const toNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
+const PRICING_CACHE_TTL_MS = 60_000;
+let pricingCache: {
+  table: Awaited<ReturnType<typeof loadAiPricingTable>>["table"];
+  source: Awaited<ReturnType<typeof loadAiPricingTable>>["source"];
+  expiresAt: number;
+} | null = null;
+
+const loadPricingTableCached = async () => {
+  const now = Date.now();
+  if (pricingCache && pricingCache.expiresAt > now) {
+    return pricingCache;
+  }
+  const fresh = await loadAiPricingTable();
+  pricingCache = { ...fresh, expiresAt: now + PRICING_CACHE_TTL_MS };
+  return pricingCache;
+};
+
 export function buildAiUsageMetadata(
   provider: string,
   model: string,
@@ -73,7 +90,7 @@ export async function recordAiUsage(params: {
   if (!usageMeta) return;
 
   try {
-    const { table } = await loadAiPricingTable();
+    const { table } = await loadPricingTableCached();
     const { costUsd } = calculateAiUsageCost({
       pricingTable: table,
       provider: usageMeta.provider,

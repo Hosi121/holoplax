@@ -133,6 +133,9 @@ export default function AdminAiSettingsPage() {
                     placeholder={modelDefault}
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   />
+                  <p className="text-[11px] text-slate-500">
+                    LiteLLMの設定で許可したモデル名を入力してください。
+                  </p>
                 </div>
               </label>
               <label className="grid gap-1 text-xs text-slate-500">

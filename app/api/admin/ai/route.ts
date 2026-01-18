@@ -89,11 +89,9 @@ export async function POST(request: Request) {
       return badRequest("apiKey is required");
     }
 
-    const provider = "OPENAI";
     const setting = await prisma.aiProviderSetting.upsert({
       where: { id: 1 },
       update: {
-        provider,
         model,
         baseUrl,
         enabled,
@@ -101,20 +99,18 @@ export async function POST(request: Request) {
       },
       create: {
         id: 1,
-        provider,
         model,
         baseUrl,
         enabled,
         apiKey: nextApiKey,
       },
-      select: { provider: true, model: true, baseUrl: true, enabled: true },
+      select: { model: true, baseUrl: true, enabled: true },
     });
 
     await logAudit({
       actorId: userId,
       action: "AI_PROVIDER_UPDATE",
       metadata: {
-        provider: setting.provider,
         model: setting.model,
         enabled: setting.enabled,
         baseUrl: setting.baseUrl,
