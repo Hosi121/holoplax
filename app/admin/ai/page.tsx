@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 type AiSetting = {
-  provider: "OPENAI" | "OPENAI_COMPATIBLE" | "ANTHROPIC";
+  provider: "OPENAI" | "ANTHROPIC" | "GEMINI";
   model: string;
   baseUrl: string;
   enabled: boolean;
@@ -13,9 +13,27 @@ type AiSetting = {
 
 const providerOptions = [
   { value: "OPENAI", label: "OpenAI" },
-  { value: "OPENAI_COMPATIBLE", label: "OpenAI互換" },
   { value: "ANTHROPIC", label: "Anthropic" },
+  { value: "GEMINI", label: "Gemini" },
 ];
+
+const modelPresets: Record<AiSetting["provider"], string[]> = {
+  OPENAI: ["gpt-4o-mini", "gpt-4o"],
+  ANTHROPIC: ["claude-3-5-sonnet-20240620", "claude-3-5-haiku-20241022"],
+  GEMINI: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+};
+
+const modelDefaults: Record<AiSetting["provider"], string> = {
+  OPENAI: "gpt-4o-mini",
+  ANTHROPIC: "claude-3-5-sonnet-20240620",
+  GEMINI: "gemini-1.5-flash",
+};
+
+const baseUrlPlaceholders: Record<AiSetting["provider"], string> = {
+  OPENAI: "https://api.openai.com/v1",
+  ANTHROPIC: "https://api.anthropic.com",
+  GEMINI: "https://generativelanguage.googleapis.com",
+};
 
 export default function AdminAiSettingsPage() {
   const [setting, setSetting] = useState<AiSetting | null>(null);
@@ -105,11 +123,18 @@ export default function AdminAiSettingsPage() {
                 プロバイダ
                 <select
                   value={setting.provider}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nextProvider = e.target.value as AiSetting["provider"];
                     setSetting((prev) =>
-                      prev ? { ...prev, provider: e.target.value as AiSetting["provider"] } : prev,
-                    )
-                  }
+                      prev
+                        ? {
+                            ...prev,
+                            provider: nextProvider,
+                            model: modelDefaults[nextProvider] ?? prev.model,
+                          }
+                        : prev,
+                    );
+                  }}
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 >
                   {providerOptions.map((option) => (
@@ -121,24 +146,46 @@ export default function AdminAiSettingsPage() {
               </label>
               <label className="grid gap-1 text-xs text-slate-500">
                 モデル
-                <input
-                  value={setting.model}
-                  onChange={(e) =>
-                    setSetting((prev) => (prev ? { ...prev, model: e.target.value } : prev))
-                  }
-                  placeholder="gpt-4o-mini"
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                />
+                <div className="grid gap-2">
+                  <select
+                    value={
+                      modelPresets[setting.provider].includes(setting.model)
+                        ? setting.model
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setSetting((prev) =>
+                        prev ? { ...prev, model: e.target.value } : prev,
+                      )
+                    }
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="">候補から選択</option>
+                    {modelPresets[setting.provider].map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={setting.model}
+                    onChange={(e) =>
+                      setSetting((prev) => (prev ? { ...prev, model: e.target.value } : prev))
+                    }
+                    placeholder={modelDefaults[setting.provider]}
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  />
+                </div>
               </label>
             </div>
             <label className="grid gap-1 text-xs text-slate-500">
-              Base URL（OpenAI互換のみ）
+              Base URL（任意）
               <input
                 value={setting.baseUrl}
                 onChange={(e) =>
                   setSetting((prev) => (prev ? { ...prev, baseUrl: e.target.value } : prev))
                 }
-                placeholder="https://api.openai.com/v1"
+                placeholder={baseUrlPlaceholders[setting.provider]}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
               />
             </label>

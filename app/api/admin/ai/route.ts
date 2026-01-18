@@ -9,11 +9,20 @@ import {
 import { logAudit } from "../../../../lib/audit";
 import prisma from "../../../../lib/prisma";
 
-const PROVIDERS = ["OPENAI", "OPENAI_COMPATIBLE", "ANTHROPIC"] as const;
+const PROVIDERS = ["OPENAI", "ANTHROPIC", "GEMINI"] as const;
+
+const DEFAULT_MODELS: Record<(typeof PROVIDERS)[number], string> = {
+  OPENAI: "gpt-4o-mini",
+  ANTHROPIC: "claude-3-5-sonnet-20240620",
+  GEMINI: "gemini-1.5-flash",
+};
+
+const normalizeProvider = (value: string) =>
+  value === "OPENAI_COMPATIBLE" ? "OPENAI" : value;
 
 const getEnvFallback = () => ({
   provider: "OPENAI",
-  model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+  model: process.env.OPENAI_MODEL ?? DEFAULT_MODELS.OPENAI,
   baseUrl: process.env.OPENAI_BASE_URL ?? "",
   enabled: false,
   hasApiKey: Boolean(process.env.OPENAI_API_KEY),
@@ -35,7 +44,7 @@ export async function GET() {
     }
     return ok({
       setting: {
-        provider: setting.provider,
+        provider: normalizeProvider(setting.provider),
         model: setting.model,
         baseUrl: setting.baseUrl ?? "",
         enabled: setting.enabled,
@@ -58,16 +67,15 @@ export async function POST(request: Request) {
       return forbidden();
     }
     const body = await request.json().catch(() => ({}));
-    const provider = String(body.provider ?? "").toUpperCase();
+    const provider = normalizeProvider(String(body.provider ?? "").toUpperCase());
     if (!PROVIDERS.includes(provider as (typeof PROVIDERS)[number])) {
       return badRequest("invalid provider");
     }
     const rawModel = String(body.model ?? "").trim();
-    if (!rawModel && provider === "ANTHROPIC") {
-      return badRequest("model is required for anthropic");
+    const model = rawModel || DEFAULT_MODELS[provider as (typeof PROVIDERS)[number]];
+    if (!model) {
+      return badRequest("model is required");
     }
-    const model =
-      rawModel || (provider === "ANTHROPIC" ? "" : "gpt-4o-mini");
     const baseUrl = String(body.baseUrl ?? "").trim() || null;
     const enabled = Boolean(body.enabled);
     const apiKey = String(body.apiKey ?? "").trim();

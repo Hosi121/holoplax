@@ -1,6 +1,6 @@
 import prisma from "./prisma";
 
-export type AiProvider = "OPENAI" | "OPENAI_COMPATIBLE" | "ANTHROPIC";
+export type AiProvider = "OPENAI" | "ANTHROPIC" | "GEMINI";
 
 export type AiProviderConfig = {
   provider: AiProvider;
@@ -17,6 +17,13 @@ export type AiChatResult = {
 };
 
 const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash";
+
+const normalizeProvider = (provider: string): AiProvider => {
+  if (provider === "ANTHROPIC") return "ANTHROPIC";
+  if (provider === "GEMINI") return "GEMINI";
+  return "OPENAI";
+};
 
 const readEnvConfig = (): AiProviderConfig | null => {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -37,7 +44,7 @@ export async function resolveAiProvider(): Promise<AiProviderConfig | null> {
   if (setting) {
     if (!setting.enabled || !setting.apiKey || !setting.model) return null;
     return {
-      provider: setting.provider,
+      provider: normalizeProvider(setting.provider),
       model: setting.model,
       apiKey: setting.apiKey,
       baseUrl: setting.baseUrl,
@@ -114,6 +121,52 @@ const fetchAnthropicChat = async (
     content: content || null,
     usage,
     provider: config.provider,
+    model,
+  };
+};
+
+const fetchGeminiChat = async (
+  config: AiProviderConfig,
+  params: { system: string; user: string; maxTokens: number },
+): Promise<AiChatResult | null> => {
+  const baseUrl = config.baseUrl?.trim() || "https://generativelanguage.googleapis.com";
+  const model = config.model?.trim() || DEFAULT_GEMINI_MODEL;
+  const modelPath = model.startsWith("models/") ? model : `models/${model}`;
+  const trimmedBaseUrl = baseUrl.replace(/\/+$/, "");
+  const apiBase = trimmedBaseUrl.endsWith("/v1beta")
+    ? trimmedBaseUrl
+    : `${trimmedBaseUrl}/v1beta`;
+  const url = `${apiBase}/${modelPath}:generateContent`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": config.apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: params.system }] },
+      contents: [{ role: "user", parts: [{ text: params.user }] }],
+      generationConfig: { maxOutputTokens: params.maxTokens },
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const parts = data.candidates?.[0]?.content?.parts;
+  const content = Array.isArray(parts)
+    ? parts.map((part: { text?: string }) => part.text ?? "").join("")
+    : null;
+  const usageMeta = data.usageMetadata;
+  const usage = usageMeta
+    ? {
+        prompt_tokens: usageMeta.promptTokenCount,
+        completion_tokens: usageMeta.candidatesTokenCount,
+        total_tokens: usageMeta.totalTokenCount,
+      }
+    : undefined;
+  return {
+    content: content || null,
+    usage,
+    provider: config.provider,
     model: config.model,
   };
 };
@@ -127,6 +180,9 @@ export async function requestAiChat(params: {
   if (!config) return null;
   if (config.provider === "ANTHROPIC") {
     return fetchAnthropicChat(config, params);
+  }
+  if (config.provider === "GEMINI") {
+    return fetchGeminiChat(config, params);
   }
   return fetchOpenAiChat(config, params);
 }
