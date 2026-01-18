@@ -1,6 +1,11 @@
 import { requireAuth } from "../../../lib/api-auth";
-import { conflict, handleAuthError, ok, serverError } from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
+import { AccountUpdateSchema } from "../../../lib/contracts/auth";
+import { createDomainErrors, errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
+
+const errors = createDomainErrors("ACCOUNT");
 
 export async function GET() {
   try {
@@ -14,14 +19,20 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/account error", error);
-    return serverError("failed to load account");
+    return errorResponse(error, {
+      code: "ACCOUNT_INTERNAL",
+      message: "failed to load account",
+      status: 500,
+    });
   }
 }
 
 export async function PATCH(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
+    const body = await parseBody(request, AccountUpdateSchema, {
+      code: "ACCOUNT_VALIDATION",
+    });
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").toLowerCase().trim();
     const image = String(body.image ?? "").trim();
@@ -31,7 +42,7 @@ export async function PATCH(request: Request) {
         where: { email, NOT: { id: userId } },
       });
       if (existing) {
-        return conflict("email already in use");
+        return errors.conflict("email already in use");
       }
     }
 
@@ -49,6 +60,10 @@ export async function PATCH(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("PATCH /api/account error", error);
-    return serverError("failed to update account");
+    return errorResponse(error, {
+      code: "ACCOUNT_INTERNAL",
+      message: "failed to update account",
+      status: 500,
+    });
   }
 }

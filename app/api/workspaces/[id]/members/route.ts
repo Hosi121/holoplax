@@ -1,12 +1,9 @@
 import { requireAuth } from "../../../../../lib/api-auth";
-import {
-  badRequest,
-  handleAuthError,
-  ok,
-  serverError,
-  forbidden,
-} from "../../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../../lib/api-response";
 import { logAudit } from "../../../../../lib/audit";
+import { WorkspaceMemberAddSchema } from "../../../../../lib/contracts/workspace";
+import { createDomainErrors, errorResponse } from "../../../../../lib/http/errors";
+import { parseBody } from "../../../../../lib/http/validation";
 import prisma from "../../../../../lib/prisma";
 
 const canManage = async (workspaceId: string, userId: string) => {
@@ -15,6 +12,8 @@ const canManage = async (workspaceId: string, userId: string) => {
   });
   return membership?.role === "owner" || membership?.role === "admin";
 };
+
+const errors = createDomainErrors("WORKSPACE");
 
 export async function GET(
   _request: Request,
@@ -26,7 +25,7 @@ export async function GET(
     const membership = await prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId: id, userId } },
     });
-    if (!membership) return forbidden();
+    if (!membership) return errors.forbidden();
     const members = await prisma.workspaceMember.findMany({
       where: { workspaceId: id },
       include: { user: { select: { id: true, name: true, email: true } } },
@@ -44,7 +43,11 @@ export async function GET(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/workspaces/[id]/members error", error);
-    return serverError("failed to load members");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to load members",
+      status: 500,
+    });
   }
 }
 
@@ -55,16 +58,17 @@ export async function POST(
   try {
     const { userId } = await requireAuth();
     const { id } = await params;
-    if (!(await canManage(id, userId))) return forbidden();
+    if (!(await canManage(id, userId))) return errors.forbidden();
 
-    const body = await request.json();
-    const email = String(body.email ?? "").toLowerCase().trim();
-    const role = String(body.role ?? "member").toLowerCase();
-    if (!email) return badRequest("email is required");
+    const body = await parseBody(request, WorkspaceMemberAddSchema, {
+      code: "WORKSPACE_VALIDATION",
+    });
+    const email = body.email;
+    const role = body.role ?? "member";
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return badRequest("user not found");
+      return errors.badRequest("user not found");
     }
 
     const membership = await prisma.workspaceMember.upsert({
@@ -86,6 +90,10 @@ export async function POST(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/workspaces/[id]/members error", error);
-    return serverError("failed to add member");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to add member",
+      status: 500,
+    });
   }
 }

@@ -1,15 +1,15 @@
 import { randomBytes } from "crypto";
-import { badRequest, ok, serverError } from "../../../../lib/api-response";
+import { ok } from "../../../../lib/api-response";
+import { AuthRequestResetSchema } from "../../../../lib/contracts/auth";
+import { errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import { sendEmail } from "../../../../lib/mailer";
 import prisma from "../../../../lib/prisma";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const email = String(body.email ?? "").toLowerCase().trim();
-    if (!email) {
-      return badRequest("email is required");
-    }
+    const body = await parseBody(request, AuthRequestResetSchema, { code: "AUTH_VALIDATION" });
+    const email = body.email;
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
@@ -37,6 +37,10 @@ export async function POST(request: Request) {
     return ok({ ok: true });
   } catch (error) {
     console.error("POST /api/auth/request-reset error", error);
-    return serverError("failed to request reset");
+    return errorResponse(error, {
+      code: "AUTH_INTERNAL",
+      message: "failed to request reset",
+      status: 500,
+    });
   }
 }

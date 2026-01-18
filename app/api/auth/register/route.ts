@@ -1,25 +1,23 @@
 import { randomBytes } from "crypto";
 import { hash } from "bcryptjs";
-import { badRequest, conflict, ok, serverError } from "../../../../lib/api-response";
+import { ok } from "../../../../lib/api-response";
+import { AuthRegisterSchema } from "../../../../lib/contracts/auth";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import { sendEmail } from "../../../../lib/mailer";
 import prisma from "../../../../lib/prisma";
 
+const errors = createDomainErrors("AUTH");
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const email = String(body.email ?? "").toLowerCase().trim();
-    const password = String(body.password ?? "");
+    const body = await parseBody(request, AuthRegisterSchema, { code: "AUTH_VALIDATION" });
+    const email = body.email;
+    const password = body.password;
     const name = String(body.name ?? "").trim();
-
-    if (!email || !password) {
-      return badRequest("email and password are required");
-    }
-    if (password.length < 8) {
-      return badRequest("password must be at least 8 characters");
-    }
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return conflict("email already registered");
+      return errors.conflict("email already registered");
     }
 
     const hashed = await hash(password, 10);
@@ -65,6 +63,10 @@ export async function POST(request: Request) {
     return ok({ id: user.id, email: user.email });
   } catch (error) {
     console.error("POST /api/auth/register error", error);
-    return serverError("failed to register");
+    return errorResponse(error, {
+      code: "AUTH_INTERNAL",
+      message: "failed to register",
+      status: 500,
+    });
   }
 }

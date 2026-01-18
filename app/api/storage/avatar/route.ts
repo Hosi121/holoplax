@@ -1,17 +1,19 @@
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../../../lib/api-auth";
-import { badRequest, handleAuthError, ok, serverError } from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { AvatarUploadSchema } from "../../../../lib/contracts/storage";
+import { errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import { createAvatarUploadUrl, ensureAvatarBucket, getPublicObjectUrl } from "../../../../lib/storage";
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
-    const filename = String(body.filename ?? "").trim();
-    const contentType = String(body.contentType ?? "").trim();
-    if (!filename || !contentType) {
-      return badRequest("filename and contentType are required");
-    }
+    const body = await parseBody(request, AvatarUploadSchema, {
+      code: "STORAGE_VALIDATION",
+    });
+    const filename = body.filename;
+    const contentType = body.contentType;
 
     await ensureAvatarBucket();
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -23,6 +25,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/storage/avatar error", error);
-    return serverError("failed to prepare upload");
+    return errorResponse(error, {
+      code: "STORAGE_INTERNAL",
+      message: "failed to prepare upload",
+      status: 500,
+    });
   }
 }

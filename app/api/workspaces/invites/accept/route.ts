@@ -1,23 +1,29 @@
 import { requireAuth } from "../../../../../lib/api-auth";
-import { badRequest, handleAuthError, ok, serverError } from "../../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../../lib/api-response";
 import { logAudit } from "../../../../../lib/audit";
+import { WorkspaceInviteAcceptSchema } from "../../../../../lib/contracts/workspace";
+import { createDomainErrors, errorResponse } from "../../../../../lib/http/errors";
+import { parseBody } from "../../../../../lib/http/validation";
 import prisma from "../../../../../lib/prisma";
+
+const errors = createDomainErrors("WORKSPACE");
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
-    const token = String(body.token ?? "").trim();
-    if (!token) return badRequest("token is required");
+    const body = await parseBody(request, WorkspaceInviteAcceptSchema, {
+      code: "WORKSPACE_VALIDATION",
+    });
+    const token = body.token;
 
     const invite = await prisma.workspaceInvite.findUnique({ where: { token } });
     if (!invite || invite.expiresAt < new Date()) {
-      return badRequest("invite is invalid or expired");
+      return errors.badRequest("invite is invalid or expired");
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user?.email || user.email.toLowerCase() !== invite.email.toLowerCase()) {
-      return badRequest("invite email mismatch");
+      return errors.badRequest("invite email mismatch");
     }
 
     await prisma.workspaceMember.upsert({
@@ -42,6 +48,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/workspaces/invites/accept error", error);
-    return serverError("failed to accept invite");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to accept invite",
+      status: 500,
+    });
   }
 }

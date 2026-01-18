@@ -1,12 +1,9 @@
 import { requireAuth } from "../../../../../../lib/api-auth";
-import {
-  badRequest,
-  forbidden,
-  handleAuthError,
-  ok,
-  serverError,
-} from "../../../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../../../lib/api-response";
 import { logAudit } from "../../../../../../lib/audit";
+import { WorkspaceMemberRoleUpdateSchema } from "../../../../../../lib/contracts/workspace";
+import { createDomainErrors, errorResponse } from "../../../../../../lib/http/errors";
+import { parseBody } from "../../../../../../lib/http/validation";
 import prisma from "../../../../../../lib/prisma";
 
 const canManage = async (workspaceId: string, userId: string) => {
@@ -16,6 +13,8 @@ const canManage = async (workspaceId: string, userId: string) => {
   return membership?.role === "owner" || membership?.role === "admin";
 };
 
+const errors = createDomainErrors("WORKSPACE");
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; userId: string }> },
@@ -23,10 +22,11 @@ export async function PATCH(
   try {
     const { userId } = await requireAuth();
     const { id, userId: targetUserId } = await params;
-    if (!(await canManage(id, userId))) return forbidden();
-    const body = await request.json();
-    const role = String(body.role ?? "").toLowerCase();
-    if (!role) return badRequest("role is required");
+    if (!(await canManage(id, userId))) return errors.forbidden();
+    const body = await parseBody(request, WorkspaceMemberRoleUpdateSchema, {
+      code: "WORKSPACE_VALIDATION",
+    });
+    const role = body.role;
     const updated = await prisma.workspaceMember.update({
       where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
       data: { role },
@@ -43,7 +43,11 @@ export async function PATCH(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("PATCH /api/workspaces/[id]/members/[userId] error", error);
-    return serverError("failed to update member");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to update member",
+      status: 500,
+    });
   }
 }
 
@@ -54,7 +58,7 @@ export async function DELETE(
   try {
     const { userId } = await requireAuth();
     const { id, userId: targetUserId } = await params;
-    if (!(await canManage(id, userId))) return forbidden();
+    if (!(await canManage(id, userId))) return errors.forbidden();
     await prisma.workspaceMember.delete({
       where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
     });
@@ -69,6 +73,10 @@ export async function DELETE(
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("DELETE /api/workspaces/[id]/members/[userId] error", error);
-    return serverError("failed to remove member");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to remove member",
+      status: 500,
+    });
   }
 }

@@ -1,22 +1,21 @@
 import { hash } from "bcryptjs";
-import { badRequest, ok, serverError } from "../../../../lib/api-response";
+import { ok } from "../../../../lib/api-response";
+import { AuthResetSchema } from "../../../../lib/contracts/auth";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
+
+const errors = createDomainErrors("AUTH");
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const token = String(body.token ?? "").trim();
-    const password = String(body.password ?? "");
-    if (!token || !password) {
-      return badRequest("token and password are required");
-    }
-    if (password.length < 8) {
-      return badRequest("password must be at least 8 characters");
-    }
+    const body = await parseBody(request, AuthResetSchema, { code: "AUTH_VALIDATION" });
+    const token = body.token;
+    const password = body.password;
 
     const record = await prisma.passwordResetToken.findUnique({ where: { token } });
     if (!record || record.used || record.expiresAt < new Date()) {
-      return badRequest("token is invalid or expired");
+      return errors.badRequest("token is invalid or expired");
     }
 
     const hashed = await hash(password, 10);
@@ -32,6 +31,10 @@ export async function POST(request: Request) {
     return ok({ ok: true });
   } catch (error) {
     console.error("POST /api/auth/reset error", error);
-    return serverError("failed to reset password");
+    return errorResponse(error, {
+      code: "AUTH_INTERNAL",
+      message: "failed to reset password",
+      status: 500,
+    });
   }
 }

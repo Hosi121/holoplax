@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireAuth } from "../../../../lib/api-auth";
-import { handleAuthError, ok, serverError, badRequest, forbidden } from "../../../../lib/api-response";
+import { handleAuthError, ok } from "../../../../lib/api-response";
+import { WorkspaceCurrentSchema } from "../../../../lib/contracts/workspace";
+import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
+
+const errors = createDomainErrors("WORKSPACE");
 
 export async function GET() {
   try {
@@ -44,24 +49,27 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/workspaces/current error", error);
-    return serverError("failed to load workspace context");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to load workspace context",
+      status: 500,
+    });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
-    const workspaceId = String(body.workspaceId ?? "").trim();
-    if (!workspaceId) {
-      return badRequest("workspaceId is required");
-    }
+    const body = await parseBody(request, WorkspaceCurrentSchema, {
+      code: "WORKSPACE_VALIDATION",
+    });
+    const workspaceId = body.workspaceId;
     const membership = await prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { workspaceId: true },
     });
     if (!membership) {
-      return forbidden();
+      return errors.forbidden();
     }
     const response = NextResponse.json({ ok: true });
     response.cookies.set("workspaceId", workspaceId, {
@@ -73,6 +81,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/workspaces/current error", error);
-    return serverError("failed to update workspace context");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to update workspace context",
+      status: 500,
+    });
   }
 }

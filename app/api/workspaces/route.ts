@@ -1,6 +1,9 @@
 import { requireAuth } from "../../../lib/api-auth";
-import { badRequest, handleAuthError, ok, serverError } from "../../../lib/api-response";
+import { handleAuthError, ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
+import { WorkspaceCreateSchema } from "../../../lib/contracts/workspace";
+import { errorResponse } from "../../../lib/http/errors";
+import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 
 export async function GET() {
@@ -23,18 +26,21 @@ export async function GET() {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("GET /api/workspaces error", error);
-    return serverError("failed to load workspaces");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to load workspaces",
+      status: 500,
+    });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const { userId } = await requireAuth();
-    const body = await request.json();
-    const name = String(body.name ?? "").trim();
-    if (!name) {
-      return badRequest("name is required");
-    }
+    const body = await parseBody(request, WorkspaceCreateSchema, {
+      code: "WORKSPACE_VALIDATION",
+    });
+    const name = body.name;
     const workspace = await prisma.workspace.create({
       data: {
         name,
@@ -55,6 +61,10 @@ export async function POST(request: Request) {
     const authError = handleAuthError(error);
     if (authError) return authError;
     console.error("POST /api/workspaces error", error);
-    return serverError("failed to create workspace");
+    return errorResponse(error, {
+      code: "WORKSPACE_INTERNAL",
+      message: "failed to create workspace",
+      status: 500,
+    });
   }
 }
