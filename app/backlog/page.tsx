@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { LoadingButton } from "../components/loading-button";
@@ -30,6 +31,20 @@ const taskTypeOrder: TaskType[] = [
   TASK_TYPE.TASK,
   TASK_TYPE.ROUTINE,
 ];
+const checklistFromText = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => ({
+      id: `${Date.now()}-${index}`,
+      text: line,
+      done: false,
+    }));
+
+const checklistToText = (
+  checklist?: { id: string; text: string; done: boolean }[] | null,
+) => (checklist ?? []).map((item) => item.text).join("\n");
 type SplitSuggestion = {
   title: string;
   points: number;
@@ -98,6 +113,8 @@ export default function BacklogPage() {
   const [form, setForm] = useState({
     title: "",
     description: "",
+    definitionOfDone: "",
+    checklistText: "",
     points: 3,
     urgency: "中",
     risk: "中",
@@ -106,6 +123,7 @@ export default function BacklogPage() {
     dueDate: "",
     assigneeId: "",
     tags: "",
+    routineCadence: "NONE",
     dependencyIds: [] as string[],
   });
   const [modalOpen, setModalOpen] = useState(false);
@@ -134,6 +152,8 @@ export default function BacklogPage() {
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
+    definitionOfDone: "",
+    checklistText: "",
     points: 3,
     urgency: "中",
     risk: "中",
@@ -142,6 +162,7 @@ export default function BacklogPage() {
     dueDate: "",
     assigneeId: "",
     tags: "",
+    routineCadence: "NONE",
     dependencyIds: [] as string[],
   });
   const [addLoading, setAddLoading] = useState(false);
@@ -251,6 +272,8 @@ export default function BacklogPage() {
         body: JSON.stringify({
           title: form.title.trim(),
           description: form.description.trim(),
+          definitionOfDone: form.definitionOfDone.trim(),
+          checklist: checklistFromText(form.checklistText),
           points: Number(form.points),
           urgency: form.urgency,
           risk: form.risk,
@@ -263,6 +286,7 @@ export default function BacklogPage() {
             .split(",")
             .map((tag) => tag.trim())
             .filter(Boolean),
+          routineCadence: form.type === TASK_TYPE.ROUTINE ? form.routineCadence : "NONE",
           dependencyIds: form.dependencyIds,
         }),
       });
@@ -276,6 +300,8 @@ export default function BacklogPage() {
         setForm({
           title: "",
           description: "",
+          definitionOfDone: "",
+          checklistText: "",
           points: 3,
           urgency: "中",
           risk: "中",
@@ -284,6 +310,7 @@ export default function BacklogPage() {
           dueDate: "",
           assigneeId: "",
           tags: "",
+          routineCadence: "NONE",
           dependencyIds: [],
         });
         setModalOpen(false);
@@ -538,6 +565,22 @@ export default function BacklogPage() {
     await fetchTasks();
   };
 
+  const toggleChecklistItem = async (taskId: string, checklistId: string) => {
+    const target = items.find((item) => item.id === taskId);
+    if (!target || !Array.isArray(target.checklist)) return;
+    const nextChecklist = target.checklist.map((item) =>
+      item.id === checklistId ? { ...item, done: !item.done } : item,
+    );
+    setItems((prev) =>
+      prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
+    );
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checklist: nextChecklist }),
+    });
+  };
+
   const loadPrepOutputs = useCallback(
     async (taskId: string) => {
       setPrepFetchLoading(true);
@@ -619,6 +662,8 @@ export default function BacklogPage() {
     setEditForm({
       title: item.title,
       description: item.description ?? "",
+      definitionOfDone: item.definitionOfDone ?? "",
+      checklistText: checklistToText(item.checklist ?? null),
       points: item.points,
       urgency: item.urgency,
       risk: item.risk,
@@ -627,6 +672,7 @@ export default function BacklogPage() {
       dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : "",
       assigneeId: item.assigneeId ?? "",
       tags: item.tags?.join(", ") ?? "",
+      routineCadence: item.routineCadence ?? "NONE",
       dependencyIds: item.dependencyIds ?? [],
     });
   };
@@ -639,6 +685,8 @@ export default function BacklogPage() {
       body: JSON.stringify({
         title: editForm.title.trim(),
         description: editForm.description.trim(),
+        definitionOfDone: editForm.definitionOfDone.trim(),
+        checklist: checklistFromText(editForm.checklistText),
         points: Number(editForm.points),
         urgency: editForm.urgency,
         risk: editForm.risk,
@@ -650,6 +698,8 @@ export default function BacklogPage() {
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean),
+        routineCadence:
+          editForm.type === TASK_TYPE.ROUTINE ? editForm.routineCadence : "NONE",
         dependencyIds: editForm.dependencyIds,
       }),
     });
@@ -719,6 +769,12 @@ export default function BacklogPage() {
                 スプリントバックログ
               </button>
             </div>
+            <Link
+              href="/sprint"
+              className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+            >
+              スプリントへ
+            </Link>
             <button
               onClick={() => {
                 fetchTasks();
@@ -894,6 +950,32 @@ export default function BacklogPage() {
                       {item.description ? (
                         <p className="mt-1 text-sm text-slate-700">{item.description}</p>
                       ) : null}
+                      {item.definitionOfDone ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          完了条件: {item.definitionOfDone}
+                        </p>
+                      ) : null}
+                      {item.checklist && item.checklist.length > 0 ? (
+                        <div className="mt-2 grid gap-1 text-xs text-slate-600">
+                          {item.checklist.map((check) => (
+                            <label key={check.id} className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={check.done}
+                                onChange={() => toggleChecklistItem(item.id, check.id)}
+                                className="accent-[#2323eb]"
+                              />
+                              <span
+                                className={
+                                  check.done ? "line-through text-slate-400" : "text-slate-600"
+                                }
+                              >
+                                {check.text}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="mt-2 flex items-center gap-2 text-xs">
                         {view === "product" ? (
                           <button
@@ -1032,6 +1114,11 @@ export default function BacklogPage() {
                             #{item.tags.join(" #")}
                           </span>
                         ) : null}
+                        {item.type === TASK_TYPE.ROUTINE && item.routineCadence ? (
+                          <span className="border border-slate-200 bg-white px-2 py-1">
+                            ルーティン: {item.routineCadence === "DAILY" ? "毎日" : "毎週"}
+                          </span>
+                        ) : null}
                         {item.dependencies && item.dependencies.length > 0 ? (
                           <span
                             className={`border px-2 py-1 ${isBlocked(item)
@@ -1161,6 +1248,23 @@ export default function BacklogPage() {
                 rows={3}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
               />
+              <input
+                value={form.definitionOfDone}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, definitionOfDone: e.target.value }))
+                }
+                placeholder="完了条件（DoD）"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              <textarea
+                value={form.checklistText}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, checklistText: e.target.value }))
+                }
+                placeholder="チェックリスト（1行1項目）"
+                rows={3}
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 text-xs text-slate-500">
                   ポイント
@@ -1236,6 +1340,22 @@ export default function BacklogPage() {
                   </select>
                 </label>
               </div>
+              {form.type === TASK_TYPE.ROUTINE ? (
+                <label className="grid gap-1 text-xs text-slate-500">
+                  ルーティン周期
+                  <select
+                    value={form.routineCadence}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, routineCadence: e.target.value }))
+                    }
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="DAILY">毎日</option>
+                    <option value="WEEKLY">毎週</option>
+                    <option value="NONE">なし</option>
+                  </select>
+                </label>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 text-xs text-slate-500">
                   期限
@@ -1474,6 +1594,23 @@ export default function BacklogPage() {
                 rows={3}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
               />
+              <input
+                value={editForm.definitionOfDone}
+                onChange={(e) =>
+                  setEditForm((p) => ({ ...p, definitionOfDone: e.target.value }))
+                }
+                placeholder="完了条件（DoD）"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              <textarea
+                value={editForm.checklistText}
+                onChange={(e) =>
+                  setEditForm((p) => ({ ...p, checklistText: e.target.value }))
+                }
+                placeholder="チェックリスト（1行1項目）"
+                rows={3}
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
               <div className="grid gap-3 sm:grid-cols-3">
                 <select
                   value={editForm.points}
@@ -1542,6 +1679,22 @@ export default function BacklogPage() {
                   </select>
                 </label>
               </div>
+              {editForm.type === TASK_TYPE.ROUTINE ? (
+                <label className="grid gap-1 text-xs text-slate-500">
+                  ルーティン周期
+                  <select
+                    value={editForm.routineCadence}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, routineCadence: e.target.value }))
+                    }
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="DAILY">毎日</option>
+                    <option value="WEEKLY">毎週</option>
+                    <option value="NONE">なし</option>
+                  </select>
+                </label>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 text-xs text-slate-500">
                   期限

@@ -106,6 +106,12 @@ export default function KanbanPage() {
         setHoverColumn(null);
         return;
       }
+      if (status === TASK_STATUS.DONE && target.checklist?.some((item) => !item.done)) {
+        window.alert("チェックリストが未完了のため完了にできません。");
+        setDraggingId(null);
+        setHoverColumn(null);
+        return;
+      }
     }
     setHoverColumn(null);
     setItems((prev) =>

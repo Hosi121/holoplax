@@ -1,6 +1,7 @@
 "use client";
 
 import { Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { SprintDTO, TASK_STATUS, TASK_TYPE, TaskDTO, TaskType } from "../../lib/types";
@@ -19,6 +20,21 @@ const taskTypeLabels: Record<TaskType, string> = {
   [TASK_TYPE.TASK]: "タスク",
   [TASK_TYPE.ROUTINE]: "ルーティン",
 };
+
+const checklistFromText = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => ({
+      id: `${Date.now()}-${index}`,
+      text: line,
+      done: false,
+    }));
+
+const checklistToText = (
+  checklist?: { id: string; text: string; done: boolean }[] | null,
+) => (checklist ?? []).map((item) => item.text).join("\n");
 
 export default function SprintPage() {
   const capacity = 24;
@@ -39,6 +55,8 @@ export default function SprintPage() {
   const [newItem, setNewItem] = useState({
     title: "",
     description: "",
+    definitionOfDone: "",
+    checklistText: "",
     points: 1,
     dueDate: "",
     assigneeId: "",
@@ -48,6 +66,8 @@ export default function SprintPage() {
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
+    definitionOfDone: "",
+    checklistText: "",
     points: 1,
     urgency: "中",
     risk: "中",
@@ -144,6 +164,8 @@ export default function SprintPage() {
       body: JSON.stringify({
         title: newItem.title.trim(),
         description: newItem.description.trim(),
+        definitionOfDone: newItem.definitionOfDone.trim(),
+        checklist: checklistFromText(newItem.checklistText),
         points: Number(newItem.points),
         urgency: "中",
         risk: "中",
@@ -160,6 +182,8 @@ export default function SprintPage() {
     setNewItem({
       title: "",
       description: "",
+      definitionOfDone: "",
+      checklistText: "",
       points: 1,
       dueDate: "",
       assigneeId: "",
@@ -234,6 +258,10 @@ export default function SprintPage() {
       window.alert("依存タスクが未完了のため完了にできません。");
       return;
     }
+    if (target?.checklist?.some((item) => !item.done)) {
+      window.alert("チェックリストが未完了です。完了にする前に確認してください。");
+      return;
+    }
     await fetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -253,6 +281,8 @@ export default function SprintPage() {
     setEditForm({
       title: item.title,
       description: item.description ?? "",
+      definitionOfDone: item.definitionOfDone ?? "",
+      checklistText: checklistToText(item.checklist ?? null),
       points: item.points,
       urgency: item.urgency,
       risk: item.risk,
@@ -270,6 +300,8 @@ export default function SprintPage() {
       body: JSON.stringify({
         title: editForm.title.trim(),
         description: editForm.description.trim(),
+        definitionOfDone: editForm.definitionOfDone.trim(),
+        checklist: checklistFromText(editForm.checklistText),
         points: Number(editForm.points),
         urgency: editForm.urgency,
         risk: editForm.risk,
@@ -283,6 +315,22 @@ export default function SprintPage() {
     });
     setEditItem(null);
     fetchTasks();
+  };
+
+  const toggleChecklistItem = async (taskId: string, checklistId: string) => {
+    const target = items.find((item) => item.id === taskId);
+    if (!target || !Array.isArray(target.checklist)) return;
+    const nextChecklist = target.checklist.map((item) =>
+      item.id === checklistId ? { ...item, done: !item.done } : item,
+    );
+    setItems((prev) =>
+      prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
+    );
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checklist: nextChecklist }),
+    });
   };
 
   return (
@@ -305,6 +353,12 @@ export default function SprintPage() {
             <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
               残り {remaining} pt
             </span>
+            <Link
+              href="/review"
+              className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+            >
+              レビューへ
+            </Link>
             {sprint ? (
               <button
                 onClick={endSprint}
@@ -419,6 +473,23 @@ export default function SprintPage() {
             rows={2}
             className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
           />
+          <input
+            value={newItem.definitionOfDone}
+            onChange={(e) =>
+              setNewItem((p) => ({ ...p, definitionOfDone: e.target.value }))
+            }
+            placeholder="完了条件（DoD）"
+            className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+          />
+          <textarea
+            value={newItem.checklistText}
+            onChange={(e) =>
+              setNewItem((p) => ({ ...p, checklistText: e.target.value }))
+            }
+            placeholder="チェックリスト（1行1項目）"
+            rows={3}
+            className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+          />
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <label className="grid gap-1 text-xs text-slate-500">
               ポイント
@@ -496,6 +567,32 @@ export default function SprintPage() {
                   {item.description ? (
                     <p className="text-xs text-slate-600">{item.description}</p>
                   ) : null}
+                  {item.definitionOfDone ? (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      完了条件: {item.definitionOfDone}
+                    </p>
+                  ) : null}
+                  {item.checklist && item.checklist.length > 0 ? (
+                    <div className="mt-2 grid gap-1 text-[11px] text-slate-600">
+                      {item.checklist.map((check) => (
+                        <label key={check.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={check.done}
+                            onChange={() => toggleChecklistItem(item.id, check.id)}
+                            className="accent-[#2323eb]"
+                          />
+                          <span
+                            className={
+                              check.done ? "line-through text-slate-400" : "text-slate-600"
+                            }
+                          >
+                            {check.text}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
                   {item.dependencies && item.dependencies.length > 0 ? (
                     <p
                       className={`mt-1 text-xs ${isBlocked(item) ? "text-amber-700" : "text-slate-500"
@@ -516,6 +613,11 @@ export default function SprintPage() {
                   <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
                     {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}
                   </span>
+                  {item.type === TASK_TYPE.ROUTINE && item.routineCadence ? (
+                    <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                      {item.routineCadence === "DAILY" ? "毎日" : "毎週"}
+                    </span>
+                  ) : null}
                   <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
                     {item.points} pt
                   </span>
@@ -665,6 +767,23 @@ export default function SprintPage() {
                 value={editForm.description}
                 onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
                 placeholder="概要（任意）"
+                rows={3}
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              <input
+                value={editForm.definitionOfDone}
+                onChange={(e) =>
+                  setEditForm((p) => ({ ...p, definitionOfDone: e.target.value }))
+                }
+                placeholder="完了条件（DoD）"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              <textarea
+                value={editForm.checklistText}
+                onChange={(e) =>
+                  setEditForm((p) => ({ ...p, checklistText: e.target.value }))
+                }
+                placeholder="チェックリスト（1行1項目）"
                 rows={3}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
               />
