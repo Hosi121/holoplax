@@ -1,0 +1,536 @@
+Project holoplax_agile {
+  database_type: 'PostgreSQL'
+  Note: 'Holoplax Agile Project Database'
+}
+
+Enum TaskStatus {
+  BACKLOG
+  SPRINT
+  DONE
+}
+
+Enum TaskType {
+  EPIC
+  PBI
+  TASK
+  ROUTINE
+}
+
+Enum AiSuggestionType {
+  TIP
+  SCORE
+  SPLIT
+}
+
+Enum AiPrepType {
+  EMAIL
+  IMPLEMENTATION
+  CHECKLIST
+}
+
+Enum AiPrepStatus {
+  PENDING
+  APPROVED
+  APPLIED
+  REJECTED
+}
+
+Enum AiProvider {
+  OPENAI
+  OPENAI_COMPATIBLE
+  ANTHROPIC
+  GEMINI
+}
+
+Enum UserRole {
+  ADMIN
+  USER
+}
+
+Enum SprintStatus {
+  ACTIVE
+  CLOSED
+}
+
+Enum RoutineCadence {
+  DAILY
+  WEEKLY
+}
+
+Enum IntakeSource {
+  MEMO
+  SLACK
+  DISCORD
+  EMAIL
+  CALENDAR
+}
+
+Enum IntakeStatus {
+  PENDING
+  CONVERTED
+  DISMISSED
+}
+
+Enum MemoryScope {
+  USER
+  WORKSPACE
+}
+
+Enum MemoryValueType {
+  STRING
+  NUMBER
+  BOOL
+  JSON
+  RATIO
+  DURATION_MS
+  HISTOGRAM_24x7
+  RATIO_BY_TYPE
+}
+
+Enum MemorySource {
+  EXPLICIT
+  INFERRED
+}
+
+Enum MemoryStatus {
+  ACTIVE
+  REJECTED
+  STALE
+}
+
+Enum MemoryQuestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  HOLD
+}
+
+Table User {
+  id String [pk]
+  name String
+  email String [unique]
+  emailVerified DateTime
+  image String
+  role UserRole [default: 'USER']
+  disabledAt DateTime
+  onboardingCompletedAt DateTime
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table Account {
+  id String [pk]
+  userId String [ref: > User.id]
+  type String
+  provider String
+  providerAccountId String
+  refresh_token String
+  access_token String
+  expires_at Int
+  token_type String
+  scope String
+  id_token String
+  session_state String
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+  
+  indexes {
+    (provider, providerAccountId) [unique]
+  }
+}
+
+Table Session {
+  id String [pk]
+  sessionToken String [unique]
+  userId String [ref: > User.id]
+  expires DateTime
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table UserPassword {
+  id String [pk]
+  userId String [unique, ref: - User.id] // One-to-one
+  hash String
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table EmailVerificationToken {
+  id String [pk]
+  userId String [ref: > User.id]
+  token String [unique]
+  expiresAt DateTime
+  createdAt DateTime [default: `now()`]
+}
+
+Table PasswordResetToken {
+  id String [pk]
+  userId String [ref: > User.id]
+  token String [unique]
+  expiresAt DateTime
+  used Boolean [default: false]
+  createdAt DateTime [default: `now()`]
+}
+
+Table VerificationToken {
+  identifier String
+  token String [unique]
+  expires DateTime
+
+  indexes {
+    (identifier, token) [unique]
+  }
+}
+
+Table Workspace {
+  id String [pk]
+  name String
+  ownerId String [ref: > User.id]
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table WorkspaceMember {
+  id String [pk]
+  workspaceId String [ref: > Workspace.id]
+  userId String [ref: > User.id]
+  role String [default: 'member']
+  createdAt DateTime [default: `now()`]
+
+  indexes {
+    (workspaceId, userId) [unique]
+    (userId)
+  }
+}
+
+Table WorkspaceInvite {
+  id String [pk]
+  workspaceId String [ref: > Workspace.id]
+  email String
+  role String [default: 'member']
+  token String [unique]
+  expiresAt DateTime
+  acceptedAt DateTime
+  createdAt DateTime [default: `now()`]
+}
+
+Table AuditLog {
+  id String [pk]
+  actorId String [ref: > User.id]
+  action String
+  targetUserId String [ref: > User.id]
+  targetWorkspaceId String [ref: > Workspace.id]
+  metadata Json
+  createdAt DateTime [default: `now()`]
+}
+
+Table Task {
+  id String [pk]
+  title String
+  description String [default: ""]
+  definitionOfDone String [default: ""]
+  checklist Json
+  points Int
+  urgency String
+  risk String
+  status TaskStatus [default: 'BACKLOG']
+  type TaskType [default: 'PBI']
+  parentId String [ref: > Task.id]
+  sprintId String [ref: > Sprint.id]
+  dueDate DateTime
+  assigneeId String [ref: > User.id]
+  tags String[]
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+
+  indexes {
+    (parentId)
+  }
+}
+
+Table VelocityEntry {
+  id String [pk]
+  name String
+  points Int
+  range String
+  createdAt DateTime [default: `now()`]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+}
+
+Table AutomationSetting {
+  id Int [pk, default: 1]
+  low Int
+  high Int
+  updatedAt DateTime
+}
+
+Table AiProviderSetting {
+  id Int [pk, default: 1]
+  model String
+  apiKey String
+  baseUrl String
+  enabled Boolean [default: true]
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table AiPricing {
+  id String [pk]
+  provider AiProvider
+  model String
+  inputUsdPerM Float
+  outputUsdPerM Float
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+
+  indexes {
+    (provider, model) [unique]
+  }
+}
+
+Table UserAutomationSetting {
+  id String [pk]
+  low Int
+  high Int
+  stage Int [default: 0]
+  lastStageAt DateTime
+  updatedAt DateTime
+  createdAt DateTime [default: `now()`]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+
+  indexes {
+    (userId, workspaceId) [unique]
+  }
+}
+
+Table AutomationStageHistory {
+  id String [pk]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  stage Int
+  reason String
+  createdAt DateTime [default: `now()`]
+
+  indexes {
+    (userId, createdAt)
+    (workspaceId, createdAt)
+  }
+}
+
+Table RoutineRule {
+  id String [pk]
+  taskId String [unique, ref: - Task.id]
+  cadence RoutineCadence
+  nextAt DateTime
+  timezone String [default: 'UTC']
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table AiSuggestion {
+  id String [pk]
+  type AiSuggestionType
+  taskId String [ref: > Task.id]
+  inputTitle String
+  inputDescription String
+  output String
+  createdAt DateTime [default: `now()`]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+}
+
+Table AiPrepOutput {
+  id String [pk]
+  type AiPrepType
+  status AiPrepStatus [default: 'PENDING']
+  taskId String [ref: > Task.id]
+  output String
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+
+  indexes {
+    (taskId, createdAt)
+  }
+}
+
+Table AiUsage {
+  id String [pk]
+  action String
+  provider String
+  model String
+  promptTokens Int
+  completionTokens Int
+  totalTokens Int
+  costUsd Float
+  usageSource String
+  source String
+  taskId String
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  createdAt DateTime [default: `now()`]
+
+  indexes {
+    (workspaceId, createdAt)
+    (userId, createdAt)
+    (action, createdAt)
+  }
+}
+
+Table Sprint {
+  id String [pk]
+  name String
+  status SprintStatus [default: 'ACTIVE']
+  capacityPoints Int
+  startedAt DateTime [default: `now()`]
+  plannedEndAt DateTime
+  endedAt DateTime
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+}
+
+Table TaskDependency {
+  taskId String [ref: > Task.id]
+  dependsOnId String [ref: > Task.id]
+
+  indexes {
+    (taskId, dependsOnId) [pk]
+  }
+}
+
+Table TaskStatusEvent {
+  id String [pk]
+  taskId String [ref: > Task.id]
+  fromStatus TaskStatus
+  toStatus TaskStatus
+  actorId String [ref: > User.id]
+  source String
+  workspaceId String [ref: > Workspace.id]
+  createdAt DateTime [default: `now()`]
+
+  indexes {
+    (taskId, createdAt)
+    (workspaceId, createdAt)
+  }
+}
+
+Table MemoryType {
+  id String [pk]
+  key String
+  scope MemoryScope
+  valueType MemoryValueType
+  unit String
+  granularity String
+  updatePolicy String
+  decayDays Int
+  description String
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+
+  indexes {
+    (key, scope) [unique]
+    (scope)
+  }
+}
+
+Table MemoryClaim {
+  id String [pk]
+  typeId String [ref: > MemoryType.id]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  valueStr String
+  valueNum Float
+  valueBool Boolean
+  valueJson Json
+  confidence Float [default: 0.5]
+  source MemorySource [default: 'INFERRED']
+  status MemoryStatus [default: 'ACTIVE']
+  validFrom DateTime [default: `now()`]
+  validTo DateTime
+  evidence Json
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+
+  indexes {
+    (typeId, userId)
+    (typeId, workspaceId)
+  }
+}
+
+Table MemoryQuestion {
+  id String [pk]
+  typeId String [ref: > MemoryType.id]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  valueStr String
+  valueNum Float
+  valueBool Boolean
+  valueJson Json
+  confidence Float [default: 0.7]
+  status MemoryQuestionStatus [default: 'PENDING']
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+
+  indexes {
+    (typeId, status)
+    (userId, status)
+    (workspaceId, status)
+  }
+}
+
+Table MemoryMetric {
+  id String [pk]
+  typeId String [ref: > MemoryType.id]
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  windowStart DateTime
+  windowEnd DateTime
+  valueNum Float
+  valueJson Json
+  computedAt DateTime [default: `now()`]
+
+  indexes {
+    (typeId, userId, windowStart, windowEnd) [unique]
+    (typeId, workspaceId, windowStart, windowEnd) [unique]
+    (workspaceId, windowStart)
+    (userId, windowStart)
+  }
+}
+
+Table FocusQueue {
+  id String [pk]
+  workspaceId String [ref: > Workspace.id]
+  items Json
+  computedAt DateTime [default: `now()`]
+
+  indexes {
+    (workspaceId, computedAt)
+  }
+}
+
+Table IntakeItem {
+  id String [pk]
+  source IntakeSource
+  status IntakeStatus [default: 'PENDING']
+  title String
+  body String
+  payload Json
+  userId String [ref: > User.id]
+  workspaceId String [ref: > Workspace.id]
+  taskId String [ref: > Task.id]
+  createdAt DateTime [default: `now()`]
+  updatedAt DateTime
+
+  indexes {
+    (workspaceId, status)
+    (userId, status)
+  }
+}
