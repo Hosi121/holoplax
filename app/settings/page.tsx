@@ -27,6 +27,24 @@ type MemoryClaimRow = {
   status: string;
 };
 
+type MemoryQuestionRow = {
+  id: string;
+  typeId: string;
+  valueStr?: string | null;
+  valueNum?: number | null;
+  valueBool?: boolean | null;
+  valueJson?: unknown;
+  confidence: number;
+  status: string;
+  createdAt: string;
+  type: {
+    key: string;
+    scope: "USER" | "WORKSPACE";
+    valueType: string;
+    description?: string | null;
+  };
+};
+
 const formatClaimValue = (type: MemoryTypeRow, claim?: MemoryClaimRow) => {
   if (!claim) return "";
   if (type.valueType === "STRING") return claim.valueStr ?? "";
@@ -51,6 +69,29 @@ const formatClaimValue = (type: MemoryTypeRow, claim?: MemoryClaimRow) => {
   return "";
 };
 
+const formatQuestionValue = (question: MemoryQuestionRow) => {
+  const type = question.type;
+  if (type.valueType === "STRING") return question.valueStr ?? "";
+  if (type.valueType === "NUMBER" || type.valueType === "DURATION_MS" || type.valueType === "RATIO") {
+    return question.valueNum !== null && question.valueNum !== undefined
+      ? String(question.valueNum)
+      : "";
+  }
+  if (type.valueType === "BOOL") {
+    if (question.valueBool === null || question.valueBool === undefined) return "";
+    return question.valueBool ? "true" : "false";
+  }
+  if (
+    type.valueType === "JSON" ||
+    type.valueType === "HISTOGRAM_24x7" ||
+    type.valueType === "RATIO_BY_TYPE"
+  ) {
+    if (question.valueJson === null || question.valueJson === undefined) return "";
+    return JSON.stringify(question.valueJson, null, 2);
+  }
+  return "";
+};
+
 export default function SettingsPage() {
   const { update } = useSession();
   const router = useRouter();
@@ -67,6 +108,9 @@ export default function SettingsPage() {
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [memorySavingId, setMemorySavingId] = useState<string | null>(null);
   const [memoryRemovingId, setMemoryRemovingId] = useState<string | null>(null);
+  const [memoryQuestions, setMemoryQuestions] = useState<MemoryQuestionRow[]>([]);
+  const [memoryQuestionLoading, setMemoryQuestionLoading] = useState(false);
+  const [memoryQuestionActionId, setMemoryQuestionActionId] = useState<string | null>(null);
 
   const fetchThresholds = useCallback(async () => {
     if (!ready) return;
@@ -122,12 +166,26 @@ export default function SettingsPage() {
     }
   }, [ready, workspaceId]);
 
+  const fetchMemoryQuestions = useCallback(async () => {
+    if (!ready) return;
+    setMemoryQuestionLoading(true);
+    try {
+      const res = await fetch("/api/memory/questions");
+      if (!res.ok) return;
+      const data = await res.json();
+      setMemoryQuestions(data.questions ?? []);
+    } finally {
+      setMemoryQuestionLoading(false);
+    }
+  }, [ready]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchThresholds();
     void fetchAccount();
     void fetchMemory();
-  }, [fetchThresholds, fetchAccount, fetchMemory]);
+    void fetchMemoryQuestions();
+  }, [fetchThresholds, fetchAccount, fetchMemory, fetchMemoryQuestions]);
 
   const saveThresholds = async () => {
     await fetch("/api/automation", {
@@ -191,8 +249,30 @@ export default function SettingsPage() {
     }
   };
 
+  const respondMemoryQuestion = async (
+    question: MemoryQuestionRow,
+    action: "accept" | "reject" | "hold",
+  ) => {
+    setMemoryQuestionActionId(question.id);
+    try {
+      const res = await fetch(`/api/memory/questions/${question.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) return;
+      setMemoryQuestions((prev) => prev.filter((item) => item.id !== question.id));
+      if (action === "accept") {
+        void fetchMemory();
+      }
+    } finally {
+      setMemoryQuestionActionId(null);
+    }
+  };
+
   const userMemoryTypes = memoryTypes.filter((type) => type.scope === "USER");
   const workspaceMemoryTypes = memoryTypes.filter((type) => type.scope === "WORKSPACE");
+  const activeQuestion = memoryQuestions[0] ?? null;
 
   const renderMemoryInput = (type: MemoryTypeRow) => {
     const value = memoryDrafts[type.id] ?? "";
@@ -412,7 +492,7 @@ export default function SettingsPage() {
                 ユーザー/ワークスペースの前提情報を管理します。
               </p>
             </div>
-            {memoryLoading ? (
+            {memoryLoading || memoryQuestionLoading ? (
               <span className="text-xs text-slate-500">読み込み中...</span>
             ) : null}
           </div>
@@ -548,6 +628,65 @@ export default function SettingsPage() {
         </div>
 
       </section>
+
+      {activeQuestion ? (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-lg border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Memory 確認
+                </p>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {activeQuestion.type.key}
+                </h3>
+                {activeQuestion.type.description ? (
+                  <p className="text-xs text-slate-500">
+                    {activeQuestion.type.description}
+                  </p>
+                ) : null}
+              </div>
+              <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                信頼度 {Math.round(activeQuestion.confidence * 100)}%
+              </span>
+            </div>
+            <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                候補値
+              </p>
+              <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                {formatQuestionValue(activeQuestion) || "値が未設定です"}
+              </pre>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              この内容をMemoryとして保存しますか？
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+              <button
+                onClick={() => respondMemoryQuestion(activeQuestion, "accept")}
+                disabled={memoryQuestionActionId === activeQuestion.id}
+                className="border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50"
+              >
+                採用
+              </button>
+              <button
+                onClick={() => respondMemoryQuestion(activeQuestion, "reject")}
+                disabled={memoryQuestionActionId === activeQuestion.id}
+                className="border border-rose-200 bg-rose-50 px-3 py-1 text-rose-700 transition hover:border-rose-300 disabled:opacity-50"
+              >
+                却下
+              </button>
+              <button
+                onClick={() => respondMemoryQuestion(activeQuestion, "hold")}
+                disabled={memoryQuestionActionId === activeQuestion.id}
+                className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
+              >
+                保留して閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
