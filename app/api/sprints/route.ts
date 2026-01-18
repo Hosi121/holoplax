@@ -3,24 +3,28 @@ import { handleAuthError, ok } from "../../../lib/api-response";
 import { errorResponse } from "../../../lib/http/errors";
 import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
+import { SprintStatus } from "@prisma/client";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
     if (!workspaceId) {
       return ok({ sprints: [] });
     }
+    const { searchParams } = new URL(request.url);
+    const statusParam = searchParams.get("status");
+    const status = statusParam as SprintStatus | null;
     const sprints = await prisma.sprint.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...(status && { status }) },
       orderBy: { startedAt: "desc" },
     });
     const sprintIds = sprints.map((sprint) => sprint.id);
     const tasks = sprintIds.length
       ? await prisma.task.findMany({
-          where: { sprintId: { in: sprintIds } },
-          select: { sprintId: true, status: true, points: true },
-        })
+        where: { sprintId: { in: sprintIds } },
+        select: { sprintId: true, status: true, points: true },
+      })
       : [];
     const bySprint = tasks.reduce<Record<string, { committed: number; completed: number }>>(
       (acc, task) => {

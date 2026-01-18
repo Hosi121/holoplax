@@ -89,7 +89,7 @@ export default function VelocityPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
           {history.map((item) => (
             <div
               key={item.id}
@@ -123,7 +123,7 @@ export default function VelocityPage() {
           />
           <button
             onClick={addEntry}
-            className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+            className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
           >
             追加
           </button>
