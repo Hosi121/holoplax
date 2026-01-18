@@ -13,7 +13,7 @@ const errors = createDomainErrors("AI");
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { userId } = await requireAuth();
@@ -21,7 +21,7 @@ export async function PATCH(
     if (!workspaceId) {
       return errors.badRequest("workspace is required");
     }
-    const prepId = params.id;
+    const { id: prepId } = await params;
     const body = await parseBody(request, AiPrepActionSchema, {
       code: "AI_VALIDATION",
     });
