@@ -34,6 +34,11 @@ DB_NAME=$(echo $DB_SECRET | jq -r '.dbname')
 OPENAI_SECRET=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${openai_secret_name} --query SecretString --output text 2>/dev/null || echo '{}')
 OPENAI_API_KEY=$(echo $OPENAI_SECRET | jq -r '.api_key // empty')
 
+# Install cron + uv for daily metrics job
+yum install -y cronie
+sudo -u ec2-user bash -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
+sudo -u ec2-user bash -lc "/home/ec2-user/.local/bin/uv python install 3.11"
+
 # Create .env file
 cat > $APP_DIR/.env << EOF
 DATABASE_URL=postgresql://$DB_USER:$DB_PASS@$DB_HOST:5432/$DB_NAME
@@ -43,6 +48,30 @@ OPENAI_API_KEY=$OPENAI_API_KEY
 S3_BUCKET=${s3_bucket}
 AWS_REGION=${region}
 EOF
+
+# Create metrics runner and schedule daily job
+mkdir -p $APP_DIR/scripts/metrics
+cat > $APP_DIR/scripts/metrics/run_metrics.sh << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+set -a
+source /home/ec2-user/holoplax/.env
+set +a
+
+export PATH="/home/ec2-user/.local/bin:$PATH"
+
+cd /home/ec2-user/holoplax/scripts/metrics
+exec /home/ec2-user/.local/bin/uv run --project /home/ec2-user/holoplax/scripts/metrics --python 3.11 python metrics_job.py
+EOF
+chmod +x $APP_DIR/scripts/metrics/run_metrics.sh
+
+cat > /etc/cron.d/holoplax-metrics << EOF
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/ec2-user/.local/bin
+15 3 * * * ec2-user $APP_DIR/scripts/metrics/run_metrics.sh >> /var/log/holoplax-metrics.log 2>&1
+EOF
+systemctl enable --now crond
 
 # Set ownership
 chown -R ec2-user:ec2-user $APP_DIR

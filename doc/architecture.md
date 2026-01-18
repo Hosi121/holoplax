@@ -5,11 +5,11 @@
 flowchart LR
   User[User/Client] --> ALB[ALB (HTTP)]
   subgraph AWS[VPC (ap-northeast-3)]
-    ALB --> EC2[EC2 App (Next.js/Node)]
+    ALB --> EC2[EC2 App (Next.js/Node + cron)]
     EC2 --> RDS[(RDS PostgreSQL)]
     EC2 --> S3[(S3 Avatar Bucket)]
     SM[Secrets Manager] --> EC2
-    EC2 --> Metrics[Daily Metrics Job (uv + python)]
+    EC2 --> Metrics[Daily Metrics Job (uv + python, cron)]
     Metrics --> RDS
   end
 ```
@@ -50,12 +50,10 @@ flowchart LR
 ### Daily Metrics -> Memory Update
 ```mermaid
 flowchart LR
-  Cron[Daily Schedule] --> Job[Metrics Job (uv + python)]
+  Cron[EC2 cron] --> Job[Metrics Job (uv + python)]
   Job --> Read[Query Task + TaskStatusEvent]
   Read --> Metric[MemoryMetric (window)]
   Metric --> Claim[MemoryClaim (EMA)]
-  Claim --> Question[MemoryQuestion (if confidence >= threshold)]
-  Claim --> Summary[MemorySummary (periodic)]
 ```
 
 ### AI Collaboration Flow

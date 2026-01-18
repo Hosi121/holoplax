@@ -1,64 +1,58 @@
 import { randomBytes } from "crypto";
 import { requireAuth } from "../../../../../lib/api-auth";
-import { handleAuthError, ok } from "../../../../../lib/api-response";
+import { withApiHandler } from "../../../../../lib/api-handler";
+import { requireWorkspaceManager } from "../../../../../lib/api-guards";
+import { ok } from "../../../../../lib/api-response";
 import { logAudit } from "../../../../../lib/audit";
 import { WorkspaceInviteCreateSchema } from "../../../../../lib/contracts/workspace";
-import { createDomainErrors, errorResponse } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
 import prisma from "../../../../../lib/prisma";
 
-const canManage = async (workspaceId: string, userId: string) => {
-  const membership = await prisma.workspaceMember.findUnique({
-    where: { workspaceId_userId: { workspaceId, userId } },
-  });
-  return membership?.role === "owner" || membership?.role === "admin";
-};
-
-const errors = createDomainErrors("WORKSPACE");
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  try {
-    const { userId } = await requireAuth();
-    const { id } = await params;
-    if (!(await canManage(id, userId))) return errors.forbidden();
-    const body = await parseBody(request, WorkspaceInviteCreateSchema, {
-      code: "WORKSPACE_VALIDATION",
-    });
-    const email = body.email;
-    const role = body.role ?? "member";
-
-    const token = randomBytes(24).toString("hex");
-    const invite = await prisma.workspaceInvite.create({
-      data: {
-        workspaceId: id,
-        email,
-        role,
-        token,
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+  return withApiHandler(
+    {
+      logLabel: "POST /api/workspaces/[id]/invites",
+      errorFallback: {
+        code: "WORKSPACE_INTERNAL",
+        message: "failed to create invite",
+        status: 500,
       },
-    });
-    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-    const inviteUrl = `${baseUrl}/workspaces/invite?token=${invite.token}`;
+    },
+    async () => {
+      const { userId } = await requireAuth();
+      const { id } = await params;
+      await requireWorkspaceManager("WORKSPACE", id, userId);
+      const body = await parseBody(request, WorkspaceInviteCreateSchema, {
+        code: "WORKSPACE_VALIDATION",
+      });
+      const email = body.email;
+      const role = body.role ?? "member";
 
-    await logAudit({
-      actorId: userId,
-      action: "WORKSPACE_INVITE_CREATE",
-      targetWorkspaceId: id,
-      metadata: { email, role },
-    });
+      const token = randomBytes(24).toString("hex");
+      const invite = await prisma.workspaceInvite.create({
+        data: {
+          workspaceId: id,
+          email,
+          role,
+          token,
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
+        },
+      });
+      const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+      const inviteUrl = `${baseUrl}/workspaces/invite?token=${invite.token}`;
 
-    return ok({ inviteUrl, invite });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("POST /api/workspaces/[id]/invites error", error);
-    return errorResponse(error, {
-      code: "WORKSPACE_INTERNAL",
-      message: "failed to create invite",
-      status: 500,
-    });
-  }
+      await logAudit({
+        actorId: userId,
+        action: "WORKSPACE_INVITE_CREATE",
+        targetWorkspaceId: id,
+        metadata: { email, role },
+      });
+
+      return ok({ inviteUrl, invite });
+    },
+  );
 }

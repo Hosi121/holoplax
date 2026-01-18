@@ -1,8 +1,9 @@
-import { requireAuth } from "../../../../lib/api-auth";
-import { handleAuthError, ok } from "../../../../lib/api-response";
+import { withApiHandler } from "../../../../lib/api-handler";
+import { requireAdmin } from "../../../../lib/api-guards";
+import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
 import { AdminAiUpdateSchema } from "../../../../lib/contracts/admin";
-import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 
@@ -28,109 +29,105 @@ const getEnvFallback = () => ({
 });
 
 export async function GET() {
-  try {
-    const { role } = await requireAuth();
-    if (role !== "ADMIN") {
-      return errors.forbidden();
-    }
-    const setting = await prisma.aiProviderSetting.findUnique({
-      where: { id: 1 },
-      select: { model: true, baseUrl: true, enabled: true, apiKey: true },
-    });
-    if (!setting) {
-      return ok({ setting: getEnvFallback() });
-    }
-    return ok({
-      setting: {
-        model: setting.model,
-        baseUrl: setting.baseUrl ?? "",
-        enabled: setting.enabled,
-        hasApiKey: Boolean(setting.apiKey),
-        source: "db",
+  return withApiHandler(
+    {
+      logLabel: "GET /api/admin/ai",
+      errorFallback: {
+        code: "ADMIN_INTERNAL",
+        message: "failed to load ai settings",
+        status: 500,
       },
-    });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("GET /api/admin/ai error", error);
-    return errorResponse(error, {
-      code: "ADMIN_INTERNAL",
-      message: "failed to load ai settings",
-      status: 500,
-    });
-  }
+    },
+    async () => {
+      await requireAdmin("ADMIN");
+      const setting = await prisma.aiProviderSetting.findUnique({
+        where: { id: 1 },
+        select: { model: true, baseUrl: true, enabled: true, apiKey: true },
+      });
+      if (!setting) {
+        return ok({ setting: getEnvFallback() });
+      }
+      return ok({
+        setting: {
+          model: setting.model,
+          baseUrl: setting.baseUrl ?? "",
+          enabled: setting.enabled,
+          hasApiKey: Boolean(setting.apiKey),
+          source: "db",
+        },
+      });
+    },
+  );
 }
 
 export async function POST(request: Request) {
-  try {
-    const { userId, role } = await requireAuth();
-    if (role !== "ADMIN") {
-      return errors.forbidden();
-    }
-    const body = await parseBody(request, AdminAiUpdateSchema, {
-      code: "ADMIN_VALIDATION",
-      allowEmpty: true,
-    });
-    const rawModel = String(body.model ?? "").trim();
-    const model =
-      rawModel ||
-      process.env.AI_MODEL ||
-      process.env.LITELLM_MODEL ||
-      process.env.OPENAI_MODEL ||
-      DEFAULT_MODEL;
-    if (!model) {
-      return errors.badRequest("model is required");
-    }
-    const baseUrl = String(body.baseUrl ?? "").trim() || null;
-    const enabled = Boolean(body.enabled);
-    const apiKey = String(body.apiKey ?? "").trim();
-
-    const existing = await prisma.aiProviderSetting.findUnique({
-      where: { id: 1 },
-      select: { apiKey: true },
-    });
-    const nextApiKey = apiKey || existing?.apiKey || "";
-    if (!nextApiKey) {
-      return errors.badRequest("apiKey is required");
-    }
-
-    const setting = await prisma.aiProviderSetting.upsert({
-      where: { id: 1 },
-      update: {
-        model,
-        baseUrl,
-        enabled,
-        apiKey: nextApiKey,
+  return withApiHandler(
+    {
+      logLabel: "POST /api/admin/ai",
+      errorFallback: {
+        code: "ADMIN_INTERNAL",
+        message: "failed to update ai settings",
+        status: 500,
       },
-      create: {
-        id: 1,
-        model,
-        baseUrl,
-        enabled,
-        apiKey: nextApiKey,
-      },
-      select: { model: true, baseUrl: true, enabled: true },
-    });
+    },
+    async () => {
+      const { userId } = await requireAdmin("ADMIN");
+      const body = await parseBody(request, AdminAiUpdateSchema, {
+        code: "ADMIN_VALIDATION",
+        allowEmpty: true,
+      });
+      const rawModel = String(body.model ?? "").trim();
+      const model =
+        rawModel ||
+        process.env.AI_MODEL ||
+        process.env.LITELLM_MODEL ||
+        process.env.OPENAI_MODEL ||
+        DEFAULT_MODEL;
+      if (!model) {
+        return errors.badRequest("model is required");
+      }
+      const baseUrl = String(body.baseUrl ?? "").trim() || null;
+      const enabled = Boolean(body.enabled);
+      const apiKey = String(body.apiKey ?? "").trim();
 
-    await logAudit({
-      actorId: userId,
-      action: "AI_PROVIDER_UPDATE",
-      metadata: {
-        model: setting.model,
-        enabled: setting.enabled,
-        baseUrl: setting.baseUrl,
-      },
-    });
+      const existing = await prisma.aiProviderSetting.findUnique({
+        where: { id: 1 },
+        select: { apiKey: true },
+      });
+      const nextApiKey = apiKey || existing?.apiKey || "";
+      if (!nextApiKey) {
+        return errors.badRequest("apiKey is required");
+      }
 
-    return ok({ setting: { ...setting, hasApiKey: true, source: "db" } });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("POST /api/admin/ai error", error);
-    return errorResponse(error, {
-      code: "ADMIN_INTERNAL",
-      message: "failed to update ai settings",
-      status: 500,
-    });
-  }
+      const setting = await prisma.aiProviderSetting.upsert({
+        where: { id: 1 },
+        update: {
+          model,
+          baseUrl,
+          enabled,
+          apiKey: nextApiKey,
+        },
+        create: {
+          id: 1,
+          model,
+          baseUrl,
+          enabled,
+          apiKey: nextApiKey,
+        },
+        select: { model: true, baseUrl: true, enabled: true },
+      });
+
+      await logAudit({
+        actorId: userId,
+        action: "AI_PROVIDER_UPDATE",
+        metadata: {
+          model: setting.model,
+          enabled: setting.enabled,
+          baseUrl: setting.baseUrl,
+        },
+      });
+
+      return ok({ setting: { ...setting, hasApiKey: true, source: "db" } });
+    },
+  );
 }

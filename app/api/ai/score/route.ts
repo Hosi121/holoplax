@@ -1,11 +1,11 @@
-import { requireAuth } from "../../../../lib/api-auth";
-import { handleAuthError, ok } from "../../../../lib/api-response";
+import { withApiHandler } from "../../../../lib/api-handler";
+import { requireWorkspaceAuth } from "../../../../lib/api-guards";
+import { ok } from "../../../../lib/api-response";
 import { AiScoreSchema } from "../../../../lib/contracts/ai";
-import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { requestAiChat } from "../../../../lib/ai-provider";
 import prisma from "../../../../lib/prisma";
-import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const fallbackEstimate = (title: string, description: string) => {
   const base = title.length + description.length;
@@ -27,71 +27,71 @@ const extractJson = (text: string) => {
 const errors = createDomainErrors("AI");
 
 export async function POST(request: Request) {
-  try {
-    const { userId } = await requireAuth();
-    const workspaceId = await resolveWorkspaceId(userId);
-    if (!workspaceId) {
-      return errors.badRequest("workspace is required");
-    }
-    const body = await parseBody(request, AiScoreSchema, { code: "AI_VALIDATION" });
-    const title = body.title;
-    const description = body.description ?? "";
-    const taskId = body.taskId ?? null;
-    if (taskId) {
-      const task = await prisma.task.findFirst({
-        where: { id: taskId, workspaceId },
-        select: { id: true },
+  return withApiHandler(
+    {
+      logLabel: "POST /api/ai/score",
+      errorFallback: {
+        code: "AI_INTERNAL",
+        message: "failed to estimate score",
+        status: 500,
+      },
+    },
+    async () => {
+      const { userId, workspaceId } = await requireWorkspaceAuth({
+        domain: "AI",
+        requireWorkspace: true,
       });
-      if (!task) {
-        return errors.badRequest("invalid taskId");
+      const body = await parseBody(request, AiScoreSchema, { code: "AI_VALIDATION" });
+      const title = body.title;
+      const description = body.description ?? "";
+      const taskId = body.taskId ?? null;
+      if (taskId) {
+        const task = await prisma.task.findFirst({
+          where: { id: taskId, workspaceId },
+          select: { id: true },
+        });
+        if (!task) {
+          return errors.badRequest("invalid taskId");
+        }
       }
-    }
 
-    let payload = fallbackEstimate(title, description);
+      let payload = fallbackEstimate(title, description);
 
-    try {
-      const result = await requestAiChat({
-        system:
-          "あなたはアジャイルなタスク見積もりアシスタントです。JSONのみで返してください。",
-        user: `以下を見積もり、JSONで返してください: { "points": number(1-13), "urgency": "低|中|高", "risk": "低|中|高", "score": number(0-100), "reason": string }。\nタイトル: ${title}\n説明: ${description}`,
-        maxTokens: 120,
-        context: {
-          action: "AI_SCORE",
+      try {
+        const result = await requestAiChat({
+          system:
+            "あなたはアジャイルなタスク見積もりアシスタントです。JSONのみで返してください。",
+          user: `以下を見積もり、JSONで返してください: { "points": number(1-13), "urgency": "低|中|高", "risk": "低|中|高", "score": number(0-100), "reason": string }。\nタイトル: ${title}\n説明: ${description}`,
+          maxTokens: 120,
+          context: {
+            action: "AI_SCORE",
+            userId,
+            workspaceId,
+            taskId,
+            source: "ai-score",
+          },
+        });
+        if (result?.content) {
+          const parsed = JSON.parse(extractJson(result.content));
+          if (parsed?.points) payload = parsed;
+        }
+      } catch {
+        // fall back to heuristic
+      }
+
+      const saved = await prisma.aiSuggestion.create({
+        data: {
+          type: "SCORE",
+          taskId,
+          inputTitle: title,
+          inputDescription: description,
+          output: JSON.stringify(payload),
           userId,
           workspaceId,
-          taskId,
-          source: "ai-score",
         },
       });
-      if (result?.content) {
-        const parsed = JSON.parse(extractJson(result.content));
-        if (parsed?.points) payload = parsed;
-      }
-    } catch {
-      // fall back to heuristic
-    }
 
-    const saved = await prisma.aiSuggestion.create({
-      data: {
-        type: "SCORE",
-        taskId,
-        inputTitle: title,
-        inputDescription: description,
-        output: JSON.stringify(payload),
-        userId,
-        workspaceId,
-      },
-    });
-
-    return ok({ ...payload, suggestionId: saved.id });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("POST /api/ai/score error", error);
-    return errorResponse(error, {
-      code: "AI_INTERNAL",
-      message: "failed to estimate score",
-      status: 500,
-    });
-  }
+      return ok({ ...payload, suggestionId: saved.id });
+    },
+  );
 }

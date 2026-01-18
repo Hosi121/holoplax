@@ -1,7 +1,8 @@
-import { requireAuth } from "../../../../lib/api-auth";
-import { handleAuthError, ok } from "../../../../lib/api-response";
+import { withApiHandler } from "../../../../lib/api-handler";
+import { requireAdmin } from "../../../../lib/api-guards";
+import { ok } from "../../../../lib/api-response";
 import { calculateAiUsageCost, loadAiPricingTable } from "../../../../lib/ai-pricing";
-import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { createDomainErrors } from "../../../../lib/http/errors";
 import prisma from "../../../../lib/prisma";
 
 type UsageSummary = {
@@ -244,57 +245,159 @@ const csvEscape = (value: string) => {
 };
 
 export async function GET(request: Request) {
-  try {
-    const { role } = await requireAuth();
-    if (role !== "ADMIN") {
-      return errors.forbidden();
-    }
-    const { searchParams } = new URL(request.url);
-    const filter = searchParams.get("filter");
-    const format = searchParams.get("format");
-    const range = resolveRange(searchParams);
-    if (!range) {
-      return errors.badRequest("invalid range");
-    }
-    const limit = Math.min(
-      Math.max(Number(searchParams.get("limit") ?? 200), 1),
-      500,
-    );
-    const { table: pricingTable, source: pricingSource } = await loadAiPricingTable();
-    const rangeWhere = {
-      createdAt: {
-        gte: range.start,
-        lte: range.end,
+  return withApiHandler(
+    {
+      logLabel: "GET /api/admin/audit",
+      errorFallback: {
+        code: "ADMIN_INTERNAL",
+        message: "failed to load audit logs",
+        status: 500,
       },
-    };
-    if (filter === "ai") {
-      const earliestUsage = await prisma.aiUsage.findFirst({
-        where: rangeWhere,
-        orderBy: { createdAt: "asc" },
-        select: { createdAt: true },
-      });
-      const legacyRangeWhere = earliestUsage
-        ? {
-            createdAt: {
-              gte: range.start,
-              lt: earliestUsage.createdAt,
+    },
+    async () => {
+      await requireAdmin("ADMIN");
+      const { searchParams } = new URL(request.url);
+      const filter = searchParams.get("filter");
+      const format = searchParams.get("format");
+      const range = resolveRange(searchParams);
+      if (!range) {
+        return errors.badRequest("invalid range");
+      }
+      const limit = Math.min(
+        Math.max(Number(searchParams.get("limit") ?? 200), 1),
+        500,
+      );
+      const { table: pricingTable, source: pricingSource } = await loadAiPricingTable();
+      const rangeWhere = {
+        createdAt: {
+          gte: range.start,
+          lte: range.end,
+        },
+      };
+      if (filter === "ai") {
+        const earliestUsage = await prisma.aiUsage.findFirst({
+          where: rangeWhere,
+          orderBy: { createdAt: "asc" },
+          select: { createdAt: true },
+        });
+        const legacyRangeWhere = earliestUsage
+          ? {
+              createdAt: {
+                gte: range.start,
+                lt: earliestUsage.createdAt,
+              },
+            }
+          : rangeWhere;
+        if (format === "csv") {
+          const usageLogs = await prisma.aiUsage.findMany({
+            where: rangeWhere,
+            orderBy: { createdAt: "desc" },
+            select: {
+              action: true,
+              provider: true,
+              model: true,
+              promptTokens: true,
+              completionTokens: true,
+              totalTokens: true,
+              costUsd: true,
+              usageSource: true,
+              createdAt: true,
+              user: { select: { name: true, email: true } },
+              workspace: { select: { name: true } },
             },
+          });
+          const legacyLogs = await prisma.auditLog.findMany({
+            where: {
+              action: { startsWith: "AI_" },
+              ...legacyRangeWhere,
+            },
+            orderBy: { createdAt: "desc" },
+            select: {
+              action: true,
+              metadata: true,
+              createdAt: true,
+              actor: { select: { name: true, email: true } },
+              targetWorkspace: { select: { name: true } },
+            },
+          });
+          const rows = [
+            [
+              "createdAt",
+              "action",
+              "provider",
+              "model",
+              "promptTokens",
+              "completionTokens",
+              "totalTokens",
+              "costUsd",
+              "usageSource",
+              "actorName",
+              "actorEmail",
+              "workspaceName",
+            ],
+          ];
+          const csvRows: Array<{ createdAt: Date; row: string[] }> = [];
+          for (const log of usageLogs) {
+            const usage = normalizeUsageRow(log, pricingTable);
+            csvRows.push({
+              createdAt: log.createdAt,
+              row: [
+                log.createdAt.toISOString(),
+                log.action,
+                usage.provider ?? "",
+                usage.model ?? "",
+                usage.promptTokens?.toString() ?? "",
+                usage.completionTokens?.toString() ?? "",
+                usage.totalTokens?.toString() ?? "",
+                typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
+                usage.usageSource,
+                log.user?.name ?? "",
+                log.user?.email ?? "",
+                log.workspace?.name ?? "",
+              ],
+            });
           }
-        : rangeWhere;
-      if (format === "csv") {
+          for (const log of legacyLogs) {
+            const usage = normalizeUsage(log.metadata, pricingTable);
+            csvRows.push({
+              createdAt: log.createdAt,
+              row: [
+                log.createdAt.toISOString(),
+                log.action,
+                usage.provider ?? "",
+                usage.model ?? "",
+                usage.promptTokens?.toString() ?? "",
+                usage.completionTokens?.toString() ?? "",
+                usage.totalTokens?.toString() ?? "",
+                typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
+                usage.usageSource,
+                log.actor?.name ?? "",
+                log.actor?.email ?? "",
+                log.targetWorkspace?.name ?? "",
+              ],
+            });
+          }
+          csvRows
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+            .forEach((item) => rows.push(item.row));
+          const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+          return new Response(csv, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/csv; charset=utf-8",
+              "Content-Disposition": `attachment; filename="ai-usage-${range.label.replace(
+                /[^0-9-]/g,
+                "_",
+              )}.csv"`,
+            },
+          });
+        }
+
         const usageLogs = await prisma.aiUsage.findMany({
           where: rangeWhere,
           orderBy: { createdAt: "desc" },
-          select: {
-            action: true,
-            provider: true,
-            model: true,
-            promptTokens: true,
-            completionTokens: true,
-            totalTokens: true,
-            costUsd: true,
-            usageSource: true,
-            createdAt: true,
+          take: limit,
+          include: {
             user: { select: { name: true, email: true } },
             workspace: { select: { name: true } },
           },
@@ -305,334 +408,230 @@ export async function GET(request: Request) {
             ...legacyRangeWhere,
           },
           orderBy: { createdAt: "desc" },
+          take: limit,
+          include: {
+            actor: { select: { id: true, name: true, email: true } },
+            targetWorkspace: { select: { id: true, name: true } },
+          },
+        });
+        const mappedUsageLogs = usageLogs.map((log) => ({
+          id: log.id,
+          action: log.action,
+          createdAt: log.createdAt,
+          actor: { name: log.user?.name ?? null, email: log.user?.email ?? null },
+          targetUser: null,
+          targetWorkspace: log.workspace ? { name: log.workspace.name } : null,
+          metadata: { taskId: log.taskId, source: log.source },
+          usage: normalizeUsageRow(log, pricingTable),
+        }));
+        const mappedLegacyLogs = legacyLogs.map((log) => ({
+          id: log.id,
+          action: log.action,
+          createdAt: log.createdAt,
+          actor: { name: log.actor?.name ?? null, email: log.actor?.email ?? null },
+          targetUser: null,
+          targetWorkspace: log.targetWorkspace ? { name: log.targetWorkspace.name } : null,
+          metadata: log.metadata && typeof log.metadata === "object" ? log.metadata : null,
+          usage: normalizeUsage(log.metadata, pricingTable),
+        }));
+        const mappedLogs = [...mappedUsageLogs, ...mappedLegacyLogs]
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .slice(0, limit);
+
+        const usageRows = await prisma.aiUsage.findMany({
+          where: rangeWhere,
           select: {
-            action: true,
+            provider: true,
+            model: true,
+            promptTokens: true,
+            completionTokens: true,
+            totalTokens: true,
+            costUsd: true,
+            usageSource: true,
+            createdAt: true,
+            user: { select: { id: true, name: true, email: true } },
+            workspace: { select: { id: true, name: true } },
+          },
+        });
+        const legacyUsageLogs = await prisma.auditLog.findMany({
+          where: {
+            action: { startsWith: "AI_" },
+            ...legacyRangeWhere,
+          },
+          select: {
             metadata: true,
             createdAt: true,
-            actor: { select: { name: true, email: true } },
-            targetWorkspace: { select: { name: true } },
+            actor: { select: { id: true, name: true, email: true } },
+            targetWorkspace: { select: { id: true, name: true } },
           },
         });
-        const rows = [
-          [
-            "createdAt",
-            "action",
-            "provider",
-            "model",
-            "promptTokens",
-            "completionTokens",
-            "totalTokens",
-            "costUsd",
-            "usageSource",
-            "actorName",
-            "actorEmail",
-            "workspaceName",
-          ],
-        ];
-        const csvRows: Array<{ createdAt: Date; row: string[] }> = [];
-        for (const log of usageLogs) {
+
+        const totals = createBucket();
+        let promptTokensTotal = 0;
+        let completionTokensTotal = 0;
+        const byProvider: Record<string, UsageBucket> = {};
+        const byModel: Record<string, UsageBucket> = {};
+        const byWorkspace: Record<string, UsageBucket & { name: string | null }> = {};
+        const byUser: Record<string, UsageBucket & { name: string | null; email: string | null }> = {};
+
+        for (const log of usageRows) {
           const usage = normalizeUsageRow(log, pricingTable);
-          csvRows.push({
-            createdAt: log.createdAt,
-            row: [
-              log.createdAt.toISOString(),
-              log.action,
-              usage.provider ?? "",
-              usage.model ?? "",
-              usage.promptTokens?.toString() ?? "",
-              usage.completionTokens?.toString() ?? "",
-              usage.totalTokens?.toString() ?? "",
-              typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
-              usage.usageSource,
-              log.user?.name ?? "",
-              log.user?.email ?? "",
-              log.workspace?.name ?? "",
-            ],
-          });
+          bumpBucket(totals, usage);
+          if (usage.promptTokens !== null) promptTokensTotal += usage.promptTokens;
+          if (usage.completionTokens !== null) completionTokensTotal += usage.completionTokens;
+
+          const providerKey = usage.provider ?? "unknown";
+          const providerBucket = byProvider[providerKey] ?? createBucket();
+          bumpBucket(providerBucket, usage);
+          byProvider[providerKey] = providerBucket;
+
+          const modelKey = usage.model ?? "unknown";
+          const modelBucket = byModel[modelKey] ?? createBucket();
+          bumpBucket(modelBucket, usage);
+          byModel[modelKey] = modelBucket;
+
+          const workspaceKey = log.workspace?.id ?? "unknown";
+          const workspaceBucket =
+            byWorkspace[workspaceKey] ??
+            ({
+              ...createBucket(),
+              name: log.workspace?.name ?? null,
+            } as UsageBucket & { name: string | null });
+          bumpBucket(workspaceBucket, usage);
+          byWorkspace[workspaceKey] = workspaceBucket;
+
+          const userKey = log.user?.id ?? "unknown";
+          const userBucket =
+            byUser[userKey] ??
+            ({
+              ...createBucket(),
+              name: log.user?.name ?? null,
+              email: log.user?.email ?? null,
+            } as UsageBucket & { name: string | null; email: string | null });
+          bumpBucket(userBucket, usage);
+          byUser[userKey] = userBucket;
         }
-        for (const log of legacyLogs) {
-          const usage = normalizeUsage(log.metadata, pricingTable);
-          csvRows.push({
-            createdAt: log.createdAt,
-            row: [
-              log.createdAt.toISOString(),
-              log.action,
-              usage.provider ?? "",
-              usage.model ?? "",
-              usage.promptTokens?.toString() ?? "",
-              usage.completionTokens?.toString() ?? "",
-              usage.totalTokens?.toString() ?? "",
-              typeof usage.costUsd === "number" ? usage.costUsd.toFixed(6) : "",
-              usage.usageSource,
-              log.actor?.name ?? "",
-              log.actor?.email ?? "",
-              log.targetWorkspace?.name ?? "",
-            ],
-          });
-        }
-        csvRows
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-          .forEach((item) => rows.push(item.row));
-        const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
-        return new Response(csv, {
-          status: 200,
-          headers: {
-            "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="ai-usage-${range.label.replace(
-              /[^0-9-]/g,
-              "_",
-            )}.csv"`,
-          },
-        });
-      }
 
-      const usageLogs = await prisma.aiUsage.findMany({
-        where: rangeWhere,
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        include: {
-          user: { select: { name: true, email: true } },
-          workspace: { select: { name: true } },
-        },
-      });
-      const legacyLogs = await prisma.auditLog.findMany({
-        where: {
-          action: { startsWith: "AI_" },
-          ...legacyRangeWhere,
-        },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        include: {
-          actor: { select: { id: true, name: true, email: true } },
-          targetWorkspace: { select: { id: true, name: true } },
-        },
-      });
-      const mappedUsageLogs = usageLogs.map((log) => ({
-        id: log.id,
-        action: log.action,
-        createdAt: log.createdAt,
-        actor: { name: log.user?.name ?? null, email: log.user?.email ?? null },
-        targetUser: null,
-        targetWorkspace: log.workspace ? { name: log.workspace.name } : null,
-        metadata: { taskId: log.taskId, source: log.source },
-        usage: normalizeUsageRow(log, pricingTable),
-      }));
-      const mappedLegacyLogs = legacyLogs.map((log) => ({
-        id: log.id,
-        action: log.action,
-        createdAt: log.createdAt,
-        actor: { name: log.actor?.name ?? null, email: log.actor?.email ?? null },
-        targetUser: null,
-        targetWorkspace: log.targetWorkspace ? { name: log.targetWorkspace.name } : null,
-        metadata: log.metadata && typeof log.metadata === "object" ? log.metadata : null,
-        usage: normalizeUsage(log.metadata, pricingTable),
-      }));
-      const mappedLogs = [...mappedUsageLogs, ...mappedLegacyLogs]
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .slice(0, limit);
-
-      const usageRows = await prisma.aiUsage.findMany({
-        where: rangeWhere,
-        select: {
-          provider: true,
-          model: true,
-          promptTokens: true,
-          completionTokens: true,
-          totalTokens: true,
-          costUsd: true,
-          usageSource: true,
-          createdAt: true,
-          user: { select: { id: true, name: true, email: true } },
-          workspace: { select: { id: true, name: true } },
-        },
-      });
-      const legacyUsageLogs = await prisma.auditLog.findMany({
-        where: {
-          action: { startsWith: "AI_" },
-          ...legacyRangeWhere,
-        },
-        select: {
-          metadata: true,
-          createdAt: true,
-          actor: { select: { id: true, name: true, email: true } },
-          targetWorkspace: { select: { id: true, name: true } },
-        },
-      });
-
-      const totals = createBucket();
-      let promptTokensTotal = 0;
-      let completionTokensTotal = 0;
-      const byProvider: Record<string, UsageBucket> = {};
-      const byModel: Record<string, UsageBucket> = {};
-      const byWorkspace: Record<string, UsageBucket & { name: string | null }> = {};
-      const byUser: Record<string, UsageBucket & { name: string | null; email: string | null }> = {};
-
-      for (const log of usageRows) {
-        const usage = normalizeUsageRow(log, pricingTable);
-        bumpBucket(totals, usage);
-        if (usage.promptTokens !== null) promptTokensTotal += usage.promptTokens;
-        if (usage.completionTokens !== null) completionTokensTotal += usage.completionTokens;
-
-        const providerKey = usage.provider ?? "unknown";
-        const providerBucket = byProvider[providerKey] ?? createBucket();
-        bumpBucket(providerBucket, usage);
-        byProvider[providerKey] = providerBucket;
-
-        const modelKey = usage.model ?? "unknown";
-        const modelBucket = byModel[modelKey] ?? createBucket();
-        bumpBucket(modelBucket, usage);
-        byModel[modelKey] = modelBucket;
-
-        const workspaceKey = log.workspace?.id ?? "unknown";
-        const workspaceBucket =
-          byWorkspace[workspaceKey] ??
-          ({
-            ...createBucket(),
-            name: log.workspace?.name ?? null,
-          } as UsageBucket & { name: string | null });
-        bumpBucket(workspaceBucket, usage);
-        byWorkspace[workspaceKey] = workspaceBucket;
-
-        const userKey = log.user?.id ?? "unknown";
-        const userBucket =
-          byUser[userKey] ??
-          ({
-            ...createBucket(),
-            name: log.user?.name ?? null,
-            email: log.user?.email ?? null,
-          } as UsageBucket & { name: string | null; email: string | null });
-        bumpBucket(userBucket, usage);
-        byUser[userKey] = userBucket;
-      }
-
-      const trendRows: Array<{
-        createdAt: Date;
-        provider: string;
-        model: string;
-        promptTokens: number | null;
-        completionTokens: number | null;
-        totalTokens: number | null;
-        costUsd: number | null;
-        usageSource: string;
-      }> = usageRows.map((log) => ({
-        createdAt: log.createdAt,
-        provider: log.provider,
-        model: log.model,
-        promptTokens: log.promptTokens,
-        completionTokens: log.completionTokens,
-        totalTokens: log.totalTokens,
-        costUsd: log.costUsd,
-        usageSource: log.usageSource,
-      }));
-
-      for (const log of legacyUsageLogs) {
-        const usage = normalizeUsage(log.metadata, pricingTable);
-        bumpBucket(totals, usage);
-        if (usage.promptTokens !== null) promptTokensTotal += usage.promptTokens;
-        if (usage.completionTokens !== null) completionTokensTotal += usage.completionTokens;
-
-        const providerKey = usage.provider ?? "unknown";
-        const providerBucket = byProvider[providerKey] ?? createBucket();
-        bumpBucket(providerBucket, usage);
-        byProvider[providerKey] = providerBucket;
-
-        const modelKey = usage.model ?? "unknown";
-        const modelBucket = byModel[modelKey] ?? createBucket();
-        bumpBucket(modelBucket, usage);
-        byModel[modelKey] = modelBucket;
-
-        const workspaceKey = log.targetWorkspace?.id ?? "unknown";
-        const workspaceBucket =
-          byWorkspace[workspaceKey] ??
-          ({
-            ...createBucket(),
-            name: log.targetWorkspace?.name ?? null,
-          } as UsageBucket & { name: string | null });
-        bumpBucket(workspaceBucket, usage);
-        byWorkspace[workspaceKey] = workspaceBucket;
-
-        const userKey = log.actor?.id ?? "unknown";
-        const userBucket =
-          byUser[userKey] ??
-          ({
-            ...createBucket(),
-            name: log.actor?.name ?? null,
-            email: log.actor?.email ?? null,
-          } as UsageBucket & { name: string | null; email: string | null });
-        bumpBucket(userBucket, usage);
-        byUser[userKey] = userBucket;
-
-        trendRows.push({
+        const trendRows: Array<{
+          createdAt: Date;
+          provider: string;
+          model: string;
+          promptTokens: number | null;
+          completionTokens: number | null;
+          totalTokens: number | null;
+          costUsd: number | null;
+          usageSource: string;
+        }> = usageRows.map((log) => ({
           createdAt: log.createdAt,
-          provider: usage.provider ?? "unknown",
-          model: usage.model ?? "unknown",
-          promptTokens: usage.promptTokens,
-          completionTokens: usage.completionTokens,
-          totalTokens: usage.totalTokens,
-          costUsd: usage.costUsd,
-          usageSource: usage.usageSource,
-        });
+          provider: log.provider,
+          model: log.model,
+          promptTokens: log.promptTokens,
+          completionTokens: log.completionTokens,
+          totalTokens: log.totalTokens,
+          costUsd: log.costUsd,
+          usageSource: log.usageSource,
+        }));
+
+        for (const log of legacyUsageLogs) {
+          const usage = normalizeUsage(log.metadata, pricingTable);
+          bumpBucket(totals, usage);
+          if (usage.promptTokens !== null) promptTokensTotal += usage.promptTokens;
+          if (usage.completionTokens !== null) completionTokensTotal += usage.completionTokens;
+
+          const providerKey = usage.provider ?? "unknown";
+          const providerBucket = byProvider[providerKey] ?? createBucket();
+          bumpBucket(providerBucket, usage);
+          byProvider[providerKey] = providerBucket;
+
+          const modelKey = usage.model ?? "unknown";
+          const modelBucket = byModel[modelKey] ?? createBucket();
+          bumpBucket(modelBucket, usage);
+          byModel[modelKey] = modelBucket;
+
+          const workspaceKey = log.targetWorkspace?.id ?? "unknown";
+          const workspaceBucket =
+            byWorkspace[workspaceKey] ??
+            ({
+              ...createBucket(),
+              name: log.targetWorkspace?.name ?? null,
+            } as UsageBucket & { name: string | null });
+          bumpBucket(workspaceBucket, usage);
+          byWorkspace[workspaceKey] = workspaceBucket;
+
+          const userKey = log.actor?.id ?? "unknown";
+          const userBucket =
+            byUser[userKey] ??
+            ({
+              ...createBucket(),
+              name: log.actor?.name ?? null,
+              email: log.actor?.email ?? null,
+            } as UsageBucket & { name: string | null; email: string | null });
+          bumpBucket(userBucket, usage);
+          byUser[userKey] = userBucket;
+
+          trendRows.push({
+            createdAt: log.createdAt,
+            provider: usage.provider ?? "unknown",
+            model: usage.model ?? "unknown",
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            totalTokens: usage.totalTokens,
+            costUsd: usage.costUsd,
+            usageSource: usage.usageSource,
+          });
+        }
+
+        const stats = {
+          range: {
+            start: range.start.toISOString(),
+            end: range.end.toISOString(),
+            label: range.label,
+            mode: range.mode,
+          },
+          totals: {
+            totalCostUsd: totals.totalCostUsd,
+            promptTokens: promptTokensTotal,
+            completionTokens: completionTokensTotal,
+            totalTokens: totals.totalTokens,
+            logCount: totals.logCount,
+            unknownUsageCount: totals.unknownUsageCount,
+            missingPricingCount: totals.missingPricingCount,
+          },
+          byProvider,
+          byModel,
+          byWorkspace,
+          byUser,
+          trends: {
+            weekly: buildTrendBucketsFromUsage(trendRows, pricingTable, "week"),
+            monthly: buildTrendBucketsFromUsage(trendRows, pricingTable, "month"),
+          },
+          pricingSource,
+        };
+
+        return ok({ logs: mappedLogs, stats });
       }
 
-      const stats = {
-        range: {
-          start: range.start.toISOString(),
-          end: range.end.toISOString(),
-          label: range.label,
-          mode: range.mode,
+      if (format === "csv") {
+        return errors.badRequest("csv export is only available for ai filter");
+      }
+
+      const logs = await prisma.auditLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        include: {
+          actor: { select: { name: true, email: true } },
+          targetUser: { select: { name: true, email: true } },
+          targetWorkspace: { select: { name: true } },
         },
-        totals: {
-          totalCostUsd: totals.totalCostUsd,
-          promptTokens: promptTokensTotal,
-          completionTokens: completionTokensTotal,
-          totalTokens: totals.totalTokens,
-          logCount: totals.logCount,
-          unknownUsageCount: totals.unknownUsageCount,
-          missingPricingCount: totals.missingPricingCount,
-        },
-        byProvider,
-        byModel,
-        byWorkspace,
-        byUser,
-        trends: {
-          weekly: buildTrendBucketsFromUsage(trendRows, pricingTable, "week"),
-          monthly: buildTrendBucketsFromUsage(trendRows, pricingTable, "month"),
-        },
-        pricingSource,
-      };
+      });
+      const mappedLogs = logs.map((log) => {
+        const usage = log.action.startsWith("AI_")
+          ? normalizeUsage(log.metadata, pricingTable)
+          : null;
+        return { ...log, usage };
+      });
 
-      return ok({ logs: mappedLogs, stats });
-    }
-
-    if (format === "csv") {
-      return errors.badRequest("csv export is only available for ai filter");
-    }
-
-    const logs = await prisma.auditLog.findMany({
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      include: {
-        actor: { select: { name: true, email: true } },
-        targetUser: { select: { name: true, email: true } },
-        targetWorkspace: { select: { name: true } },
-      },
-    });
-    const mappedLogs = logs.map((log) => {
-      const usage = log.action.startsWith("AI_")
-        ? normalizeUsage(log.metadata, pricingTable)
-        : null;
-      return { ...log, usage };
-    });
-
-    return ok({ logs: mappedLogs, stats: null });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("GET /api/admin/audit error", error);
-    return errorResponse(error, {
-      code: "ADMIN_INTERNAL",
-      message: "failed to load audit logs",
-      status: 500,
-    });
-  }
+      return ok({ logs: mappedLogs, stats: null });
+    },
+  );
 }

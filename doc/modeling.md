@@ -77,5 +77,6 @@ var_t = alpha * (y_t - y_hat_t)^2 + (1 - alpha) * var_{t-1}
 
 ## 実装レイヤ（運用想定）
 - 日次バッチ: uv + python + SQL 集計
+- 実行基盤: EC2 cron（user-data でセットアップ）
 - まずは EMA 更新のみで十分（学習/推論の重さを避ける）
 - イベント駆動は後で追加（TaskStatusEventをトリガに軽量更新）

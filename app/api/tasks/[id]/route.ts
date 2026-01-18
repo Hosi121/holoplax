@@ -1,19 +1,16 @@
 import { Prisma, TaskStatus, TaskType } from "@prisma/client";
 import { randomUUID } from "crypto";
-import { requireAuth } from "../../../../lib/api-auth";
-import {
-  handleAuthError,
-  ok,
-} from "../../../../lib/api-response";
+import { withApiHandler } from "../../../../lib/api-handler";
+import { requireWorkspaceAuth } from "../../../../lib/api-guards";
+import { ok } from "../../../../lib/api-response";
 import { applyAutomationForTask } from "../../../../lib/automation";
 import { badPoints } from "../../../../lib/points";
 import { logAudit } from "../../../../lib/audit";
 import { TaskUpdateSchema } from "../../../../lib/contracts/task";
-import { createDomainErrors, errorResponse } from "../../../../lib/http/errors";
+import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
-import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const isTaskStatus = (value: unknown): value is TaskStatus =>
   Object.values(TASK_STATUS).includes(value as TaskStatus);
@@ -79,72 +76,80 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const body = await parseBody(request, TaskUpdateSchema, {
-    code: "TASK_VALIDATION",
-  });
-  console.info("TASK_UPDATE input", {
-    id,
-    status: body.status,
-    type: body.type,
-    checklistType: Array.isArray(body.checklist) ? "array" : typeof body.checklist,
-    checklistNull: body.checklist === null,
-  });
-  const data: Record<string, unknown> = {};
+  return withApiHandler(
+    {
+      logLabel: "PATCH /api/tasks/[id]",
+      errorFallback: {
+        code: "TASK_INTERNAL",
+        message: "failed to update task",
+        status: 500,
+      },
+    },
+    async () => {
+      const { id } = await params;
+      const body = await parseBody(request, TaskUpdateSchema, {
+        code: "TASK_VALIDATION",
+      });
+      console.info("TASK_UPDATE input", {
+        id,
+        status: body.status,
+        type: body.type,
+        checklistType: Array.isArray(body.checklist) ? "array" : typeof body.checklist,
+        checklistNull: body.checklist === null,
+      });
+      const data: Record<string, unknown> = {};
 
-  if (body.title) data.title = body.title;
-  if (typeof body.description === "string") data.description = body.description;
-  if (typeof body.definitionOfDone === "string") {
-    data.definitionOfDone = body.definitionOfDone;
-  }
-  const checklistValue = toChecklist(body.checklist);
-  if (checklistValue !== undefined) {
-    data.checklist = checklistValue;
-  }
-  if (body.points !== undefined && body.points !== null) {
-    if (badPoints(body.points)) {
-      return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
-    }
-    data.points = Number(body.points);
-  }
-  if (body.urgency) data.urgency = body.urgency;
-  if (body.risk) data.risk = body.risk;
-  if (body.type !== undefined) {
-    data.type = isTaskType(body.type) ? body.type : TASK_TYPE.PBI;
-  }
-  if (body.dueDate !== undefined) {
-    data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
-  }
-  if (body.tags !== undefined) {
-    data.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
-  }
-  const statusValue = body.status && isTaskStatus(body.status) ? body.status : null;
-  console.info("TASK_UPDATE narrowed", {
-    statusValue,
-    typeValue: data.type ?? null,
-  });
-  if (statusValue) {
-    data.status = statusValue;
-  }
-  const cadenceValue =
-    body.routineCadence === "DAILY" || body.routineCadence === "WEEKLY"
-      ? body.routineCadence
-      : null;
-  const shouldClearRoutine =
-    body.routineCadence === null ||
-    body.routineCadence === "" ||
-    body.routineCadence === "NONE";
-  const routineNextAt =
-    body.routineNextAt !== undefined && body.routineNextAt !== null
-      ? new Date(body.routineNextAt)
-      : null;
+      if (body.title) data.title = body.title;
+      if (typeof body.description === "string") data.description = body.description;
+      if (typeof body.definitionOfDone === "string") {
+        data.definitionOfDone = body.definitionOfDone;
+      }
+      const checklistValue = toChecklist(body.checklist);
+      if (checklistValue !== undefined) {
+        data.checklist = checklistValue;
+      }
+      if (body.points !== undefined && body.points !== null) {
+        if (badPoints(body.points)) {
+          return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
+        }
+        data.points = Number(body.points);
+      }
+      if (body.urgency) data.urgency = body.urgency;
+      if (body.risk) data.risk = body.risk;
+      if (body.type !== undefined) {
+        data.type = isTaskType(body.type) ? body.type : TASK_TYPE.PBI;
+      }
+      if (body.dueDate !== undefined) {
+        data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
+      }
+      if (body.tags !== undefined) {
+        data.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
+      }
+      const statusValue = body.status && isTaskStatus(body.status) ? body.status : null;
+      console.info("TASK_UPDATE narrowed", {
+        statusValue,
+        typeValue: data.type ?? null,
+      });
+      if (statusValue) {
+        data.status = statusValue;
+      }
+      const cadenceValue =
+        body.routineCadence === "DAILY" || body.routineCadence === "WEEKLY"
+          ? body.routineCadence
+          : null;
+      const shouldClearRoutine =
+        body.routineCadence === null ||
+        body.routineCadence === "" ||
+        body.routineCadence === "NONE";
+      const routineNextAt =
+        body.routineNextAt !== undefined && body.routineNextAt !== null
+          ? new Date(body.routineNextAt)
+          : null;
 
-  try {
-    const { userId } = await requireAuth();
-    const workspaceId = await resolveWorkspaceId(userId);
-    if (!workspaceId) {
-      return errors.notFound("workspace not selected");
-    }
+      const { userId, workspaceId } = await requireWorkspaceAuth();
+      if (!workspaceId) {
+        return errors.notFound("workspace not selected");
+      }
     const currentTask = await prisma.task.findFirst({
       where: { id, workspaceId },
       include: { routineRule: true },
@@ -357,50 +362,42 @@ export async function PATCH(
       });
     }
     return ok({ task });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("PATCH /api/tasks/[id] error", error);
-    return errorResponse(error, {
-      code: "TASK_INTERNAL",
-      message: "failed to update task",
-      status: 500,
-    });
-  }
+    },
+  );
 }
 
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  try {
-    const { userId } = await requireAuth();
-    const workspaceId = await resolveWorkspaceId(userId);
-    if (!workspaceId) {
-      return errors.notFound("workspace not selected");
-    }
-    await prisma.taskDependency.deleteMany({ where: { taskId: id } });
-    await prisma.aiSuggestion.deleteMany({ where: { taskId: id } });
-    const deleted = await prisma.task.deleteMany({ where: { id, workspaceId } });
-    if (!deleted.count) {
-      return errors.notFound();
-    }
-    await logAudit({
-      actorId: userId,
-      action: "TASK_DELETE",
-      targetWorkspaceId: workspaceId,
-      metadata: { taskId: id },
-    });
-    return ok({ ok: true });
-  } catch (error) {
-    const authError = handleAuthError(error);
-    if (authError) return authError;
-    console.error("DELETE /api/tasks/[id] error", error);
-    return errorResponse(error, {
-      code: "TASK_INTERNAL",
-      message: "failed to delete task",
-      status: 500,
-    });
-  }
+  return withApiHandler(
+    {
+      logLabel: "DELETE /api/tasks/[id]",
+      errorFallback: {
+        code: "TASK_INTERNAL",
+        message: "failed to delete task",
+        status: 500,
+      },
+    },
+    async () => {
+      const { id } = await params;
+      const { userId, workspaceId } = await requireWorkspaceAuth();
+      if (!workspaceId) {
+        return errors.notFound("workspace not selected");
+      }
+      await prisma.taskDependency.deleteMany({ where: { taskId: id } });
+      await prisma.aiSuggestion.deleteMany({ where: { taskId: id } });
+      const deleted = await prisma.task.deleteMany({ where: { id, workspaceId } });
+      if (!deleted.count) {
+        return errors.notFound();
+      }
+      await logAudit({
+        actorId: userId,
+        action: "TASK_DELETE",
+        targetWorkspaceId: workspaceId,
+        metadata: { taskId: id },
+      });
+      return ok({ ok: true });
+    },
+  );
 }
