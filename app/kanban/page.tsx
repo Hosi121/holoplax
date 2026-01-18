@@ -138,7 +138,7 @@ export default function KanbanPage() {
         </div>
       </header>
 
-      <section className="min-w-0 grid gap-4 lg:grid-cols-3 lg:items-start">
+      <section className="min-w-0 grid gap-4 lg:grid-cols-3">
         {columns.map((col) => (
           <div
             key={col.key}
@@ -148,10 +148,10 @@ export default function KanbanPage() {
             }}
             onDragLeave={() => setHoverColumn(null)}
             onDrop={() => handleDrop(col.key)}
-            className={`min-h-[60vh] min-w-0 border border-slate-200 bg-white p-4 shadow-sm ${hoverColumn === col.key ? "ring-2 ring-[#2323eb]/40" : ""
+            className={`flex h-[70vh] min-w-0 flex-col border border-slate-200 bg-white p-4 shadow-sm ${hoverColumn === col.key ? "ring-2 ring-[#2323eb]/40" : ""
               }`}
           >
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">{col.label}</h2>
                 <p className="text-xs text-slate-500">{col.hint}</p>
@@ -161,7 +161,7 @@ export default function KanbanPage() {
               </span>
             </div>
 
-            <div className="mt-3 grid gap-3">
+            <div className="mt-3 grid flex-1 content-start gap-3 overflow-y-auto">
               {grouped[col.key].map((item) => (
                 <div
                   key={item.id}
