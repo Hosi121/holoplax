@@ -38,11 +38,55 @@ type SplitSuggestion = {
   detail: string;
 };
 
+type AiPrepType = "EMAIL" | "IMPLEMENTATION" | "CHECKLIST";
+
+type AiPrepOutput = {
+  id: string;
+  type: AiPrepType;
+  status: "PENDING" | "APPROVED" | "APPLIED" | "REJECTED";
+  output: string;
+  createdAt: string;
+};
+
 type MemberRow = {
   id: string;
   name: string | null;
   email: string | null;
   role: string;
+};
+
+const prepTypeOptions: { value: AiPrepType; label: string }[] = [
+  { value: "CHECKLIST", label: "チェックリスト" },
+  { value: "IMPLEMENTATION", label: "実装手順" },
+  { value: "EMAIL", label: "メール草案" },
+];
+
+const prepTypeLabels: Record<AiPrepType, string> = {
+  CHECKLIST: "チェックリスト",
+  IMPLEMENTATION: "実装手順",
+  EMAIL: "メール草案",
+};
+
+const prepStatusMeta: Record<
+  AiPrepOutput["status"],
+  { label: string; className: string }
+> = {
+  PENDING: {
+    label: "承認待ち",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  APPROVED: {
+    label: "承認済み",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  APPLIED: {
+    label: "適用済み",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+  },
+  REJECTED: {
+    label: "却下",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+  },
 };
 
 export default function BacklogPage() {
@@ -106,6 +150,13 @@ export default function BacklogPage() {
   const [scoreLoadingId, setScoreLoadingId] = useState<string | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [approvalLoadingId, setApprovalLoadingId] = useState<string | null>(null);
+  const [prepModalOpen, setPrepModalOpen] = useState(false);
+  const [prepTask, setPrepTask] = useState<TaskDTO | null>(null);
+  const [prepType, setPrepType] = useState<AiPrepType>("CHECKLIST");
+  const [prepOutputs, setPrepOutputs] = useState<AiPrepOutput[]>([]);
+  const [prepLoading, setPrepLoading] = useState(false);
+  const [prepFetchLoading, setPrepFetchLoading] = useState(false);
+  const [prepActionLoadingId, setPrepActionLoadingId] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     if (!ready) return;
@@ -487,6 +538,76 @@ export default function BacklogPage() {
     await fetchTasks();
   };
 
+  const loadPrepOutputs = useCallback(
+    async (taskId: string) => {
+      setPrepFetchLoading(true);
+      try {
+        const res = await fetch(`/api/ai/prep?taskId=${taskId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setPrepOutputs(data.outputs ?? []);
+      } finally {
+        setPrepFetchLoading(false);
+      }
+    },
+    [],
+  );
+
+  const openPrepModal = (item: TaskDTO) => {
+    setPrepTask(item);
+    setPrepType("CHECKLIST");
+    setPrepModalOpen(true);
+    void loadPrepOutputs(item.id);
+  };
+
+  const closePrepModal = () => {
+    setPrepModalOpen(false);
+    setPrepTask(null);
+    setPrepOutputs([]);
+  };
+
+  const generatePrepOutput = async () => {
+    if (!prepTask) return;
+    setPrepLoading(true);
+    try {
+      const res = await fetch("/api/ai/prep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: prepTask.id, type: prepType }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.output) {
+        setPrepOutputs((prev) => [data.output, ...prev]);
+      }
+    } finally {
+      setPrepLoading(false);
+    }
+  };
+
+  const updatePrepOutput = async (output: AiPrepOutput, action: string) => {
+    setPrepActionLoadingId(`${output.id}-${action}`);
+    try {
+      const res = await fetch(`/api/ai/prep/${output.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.output) {
+        setPrepOutputs((prev) =>
+          prev.map((item) => (item.id === data.output.id ? data.output : item)),
+        );
+      }
+      if (action === "apply" || action === "revert") {
+        void fetchTasks();
+      }
+    } finally {
+      setPrepActionLoadingId(null);
+    }
+  };
+
   const deleteItem = async (id: string) => {
     if (!window.confirm("このタスクを削除しますか？")) return;
     await fetch(`/api/tasks/${id}`, { method: "DELETE" });
@@ -809,6 +930,12 @@ export default function BacklogPage() {
                         >
                           AIでスコア推定
                         </LoadingButton>
+                        <button
+                          className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                          onClick={() => openPrepModal(item)}
+                        >
+                          AIで下準備
+                        </button>
                         <button
                           className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                           onClick={() => openEdit(item)}
@@ -1206,6 +1333,116 @@ export default function BacklogPage() {
                   {suggestion}
                 </div>
               ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {prepModalOpen && prepTask ? (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">AI下準備</h3>
+                <p className="text-xs text-slate-500">{prepTask.title}</p>
+              </div>
+              <button
+                onClick={closePrepModal}
+                className="text-sm text-slate-500 transition hover:text-slate-800"
+              >
+                閉じる
+              </button>
+            </div>
+            <div className="mt-4 grid gap-4">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <select
+                  value={prepType}
+                  onChange={(e) => setPrepType(e.target.value as AiPrepType)}
+                  className="border border-slate-200 px-3 py-2 text-slate-800 outline-none focus:border-[#2323eb]"
+                >
+                  {prepTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <LoadingButton
+                  className="border border-slate-200 bg-slate-50 px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                  onClick={generatePrepOutput}
+                  loading={prepLoading}
+                >
+                  生成
+                </LoadingButton>
+                {prepFetchLoading ? (
+                  <span className="text-xs text-slate-500">読み込み中...</span>
+                ) : null}
+              </div>
+              {prepOutputs.length ? (
+                <div className="grid gap-3">
+                  {prepOutputs.map((output) => (
+                    <div
+                      key={output.id}
+                      className="border border-slate-200 bg-white px-3 py-3 text-xs text-slate-700"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                          {prepTypeLabels[output.type]}
+                        </span>
+                        <span
+                          className={`border px-2 py-1 text-[11px] ${prepStatusMeta[output.status].className}`}
+                        >
+                          {prepStatusMeta[output.status].label}
+                        </span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                        {output.output}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                        {output.status === "PENDING" ? (
+                          <>
+                            <button
+                              onClick={() => updatePrepOutput(output, "approve")}
+                              disabled={prepActionLoadingId === `${output.id}-approve`}
+                              className="border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50"
+                            >
+                              承認
+                            </button>
+                            <button
+                              onClick={() => updatePrepOutput(output, "reject")}
+                              disabled={prepActionLoadingId === `${output.id}-reject`}
+                              className="border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700 transition hover:border-rose-300 disabled:opacity-50"
+                            >
+                              却下
+                            </button>
+                          </>
+                        ) : null}
+                        {output.status === "APPROVED" ? (
+                          <button
+                            onClick={() => updatePrepOutput(output, "apply")}
+                            disabled={prepActionLoadingId === `${output.id}-apply`}
+                            className="border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-700 transition hover:border-sky-300 disabled:opacity-50"
+                          >
+                            適用
+                          </button>
+                        ) : null}
+                        {output.status === "APPLIED" ? (
+                          <button
+                            onClick={() => updatePrepOutput(output, "revert")}
+                            disabled={prepActionLoadingId === `${output.id}-revert`}
+                            className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
+                          >
+                            取り消し
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  まだ下準備がありません。タイプを選んで生成してください。
+                </p>
+              )}
             </div>
           </div>
         </div>
