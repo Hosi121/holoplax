@@ -1,3 +1,4 @@
+import { Prisma, TaskStatus, TaskType } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../../lib/api-auth";
 import {
@@ -14,6 +15,20 @@ import prisma from "../../../lib/prisma";
 import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
+
+const isTaskStatus = (value: unknown): value is TaskStatus =>
+  Object.values(TASK_STATUS).includes(value as TaskStatus);
+
+const isTaskType = (value: unknown): value is TaskType =>
+  Object.values(TASK_TYPE).includes(value as TaskType);
+
+const toNullableJsonInput = (
+  value: unknown | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  return value as Prisma.InputJsonValue;
+};
 
 const toChecklist = (value: unknown) => {
   if (!Array.isArray(value)) return null;
@@ -80,6 +95,12 @@ export async function POST(request: Request) {
     const body = await parseBody(request, TaskCreateSchema, {
       code: "TASK_VALIDATION",
     });
+    console.info("TASK_CREATE input", {
+      status: body.status,
+      type: body.type,
+      checklistType: Array.isArray(body.checklist) ? "array" : typeof body.checklist,
+      checklistNull: body.checklist === null,
+    });
     const {
       title,
       description,
@@ -124,10 +145,12 @@ export async function POST(request: Request) {
           select: { id: true, title: true, status: true },
         })
       : [];
-    const statusValue = Object.values(TASK_STATUS).includes(status)
-      ? status
-      : TASK_STATUS.BACKLOG;
-    const typeValue = Object.values(TASK_TYPE).includes(type) ? type : TASK_TYPE.PBI;
+    const statusValue = isTaskStatus(status) ? status : TASK_STATUS.BACKLOG;
+    const typeValue = isTaskType(type) ? type : TASK_TYPE.PBI;
+    console.info("TASK_CREATE narrowed", {
+      statusValue,
+      typeValue,
+    });
     const parentCandidate = parentId ? String(parentId) : null;
     const parent = parentCandidate
       ? await prisma.task.findFirst({
@@ -164,7 +187,7 @@ export async function POST(request: Request) {
         title,
         description: description ?? "",
         definitionOfDone: typeof definitionOfDone === "string" ? definitionOfDone : "",
-        checklist: toChecklist(checklist),
+        checklist: toNullableJsonInput(toChecklist(checklist)),
         points: Number(points),
         urgency: urgency ?? "中",
         risk: risk ?? "中",

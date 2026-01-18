@@ -1,3 +1,4 @@
+import { Prisma, TaskStatus, TaskType } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../../../lib/api-auth";
 import {
@@ -14,6 +15,20 @@ import prisma from "../../../../lib/prisma";
 import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
+const isTaskStatus = (value: unknown): value is TaskStatus =>
+  Object.values(TASK_STATUS).includes(value as TaskStatus);
+
+const isTaskType = (value: unknown): value is TaskType =>
+  Object.values(TASK_TYPE).includes(value as TaskType);
+
+const toNullableJsonInput = (
+  value: unknown | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  return value as Prisma.InputJsonValue;
+};
+
 const toChecklist = (value: unknown) => {
   if (value === null) return null;
   if (!Array.isArray(value)) return undefined;
@@ -23,6 +38,29 @@ const toChecklist = (value: unknown) => {
       text: String(item?.text ?? "").trim(),
       done: Boolean(item?.done),
     }))
+    .filter((item) => item.text.length > 0);
+};
+
+const normalizeChecklistForReset = (value: unknown) => {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((item) => {
+      if (item && typeof item === "object") {
+        const obj = item as Record<string, unknown>;
+        const text = typeof obj.text === "string" ? obj.text : String(obj.text ?? "");
+        return {
+          id: typeof obj.id === "string" ? obj.id : randomUUID(),
+          text: text.trim(),
+          done: false,
+        };
+      }
+      const fallback = String(item ?? "").trim();
+      return {
+        id: randomUUID(),
+        text: fallback,
+        done: false,
+      };
+    })
     .filter((item) => item.text.length > 0);
 };
 
@@ -45,6 +83,13 @@ export async function PATCH(
   const body = await parseBody(request, TaskUpdateSchema, {
     code: "TASK_VALIDATION",
   });
+  console.info("TASK_UPDATE input", {
+    id,
+    status: body.status,
+    type: body.type,
+    checklistType: Array.isArray(body.checklist) ? "array" : typeof body.checklist,
+    checklistNull: body.checklist === null,
+  });
   const data: Record<string, unknown> = {};
 
   if (body.title) data.title = body.title;
@@ -65,7 +110,7 @@ export async function PATCH(
   if (body.urgency) data.urgency = body.urgency;
   if (body.risk) data.risk = body.risk;
   if (body.type !== undefined) {
-    data.type = Object.values(TASK_TYPE).includes(body.type) ? body.type : TASK_TYPE.PBI;
+    data.type = isTaskType(body.type) ? body.type : TASK_TYPE.PBI;
   }
   if (body.dueDate !== undefined) {
     data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
@@ -73,10 +118,11 @@ export async function PATCH(
   if (body.tags !== undefined) {
     data.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
   }
-  const statusValue =
-    body.status && Object.values(TASK_STATUS).includes(body.status)
-      ? body.status
-      : null;
+  const statusValue = body.status && isTaskStatus(body.status) ? body.status : null;
+  console.info("TASK_UPDATE narrowed", {
+    statusValue,
+    typeValue: data.type ?? null,
+  });
   if (statusValue) {
     data.status = statusValue;
   }
@@ -251,19 +297,13 @@ export async function PATCH(
         const now = new Date();
         const dueAt = rule.nextAt && rule.nextAt > now ? rule.nextAt : now;
         const nextAt = nextRoutineAt(rule.cadence as "DAILY" | "WEEKLY", dueAt);
-        const resetChecklist = Array.isArray(task.checklist)
-          ? task.checklist.map((item) => ({
-              id: typeof item?.id === "string" ? item.id : randomUUID(),
-              text: String(item?.text ?? "").trim(),
-              done: false,
-            }))
-          : null;
+        const resetChecklist = normalizeChecklistForReset(task.checklist);
         const created = await prisma.task.create({
           data: {
             title: task.title,
             description: task.description ?? "",
             definitionOfDone: task.definitionOfDone ?? "",
-            checklist: resetChecklist,
+            checklist: toNullableJsonInput(resetChecklist),
             points: task.points,
             urgency: task.urgency,
             risk: task.risk,

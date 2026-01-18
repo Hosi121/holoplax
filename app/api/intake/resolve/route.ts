@@ -1,3 +1,4 @@
+import { TaskType } from "@prisma/client";
 import { requireAuth } from "../../../../lib/api-auth";
 import { handleAuthError, ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
@@ -85,8 +86,8 @@ export async function POST(request: Request) {
     }
 
     if (action === "create") {
-      const typeValue = Object.values(TASK_TYPE).includes(taskType as TASK_TYPE)
-        ? (taskType as TASK_TYPE)
+      const typeValue = Object.values(TASK_TYPE).includes(taskType as TaskType)
+        ? (taskType as TaskType)
         : TASK_TYPE.PBI;
       const task = await prisma.task.create({
         data: {

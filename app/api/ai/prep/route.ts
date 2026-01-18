@@ -1,3 +1,4 @@
+import { AiPrepType } from "@prisma/client";
 import { requireAuth } from "../../../../lib/api-auth";
 import { handleAuthError, ok } from "../../../../lib/api-response";
 import { AiPrepSchema } from "../../../../lib/contracts/ai";
@@ -38,7 +39,8 @@ const prepPrompts: Record<
   },
 };
 
-const isValidPrepType = (value: string) => Object.keys(prepPrompts).includes(value);
+const isValidPrepType = (value: string): value is AiPrepType =>
+  Object.keys(prepPrompts).includes(value);
 const errors = createDomainErrors("AI");
 
 export async function GET(request: Request) {

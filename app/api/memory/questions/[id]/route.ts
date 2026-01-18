@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { requireAuth } from "../../../../../lib/api-auth";
 import { handleAuthError, ok } from "../../../../../lib/api-response";
 import { MemoryQuestionActionSchema } from "../../../../../lib/contracts/memory";
@@ -12,12 +13,24 @@ const pickClaimValue = (question: {
   valueBool: boolean | null;
   valueJson: unknown | null;
 }) => {
+  console.info("MEMORY_QUESTION_ACCEPT values", {
+    valueJsonType: typeof question.valueJson,
+    valueJsonNull: question.valueJson === null,
+  });
   return {
     valueStr: question.valueStr,
     valueNum: question.valueNum,
     valueBool: question.valueBool,
-    valueJson: question.valueJson as object | null,
+    valueJson: question.valueJson,
   };
+};
+
+const toNullableJsonInput = (
+  value: unknown | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  return value as Prisma.InputJsonValue;
 };
 const errors = createDomainErrors("MEMORY");
 
@@ -79,6 +92,7 @@ export async function PATCH(
             userId: question.type.scope === "USER" ? userId : null,
             workspaceId: question.type.scope === "WORKSPACE" ? workspaceId : null,
             ...claimValue,
+            valueJson: toNullableJsonInput(claimValue.valueJson),
             confidence: question.confidence,
             source: "INFERRED",
             status: "ACTIVE",

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { requireAuth } from "../../../../lib/api-auth";
 import { handleAuthError, ok } from "../../../../lib/api-response";
 import { MemoryQuestionCreateSchema } from "../../../../lib/contracts/memory";
@@ -8,6 +9,14 @@ import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const CONFIDENCE_THRESHOLD = 0.7;
 const errors = createDomainErrors("MEMORY");
+
+const toNullableJsonInput = (
+  value: unknown | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  return value as Prisma.InputJsonValue;
+};
 
 export async function GET() {
   try {
@@ -63,12 +72,21 @@ export async function POST(request: Request) {
     const body = await parseBody(request, MemoryQuestionCreateSchema, {
       code: "MEMORY_VALIDATION",
     });
+    console.info("MEMORY_QUESTION_CREATE input", {
+      typeId: body.typeId,
+      valueJsonType: typeof body.valueJson,
+      valueJsonNull: body.valueJson === null,
+    });
     const typeId = body.typeId;
     const confidence = Number(body.confidence ?? CONFIDENCE_THRESHOLD);
     const valueStr = body.valueStr ?? null;
     const valueNum = body.valueNum ?? null;
     const valueBool = body.valueBool ?? null;
     const valueJson = body.valueJson ?? null;
+    console.info("MEMORY_QUESTION_CREATE normalized", {
+      valueJsonType: typeof valueJson,
+      valueJsonNull: valueJson === null,
+    });
 
     const type = await prisma.memoryType.findFirst({ where: { id: typeId } });
     if (!type) {
@@ -86,7 +104,7 @@ export async function POST(request: Request) {
         valueStr,
         valueNum,
         valueBool,
-        valueJson,
+        valueJson: toNullableJsonInput(valueJson),
         confidence: Number.isFinite(confidence) ? confidence : CONFIDENCE_THRESHOLD,
       },
     });

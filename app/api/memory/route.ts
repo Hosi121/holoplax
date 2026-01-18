@@ -1,3 +1,4 @@
+import { Prisma, MemoryScope, MemorySource, MemoryStatus, MemoryValueType } from "@prisma/client";
 import { requireAuth } from "../../../lib/api-auth";
 import { handleAuthError, ok } from "../../../lib/api-response";
 import { MemoryClaimCreateSchema, MemoryClaimDeleteSchema } from "../../../lib/contracts/memory";
@@ -7,6 +8,27 @@ import prisma from "../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../lib/workspace-context";
 
 const errors = createDomainErrors("MEMORY");
+
+const isMemoryScope = (value: unknown): value is MemoryScope =>
+  value === "USER" || value === "WORKSPACE";
+
+const isMemoryValueType = (value: unknown): value is MemoryValueType =>
+  value === "STRING" ||
+  value === "NUMBER" ||
+  value === "BOOL" ||
+  value === "JSON" ||
+  value === "RATIO" ||
+  value === "DURATION_MS" ||
+  value === "HISTOGRAM_24x7" ||
+  value === "RATIO_BY_TYPE";
+
+const toNullableJsonInput = (
+  value: unknown | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return Prisma.DbNull;
+  return value as Prisma.InputJsonValue;
+};
 
 const defaultMemoryTypes = [
   {
@@ -71,15 +93,15 @@ const defaultMemoryTypes = [
   },
 ];
 
-const ensureMemoryTypes = async (scopes: string[]) => {
-  const targets = defaultMemoryTypes.filter((item) => scopes.includes(item.scope));
+const ensureMemoryTypes = async (scopes: MemoryScope[]) => {
+  const targets = defaultMemoryTypes.filter((item) => scopes.includes(item.scope as MemoryScope));
   if (!targets.length) return;
   await prisma.$transaction(
     targets.map((item) =>
       prisma.memoryType.upsert({
-        where: { key_scope: { key: item.key, scope: item.scope } },
+        where: { key_scope: { key: item.key, scope: item.scope as MemoryScope } },
         update: {
-          valueType: item.valueType,
+          valueType: item.valueType as MemoryValueType,
           unit: item.unit,
           granularity: item.granularity,
           updatePolicy: item.updatePolicy,
@@ -88,8 +110,8 @@ const ensureMemoryTypes = async (scopes: string[]) => {
         },
         create: {
           key: item.key,
-          scope: item.scope,
-          valueType: item.valueType,
+          scope: item.scope as MemoryScope,
+          valueType: item.valueType as MemoryValueType,
           unit: item.unit,
           granularity: item.granularity,
           updatePolicy: item.updatePolicy,
@@ -101,7 +123,7 @@ const ensureMemoryTypes = async (scopes: string[]) => {
   );
 };
 
-const parseValue = (value: unknown, valueType: string) => {
+const parseValue = (value: unknown, valueType: MemoryValueType) => {
   if (value === null || value === undefined || value === "") {
     return { ok: false, reason: "value is required" };
   }
@@ -146,7 +168,7 @@ export async function GET() {
   try {
     const { userId } = await requireAuth();
     const workspaceId = await resolveWorkspaceId(userId);
-    const scopes = workspaceId ? ["USER", "WORKSPACE"] : ["USER"];
+    const scopes: MemoryScope[] = workspaceId ? ["USER", "WORKSPACE"] : ["USER"];
 
     await ensureMemoryTypes(scopes);
 
@@ -189,6 +211,11 @@ export async function POST(request: Request) {
     const body = await parseBody(request, MemoryClaimCreateSchema, {
       code: "MEMORY_VALIDATION",
     });
+    console.info("MEMORY_CLAIM_CREATE input", {
+      typeId: body.typeId,
+      valueType: typeof body.value,
+      valueNull: body.value === null,
+    });
     const typeId = body.typeId;
     const rawValue = body.value;
 
@@ -198,14 +225,21 @@ export async function POST(request: Request) {
     if (!type) {
       return errors.badRequest("invalid typeId");
     }
+    if (!isMemoryScope(type.scope) || !isMemoryValueType(type.valueType)) {
+      return errors.badRequest("invalid memory type configuration");
+    }
 
     if (type.scope === "WORKSPACE" && !workspaceId) {
       return errors.badRequest("workspace is required");
     }
 
     const parsed = parseValue(rawValue, type.valueType);
+    console.info("MEMORY_CLAIM_CREATE parsed", {
+      ok: parsed.ok,
+      valueType: type.valueType,
+    });
     if (!parsed.ok) {
-      return errors.badRequest(parsed.reason);
+      return errors.badRequest(parsed.reason ?? "invalid value");
     }
 
     const now = new Date();
@@ -217,16 +251,23 @@ export async function POST(request: Request) {
             : { typeId, workspaceId, status: "ACTIVE" },
         data: { status: "STALE", validTo: now },
       });
+      const data = {
+        typeId,
+        userId: type.scope === "USER" ? userId : null,
+        workspaceId: type.scope === "WORKSPACE" ? workspaceId : null,
+        ...parsed.data,
+        source: "EXPLICIT" as MemorySource,
+        status: "ACTIVE" as MemoryStatus,
+        validFrom: now,
+        confidence: 0.7,
+      };
       return tx.memoryClaim.create({
         data: {
-          typeId,
-          userId: type.scope === "USER" ? userId : null,
-          workspaceId: type.scope === "WORKSPACE" ? workspaceId : null,
-          ...parsed.data,
-          source: "EXPLICIT",
-          status: "ACTIVE",
-          validFrom: now,
-          confidence: 0.7,
+          ...data,
+          valueJson:
+            "valueJson" in data
+              ? toNullableJsonInput((data as { valueJson?: unknown }).valueJson)
+              : undefined,
         },
       });
     });

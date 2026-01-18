@@ -110,36 +110,39 @@ enum MemoryQuestionStatus {
 }
 
 model User {
-  id                     String                   @id @default(cuid())
-  name                   String?
-  email                  String?                  @unique
-  emailVerified          DateTime?
-  image                  String?
-  role                   UserRole                 @default(USER)
-  disabledAt             DateTime?
-  onboardingCompletedAt  DateTime?
-  accounts               Account[]
-  sessions               Session[]
-  memberships            WorkspaceMember[]
-  workspacesOwned        Workspace[]
-  password               UserPassword?
-  emailTokens            EmailVerificationToken[]
-  resetTokens            PasswordResetToken[]
-  auditLogsAsActor       AuditLog[]               @relation("AuditActor")
-  auditLogsAsTarget      AuditLog[]               @relation("AuditTargetUser")
-  tasks                  Task[]
-  assignedTasks          Task[]                   @relation("TaskAssignee")
-  velocityEntries        VelocityEntry[]
-  userAutomationSettings UserAutomationSetting[]
-  aiSuggestions          AiSuggestion[]
-  sprints                Sprint[]
-  intakeItems            IntakeItem[]
-  taskStatusEvents       TaskStatusEvent[]        @relation("StatusEventActor")
-  memoryClaims           MemoryClaim[]
-  memoryMetrics          MemoryMetric[]
-  memoryQuestions        MemoryQuestion[]
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
+  id                       String                   @id @default(cuid())
+  name                     String?
+  email                    String?                  @unique
+  emailVerified            DateTime?
+  image                    String?
+  role                     UserRole                 @default(USER)
+  disabledAt               DateTime?
+  onboardingCompletedAt    DateTime?
+  accounts                 Account[]
+  sessions                 Session[]
+  memberships              WorkspaceMember[]
+  workspacesOwned          Workspace[]
+  password                 UserPassword?
+  emailTokens              EmailVerificationToken[]
+  resetTokens              PasswordResetToken[]
+  auditLogsAsActor         AuditLog[]               @relation("AuditActor")
+  auditLogsAsTarget        AuditLog[]               @relation("AuditTargetUser")
+  tasks                    Task[]
+  assignedTasks            Task[]                   @relation("TaskAssignee")
+  velocityEntries          VelocityEntry[]
+  userAutomationSettings   UserAutomationSetting[]
+  aiSuggestions            AiSuggestion[]
+  aiPrepOutputs            AiPrepOutput[]
+  aiUsages                 AiUsage[]
+  sprints                  Sprint[]
+  intakeItems              IntakeItem[]
+  taskStatusEvents         TaskStatusEvent[]        @relation("StatusEventActor")
+  memoryClaims             MemoryClaim[]
+  memoryMetrics            MemoryMetric[]
+  memoryQuestions          MemoryQuestion[]
+  automationStageHistories AutomationStageHistory[]
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 }
 
 model Account {
@@ -209,26 +212,29 @@ model VerificationToken {
 }
 
 model Workspace {
-  id                     String                  @id @default(cuid())
-  name                   String
-  ownerId                String
-  owner                  User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members                WorkspaceMember[]
-  tasks                  Task[]
-  velocityEntries        VelocityEntry[]
-  userAutomationSettings UserAutomationSetting[]
-  aiSuggestions          AiSuggestion[]
-  invites                WorkspaceInvite[]
-  auditLogs              AuditLog[]
-  sprints                Sprint[]
-  intakeItems            IntakeItem[]
-  statusEvents           TaskStatusEvent[]
-  memoryClaims           MemoryClaim[]
-  memoryMetrics          MemoryMetric[]
-  memoryQuestions        MemoryQuestion[]
-  focusQueues            FocusQueue[]
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  id                       String                   @id @default(cuid())
+  name                     String
+  ownerId                  String
+  owner                    User                     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members                  WorkspaceMember[]
+  tasks                    Task[]
+  velocityEntries          VelocityEntry[]
+  userAutomationSettings   UserAutomationSetting[]
+  aiSuggestions            AiSuggestion[]
+  aiPrepOutputs            AiPrepOutput[]
+  aiUsages                 AiUsage[]
+  invites                  WorkspaceInvite[]
+  auditLogs                AuditLog[]
+  sprints                  Sprint[]
+  intakeItems              IntakeItem[]
+  statusEvents             TaskStatusEvent[]
+  memoryClaims             MemoryClaim[]
+  memoryMetrics            MemoryMetric[]
+  memoryQuestions          MemoryQuestion[]
+  focusQueues              FocusQueue[]
+  automationStageHistories AutomationStageHistory[]
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 }
 
 model WorkspaceMember {
@@ -270,38 +276,38 @@ model AuditLog {
 }
 
 model Task {
-  id           String           @id @default(uuid())
-  title        String
-  description  String           @default("")
-  definitionOfDone String        @default("")
-  checklist    Json?
-  points       Int
-  urgency      String
-  risk         String
-  status       TaskStatus       @default(BACKLOG)
-  type         TaskType         @default(PBI)
-  parentId     String?
-  sprintId     String?
-  dueDate      DateTime?
-  assigneeId   String?
-  tags         String[]
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  suggestions  AiSuggestion[]
-  prepOutputs  AiPrepOutput[]
-  sprint       Sprint?          @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  assignee     User?            @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  userId       String?
-  user         User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId  String?
-  workspace    Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent       Task?            @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children     Task[]           @relation("TaskHierarchy")
-  dependencies TaskDependency[] @relation("TaskDependencies")
-  dependents   TaskDependency[] @relation("TaskDependents")
-  intakeItems  IntakeItem[]
-  statusEvents TaskStatusEvent[]
-  routineRule  RoutineRule?
+  id               String            @id @default(uuid())
+  title            String
+  description      String            @default("")
+  definitionOfDone String            @default("")
+  checklist        Json?
+  points           Int
+  urgency          String
+  risk             String
+  status           TaskStatus        @default(BACKLOG)
+  type             TaskType          @default(PBI)
+  parentId         String?
+  sprintId         String?
+  dueDate          DateTime?
+  assigneeId       String?
+  tags             String[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  suggestions      AiSuggestion[]
+  prepOutputs      AiPrepOutput[]
+  sprint           Sprint?           @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee         User?             @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  userId           String?
+  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId      String?
+  workspace        Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent           Task?             @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children         Task[]            @relation("TaskHierarchy")
+  dependencies     TaskDependency[]  @relation("TaskDependencies")
+  dependents       TaskDependency[]  @relation("TaskDependents")
+  intakeItems      IntakeItem[]
+  statusEvents     TaskStatusEvent[]
+  routineRule      RoutineRule?
 
   @@index([parentId])
 }
@@ -326,13 +332,13 @@ model AutomationSetting {
 }
 
 model AiProviderSetting {
-  id        Int       @id @default(1)
+  id        Int      @id @default(1)
   model     String
   apiKey    String
   baseUrl   String?
-  enabled   Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AiPricing {
@@ -378,14 +384,14 @@ model AutomationStageHistory {
 }
 
 model RoutineRule {
-  id          String         @id @default(cuid())
-  taskId      String         @unique
-  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  cadence     RoutineCadence
-  nextAt      DateTime
-  timezone    String         @default("UTC")
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id        String         @id @default(cuid())
+  taskId    String         @unique
+  task      Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  cadence   RoutineCadence
+  nextAt    DateTime
+  timezone  String         @default("UTC")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 }
 
 model AiSuggestion {
@@ -421,7 +427,7 @@ model AiPrepOutput {
 }
 
 model AiUsage {
-  id               String   @id @default(cuid())
+  id               String     @id @default(cuid())
   action           String
   provider         String
   model            String
@@ -433,10 +439,10 @@ model AiUsage {
   source           String?
   taskId           String?
   userId           String?
-  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user             User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceId      String?
   workspace        Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  createdAt        DateTime @default(now())
+  createdAt        DateTime   @default(now())
 
   @@index([workspaceId, createdAt])
   @@index([userId, createdAt])
@@ -487,7 +493,7 @@ model TaskStatusEvent {
 }
 
 model MemoryType {
-  id           String          @id @default(cuid())
+  id           String           @id @default(cuid())
   key          String
   scope        MemoryScope
   valueType    MemoryValueType
@@ -496,8 +502,8 @@ model MemoryType {
   updatePolicy String
   decayDays    Int?
   description  String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
   claims       MemoryClaim[]
   metrics      MemoryMetric[]
   questions    MemoryQuestion[]
@@ -574,30 +580,30 @@ model MemoryMetric {
 }
 
 model FocusQueue {
-  id          String     @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
-  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   items       Json
-  computedAt  DateTime   @default(now())
+  computedAt  DateTime  @default(now())
 
   @@index([workspaceId, computedAt])
 }
 
 model IntakeItem {
-  id          String        @id @default(uuid())
+  id          String       @id @default(uuid())
   source      IntakeSource
-  status      IntakeStatus  @default(PENDING)
+  status      IntakeStatus @default(PENDING)
   title       String
   body        String
   payload     Json?
   userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String?
-  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  workspace   Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   taskId      String?
-  task        Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  task        Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([workspaceId, status])
   @@index([userId, status])

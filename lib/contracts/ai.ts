@@ -47,7 +47,7 @@ export const AiApplySchema = z
     taskId: nonEmptyString("taskId is required"),
     type: nonEmptyString("type is required"),
     suggestionId: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
-    payload: z.record(z.any()).optional().nullable(),
+    payload: z.record(z.string(), z.any()).optional().nullable(),
   })
   .passthrough();
 
