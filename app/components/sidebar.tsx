@@ -11,23 +11,60 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { memo, useEffect } from "react";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 
-export const navItems = [
-  { label: "バックログ", href: "/backlog", icon: Inbox },
-  { label: "スプリント", href: "/sprint", icon: KanbanSquare },
-  { label: "カンバン", href: "/kanban", icon: KanbanSquare },
-  { label: "レビュー", href: "/review", icon: LayoutDashboard },
-  { label: "ワークスペース", href: "/workspaces", icon: Users },
-  { label: "ベロシティ", href: "/velocity", icon: BarChart3 },
-  { label: "自動化", href: "/automation", icon: Zap },
-  { label: "設定", href: "/settings", icon: Settings },
-  { label: "ユーザー管理", href: "/admin/users", icon: Users, adminOnly: true },
-  { label: "監査ログ", href: "/admin/audit", icon: BarChart3, adminOnly: true },
-  { label: "AI設定", href: "/admin/ai", icon: Zap, adminOnly: true },
+type NavItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  tooltip: string;
+  adminOnly?: boolean;
+};
+
+const navSections: {
+  heading: string;
+  description?: string;
+  items: NavItem[];
+}[] = [
+  {
+    heading: "タスク管理",
+    description: "やるべきこと・スプリント中の対応・レビュー用の一覧",
+    items: [
+      { label: "バックログ", href: "/backlog", icon: Inbox, tooltip: "TODOを整理して次に着手する候補を決める" },
+      { label: "スプリント", href: "/sprint", icon: KanbanSquare, tooltip: "今週のスプリントと容量管理" },
+      { label: "カンバン", href: "/kanban", icon: KanbanSquare, tooltip: "ステータスをドラッグして進捗を動かす" },
+      { label: "レビュー", href: "/review", icon: LayoutDashboard, tooltip: "ベロシティや完了タスクを振り返る" },
+    ],
+  },
+  {
+    heading: "ワークスペースと分析",
+    description: "チーム/メンバー周りの管理や履歴観察",
+    items: [
+      { label: "ワークスペース", href: "/workspaces", icon: Users, tooltip: "参加中ワークスペースを管理" },
+      { label: "ベロシティ", href: "/velocity", icon: BarChart3, tooltip: "過去スプリントのベロシティを確認" },
+    ],
+  },
+  {
+    heading: "自動化",
+    description: "AIによる委任・分解・サポートを制御",
+    items: [
+      { label: "自動化", href: "/automation", icon: Zap, tooltip: "スコアに応じた自動化ポリシーを見る" },
+    ],
+  },
+  {
+    heading: "設定",
+    description: "認証・権限・AI設定",
+    items: [
+      { label: "設定", href: "/settings", icon: Settings, tooltip: "個人設定や認証状態を確認" },
+      { label: "ユーザー管理", href: "/admin/users", icon: Users, tooltip: "管理者向けにユーザーを管理", adminOnly: true },
+      { label: "監査ログ", href: "/admin/audit", icon: BarChart3, tooltip: "アクション履歴を確認", adminOnly: true },
+      { label: "AI設定", href: "/admin/ai", icon: Zap, tooltip: "AI接続/モデル設定", adminOnly: true },
+    ],
+  },
 ];
 
 
@@ -40,21 +77,34 @@ const NavigationLinks = memo(function NavigationLinks({
 }) {
   return (
     <nav className="mt-4 flex flex-col gap-1">
-      {navItems
-        .filter((item) => !item.adminOnly || isAdmin)
-        .map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[#2323eb]/40 hover:bg-[#2323eb]/10 hover:text-[#2323eb] ${pathname === item.href
-              ? "border-[#2323eb]/40 bg-[#2323eb]/10 text-[#2323eb]"
-              : "border-transparent text-slate-700"
-              }`}
-          >
-            <item.icon size={16} />
-            <span>{item.label}</span>
-          </Link>
-        ))}
+      {navSections.map((section) => (
+        <div key={section.heading} className="space-y-1 border-b border-slate-200 pb-3 last:border-none last:pb-0">
+          <div className="text-[11px] uppercase tracking-[0.3em] text-slate-500">
+            {section.heading}
+          </div>
+          {section.description ? (
+            <p className="text-[11px] text-slate-500">{section.description}</p>
+          ) : null}
+          <div className="mt-1 flex flex-col gap-1">
+            {section.items
+              .filter((item) => !item.adminOnly || isAdmin)
+              .map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  title={item.tooltip}
+                  className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[#2323eb]/40 hover:bg-[#2323eb]/10 hover:text-[#2323eb] ${pathname === item.href
+                    ? "border-[#2323eb]/40 bg-[#2323eb]/10 text-[#2323eb]"
+                    : "border-transparent text-slate-700"
+                    }`}
+                >
+                  <item.icon size={16} />
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 });
