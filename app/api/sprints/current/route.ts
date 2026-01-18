@@ -149,10 +149,26 @@ export async function PATCH() {
           workspaceId,
         },
       });
+      const sprintTasks = await tx.task.findMany({
+        where: { workspaceId, status: "SPRINT" },
+        select: { id: true },
+      });
       await tx.task.updateMany({
         where: { workspaceId, status: "SPRINT" },
         data: { status: "BACKLOG", sprintId: null },
       });
+      if (sprintTasks.length) {
+        await tx.taskStatusEvent.createMany({
+          data: sprintTasks.map((task) => ({
+            taskId: task.id,
+            fromStatus: "SPRINT",
+            toStatus: "BACKLOG",
+            actorId: userId,
+            source: "SPRINT_END",
+            workspaceId,
+          })),
+        });
+      }
       return { updated, completedPoints, rangeMin, rangeMax };
     });
 
