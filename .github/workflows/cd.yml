@@ -9,6 +9,10 @@ on:
 env:
   AWS_REGION: ap-northeast-3
 
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -2,10 +2,11 @@ terraform {
   required_version = ">= 1.5.0"
 
   backend "s3" {
-    bucket  = "holoplax-terraform-state"
-    key     = "prod/terraform.tfstate"
-    region  = "ap-northeast-3"
-    encrypt = true
+    bucket         = "holoplax-terraform-state"
+    key            = "prod/terraform.tfstate"
+    region         = "ap-northeast-3"
+    encrypt        = true
+    dynamodb_table = "holoplax-terraform-lock"
   }
 
   required_providers {
