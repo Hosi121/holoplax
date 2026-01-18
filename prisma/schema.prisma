@@ -30,6 +30,7 @@ enum AiProvider {
   OPENAI
   OPENAI_COMPATIBLE
   ANTHROPIC
+  GEMINI
 }
 
 enum UserRole {
@@ -54,6 +55,33 @@ enum IntakeStatus {
   PENDING
   CONVERTED
   DISMISSED
+}
+
+enum MemoryScope {
+  USER
+  WORKSPACE
+}
+
+enum MemoryValueType {
+  STRING
+  NUMBER
+  BOOL
+  JSON
+  RATIO
+  DURATION_MS
+  HISTOGRAM_24x7
+  RATIO_BY_TYPE
+}
+
+enum MemorySource {
+  EXPLICIT
+  INFERRED
+}
+
+enum MemoryStatus {
+  ACTIVE
+  REJECTED
+  STALE
 }
 
 model User {
@@ -82,6 +110,8 @@ model User {
   sprints                Sprint[]
   intakeItems            IntakeItem[]
   taskStatusEvents       TaskStatusEvent[]        @relation("StatusEventActor")
+  memoryClaims           MemoryClaim[]
+  memoryMetrics          MemoryMetric[]
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 }
@@ -167,6 +197,8 @@ model Workspace {
   sprints                Sprint[]
   intakeItems            IntakeItem[]
   statusEvents           TaskStatusEvent[]
+  memoryClaims           MemoryClaim[]
+  memoryMetrics          MemoryMetric[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 }
@@ -354,6 +386,70 @@ model TaskStatusEvent {
 
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+model MemoryType {
+  id           String          @id @default(cuid())
+  key          String
+  scope        MemoryScope
+  valueType    MemoryValueType
+  unit         String?
+  granularity  String
+  updatePolicy String
+  decayDays    Int?
+  description  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  claims       MemoryClaim[]
+  metrics      MemoryMetric[]
+
+  @@unique([key, scope])
+  @@index([scope])
+}
+
+model MemoryClaim {
+  id          String       @id @default(cuid())
+  typeId      String
+  type        MemoryType   @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  valueStr    String?
+  valueNum    Float?
+  valueBool   Boolean?
+  valueJson   Json?
+  confidence  Float        @default(0.5)
+  source      MemorySource @default(INFERRED)
+  status      MemoryStatus @default(ACTIVE)
+  validFrom   DateTime     @default(now())
+  validTo     DateTime?
+  evidence    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([typeId, userId])
+  @@index([typeId, workspaceId])
+}
+
+model MemoryMetric {
+  id          String     @id @default(cuid())
+  typeId      String
+  type        MemoryType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  windowStart DateTime
+  windowEnd   DateTime
+  valueNum    Float?
+  valueJson   Json?
+  computedAt  DateTime   @default(now())
+
+  @@unique([typeId, userId, windowStart, windowEnd])
+  @@unique([typeId, workspaceId, windowStart, windowEnd])
+  @@index([workspaceId, windowStart])
+  @@index([userId, windowStart])
 }
 
 model IntakeItem {
