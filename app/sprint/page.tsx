@@ -146,9 +146,19 @@ export default function SprintPage() {
     void fetchMembers();
   }, [fetchTasks, fetchSprint, fetchSprintHistory, fetchMembers]);
 
+  const displayedItems = useMemo(() => {
+    if (sprint) {
+      return items.filter((item) => item.sprintId === sprint.id);
+    }
+    return items.filter((item) => item.status === TASK_STATUS.SPRINT);
+  }, [items, sprint]);
+
   const used = useMemo(
-    () => items.filter((i) => i.status !== TASK_STATUS.DONE).reduce((sum, i) => sum + i.points, 0),
-    [items],
+    () =>
+      displayedItems
+        .filter((i) => i.status !== TASK_STATUS.DONE)
+        .reduce((sum, i) => sum + i.points, 0),
+    [displayedItems],
   );
   const isBlocked = (item: TaskDTO) =>
     (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE);
@@ -555,7 +565,7 @@ export default function SprintPage() {
 
       <section className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3">
-          {items
+          {displayedItems
             .filter((item) => item.status !== TASK_STATUS.DONE)
             .map((item) => (
               <div
@@ -661,11 +671,11 @@ export default function SprintPage() {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-900">完了</h3>
           <span className="text-xs text-slate-500">
-            {items.filter((item) => item.status === TASK_STATUS.DONE).length} 件
+            {displayedItems.filter((item) => item.status === TASK_STATUS.DONE).length} 件
           </span>
         </div>
         <div className="mt-3 grid gap-2">
-          {items
+          {displayedItems
             .filter((item) => item.status === TASK_STATUS.DONE)
             .map((item) => (
               <div

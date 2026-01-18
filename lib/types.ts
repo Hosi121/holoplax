@@ -31,6 +31,7 @@ export type TaskDTO = {
   parentId?: string | null;
   dueDate?: string | Date | null;
   assigneeId?: string | null;
+  sprintId?: string | null;
   tags?: string[];
   dependencyIds?: string[];
   dependencies?: { id: string; title: string; status: TaskStatus }[];
