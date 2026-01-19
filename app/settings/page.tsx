@@ -454,7 +454,7 @@ export default function SettingsPage() {
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">AI閾値</h3>
           <p className="text-sm text-slate-600">
-            自動委任/分割提案/自動分割の閾値を設定（現在: {low} / {high}）
+            AIによる自動化レベルの設定（現在: {low} / {high}）
           </p>
           <div className="mt-3 flex items-center gap-2 text-sm">
             <input

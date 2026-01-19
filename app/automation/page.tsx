@@ -15,9 +15,9 @@ export default function AutomationPage() {
   const effectiveLow = thresholds.effectiveLow ?? thresholds.low;
   const effectiveHigh = thresholds.effectiveHigh ?? thresholds.high;
   const rules = [
-    { name: "自動委任", range: `< ${effectiveLow}`, status: "On" },
-    { name: "分解提案", range: `${effectiveLow}-${effectiveHigh}`, status: "On" },
-    { name: "自動分割", range: `> ${effectiveHigh}`, status: "On" },
+    { name: "AIによる自動タスク実行", range: `< ${effectiveLow}`, status: "On" },
+    { name: "タスクの分解提案", range: `${effectiveLow}-${effectiveHigh}`, status: "On" },
+    { name: "タスクの自動分割", range: `> ${effectiveHigh}`, status: "On" },
   ];
 
   const fetchThresholds = useCallback(async () => {
@@ -81,7 +81,7 @@ export default function AutomationPage() {
             </p>
             <h1 className="text-3xl font-semibold text-slate-900">自動化</h1>
             <p className="text-sm text-slate-600">
-              自動委任/分割提案/自動分割のスコア閾値
+              AIによる自動化レベルの設定
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm">
