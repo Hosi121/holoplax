@@ -16,6 +16,8 @@ import {
 } from "../../lib/types";
 import { LoadingButton } from "../components/loading-button";
 import { useWorkspaceId } from "../components/use-workspace-id";
+import { useProactiveSuggestionsList } from "./hooks/use-proactive-suggestions";
+import { useSuggestionContext } from "./hooks/use-suggestion-context";
 
 const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 const taskTypeLabels: Record<TaskType, string> = {
@@ -110,6 +112,10 @@ export default function BacklogPage() {
   const splitThreshold = 8;
   const { workspaceId, ready } = useWorkspaceId();
   const [items, setItems] = useState<TaskDTO[]>([]);
+
+  // Proactive suggestions (Beyond Agency)
+  const { context: aiContext } = useSuggestionContext();
+  const proactiveSuggestionsMap = useProactiveSuggestionsList(items, aiContext);
   const [view, setView] = useState<"product" | "sprint">("product");
   const createDefaultForm = () => ({
     title: "",
@@ -1017,7 +1023,22 @@ export default function BacklogPage() {
                       className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
                     >
                       <div className="flex items-center justify-between">
-                        <p className="font-semibold text-slate-900">{item.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-slate-900">{item.title}</p>
+                          {proactiveSuggestionsMap.get(item.id) && (
+                            <span
+                              className="text-[10px] text-blue-600 opacity-70"
+                              title={proactiveSuggestionsMap.get(item.id)?.reason}
+                            >
+                              {proactiveSuggestionsMap.get(item.id)?.type === "TIP" &&
+                                "💡 ヒント提案あり"}
+                              {proactiveSuggestionsMap.get(item.id)?.type === "SCORE" &&
+                                "📊 見積もり提案あり"}
+                              {proactiveSuggestionsMap.get(item.id)?.type === "SPLIT" &&
+                                "✂️ 分解提案あり"}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-xs">
                           <span className="border border-slate-200 bg-white px-2 py-1 text-slate-600">
                             {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}

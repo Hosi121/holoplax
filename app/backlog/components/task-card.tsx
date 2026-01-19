@@ -37,6 +37,12 @@ export type TipResult = {
   text: string;
 };
 
+type ProactiveSuggestion = {
+  type: "TIP" | "SCORE" | "SPLIT";
+  reason: string;
+  priority: number;
+};
+
 export type TaskCardProps = {
   item: TaskDTO;
   view: "product" | "sprint";
@@ -49,6 +55,8 @@ export type TaskCardProps = {
   suggestion?: TipResult;
   score?: ScoreResult;
   splits?: SplitSuggestion[];
+  // Proactive suggestion (環境からの先回り提案)
+  proactiveSuggestion?: ProactiveSuggestion | null;
   // Helpers
   isBlocked: (item: TaskDTO) => boolean;
   childCount: number;
@@ -67,6 +75,12 @@ export type TaskCardProps = {
   onToggleChecklistItem: (taskId: string, checklistId: string) => void;
 };
 
+const proactiveLabels: Record<string, string> = {
+  TIP: "💡 ヒント提案あり",
+  SCORE: "📊 見積もり提案あり",
+  SPLIT: "✂️ 分解提案あり",
+};
+
 export function TaskCard({
   item,
   view,
@@ -77,6 +91,7 @@ export function TaskCard({
   suggestion,
   score,
   splits,
+  proactiveSuggestion,
   isBlocked,
   childCount,
   onMoveToSprint,
@@ -95,7 +110,17 @@ export function TaskCard({
   return (
     <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
       <div className="flex items-center justify-between">
-        <p className="font-semibold text-slate-900">{item.title}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-semibold text-slate-900">{item.title}</p>
+          {proactiveSuggestion && (
+            <span
+              className="text-[10px] text-blue-600 opacity-70"
+              title={proactiveSuggestion.reason}
+            >
+              {proactiveLabels[proactiveSuggestion.type]}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="border border-slate-200 bg-white px-2 py-1 text-slate-600">
             {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}

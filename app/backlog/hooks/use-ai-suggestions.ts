@@ -11,6 +11,7 @@ import {
   TASK_TYPE,
   type TaskDTO,
 } from "../../../lib/types";
+import type { AiContext } from "./use-suggestion-context";
 
 type SplitSuggestion = {
   title: string;
@@ -36,9 +37,10 @@ type TipResult = {
 export type UseAiSuggestionsOptions = {
   fetchTasks: () => Promise<void>;
   setItems: React.Dispatch<React.SetStateAction<TaskDTO[]>>;
+  context?: AiContext | null;
 };
 
-export function useAiSuggestions({ fetchTasks, setItems }: UseAiSuggestionsOptions) {
+export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggestionsOptions) {
   const [suggestionMap, setSuggestionMap] = useState<Record<string, TipResult>>({});
   const [scoreMap, setScoreMap] = useState<Record<string, ScoreResult>>({});
   const [splitMap, setSplitMap] = useState<Record<string, SplitSuggestion[]>>({});
@@ -66,7 +68,10 @@ export function useAiSuggestions({ fetchTasks, setItems }: UseAiSuggestionsOptio
               [taskId]: { text: data.suggestion, suggestionId: data.suggestionId },
             }));
             // Track VIEWED
-            const viewedAt = trackSuggestionViewed(data.suggestionId);
+            const viewedAt = trackSuggestionViewed(data.suggestionId, {
+              wipCount: context?.wipCount,
+              flowState: context?.flowState ?? undefined,
+            });
             if (viewedAt) {
               viewedAtMap.current[`tip_${taskId}`] = viewedAt;
             }
@@ -87,7 +92,10 @@ export function useAiSuggestions({ fetchTasks, setItems }: UseAiSuggestionsOptio
           [taskId]: { text: data.suggestion, suggestionId: data.suggestionId },
         }));
         // Track VIEWED
-        const viewedAt = trackSuggestionViewed(data.suggestionId);
+        const viewedAt = trackSuggestionViewed(data.suggestionId, {
+          wipCount: context?.wipCount,
+          flowState: context?.flowState ?? undefined,
+        });
         if (viewedAt) {
           viewedAtMap.current[`tip_${taskId}`] = viewedAt;
         }
@@ -125,6 +133,8 @@ export function useAiSuggestions({ fetchTasks, setItems }: UseAiSuggestionsOptio
       const viewedAt = trackSuggestionViewed(data.suggestionId, {
         taskType: item.type,
         taskPoints: item.points,
+        wipCount: context?.wipCount,
+        flowState: context?.flowState ?? undefined,
       });
       if (viewedAt) {
         viewedAtMap.current[`score_${item.id}`] = viewedAt;
@@ -198,6 +208,8 @@ export function useAiSuggestions({ fetchTasks, setItems }: UseAiSuggestionsOptio
         const viewedAt = trackSuggestionViewed(data.suggestionId, {
           taskType: item.type,
           taskPoints: item.points,
+          wipCount: context?.wipCount,
+          flowState: context?.flowState ?? undefined,
         });
         if (viewedAt) {
           viewedAtMap.current[`split_${item.id}`] = viewedAt;
