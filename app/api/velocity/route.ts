@@ -3,8 +3,11 @@ import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
 import { VelocityCreateSchema } from "../../../lib/contracts/velocity";
+import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
+
+const errors = createDomainErrors("VELOCITY");
 
 
 export async function GET() {
@@ -43,9 +46,9 @@ export async function GET() {
       const sprintIds = sprints.map((sprint) => sprint.id);
       const pbiTasks = sprintIds.length
         ? await prisma.task.findMany({
-            where: { workspaceId, sprintId: { in: sprintIds }, type: "PBI" },
-            select: { sprintId: true, status: true, points: true },
-          })
+          where: { workspaceId, sprintId: { in: sprintIds }, type: "PBI" },
+          select: { sprintId: true, status: true, points: true },
+        })
         : [];
       const latestSprintId = sprints[0]?.id ?? null;
       const latestPbiTasks = latestSprintId
@@ -93,6 +96,7 @@ export async function POST(request: Request) {
         domain: "VELOCITY",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("workspaceId is required");
       const body = await parseBody(request, VelocityCreateSchema, {
         code: "VELOCITY_VALIDATION",
       });

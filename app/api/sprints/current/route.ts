@@ -24,7 +24,7 @@ export async function GET() {
       },
     },
     async () => {
-      const { userId, workspaceId } = await requireWorkspaceAuth();
+      const { workspaceId } = await requireWorkspaceAuth();
       if (!workspaceId) {
         return ok({ sprint: null });
       }
@@ -61,6 +61,7 @@ export async function POST(request: Request) {
         domain: "SPRINT",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("userID is required");
       const body = await parseBody(request, SprintStartSchema, {
         code: "SPRINT_VALIDATION",
         allowEmpty: true,
@@ -128,6 +129,7 @@ export async function PATCH() {
         domain: "SPRINT",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized();
       const sprint = await prisma.sprint.findFirst({
         where: { workspaceId, status: "ACTIVE" },
         orderBy: { startedAt: "desc" },

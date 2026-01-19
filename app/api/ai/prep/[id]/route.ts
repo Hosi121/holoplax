@@ -29,6 +29,7 @@ export async function PATCH(
         domain: "AI",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("userID is required");
       const { id: prepId } = await params;
       const body = await parseBody(request, AiPrepActionSchema, {
         code: "AI_VALIDATION",

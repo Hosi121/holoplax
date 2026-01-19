@@ -93,6 +93,7 @@ export async function POST(request: Request) {
         domain: "AUTOMATION",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("workspaceId not found");
 
       const body = await parseBody(request, AutomationApprovalSchema, {
         code: "AUTOMATION_VALIDATION",

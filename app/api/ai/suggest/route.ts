@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       },
     },
     async () => {
-      const { userId, workspaceId } = await requireWorkspaceAuth();
+      const { workspaceId } = await requireWorkspaceAuth();
       if (!workspaceId) {
         return ok({ suggestion: null });
       }

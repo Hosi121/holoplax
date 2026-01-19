@@ -60,25 +60,25 @@ export async function GET() {
       },
     },
     async () => {
-      const { userId, workspaceId } = await requireWorkspaceAuth();
-    if (!workspaceId) {
-      return ok({ tasks: [] });
-    }
-    const tasks = await prisma.task.findMany({
-      where: { workspaceId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        routineRule: {
-          select: { cadence: true, nextAt: true },
-        },
-        dependencies: {
-          select: {
-            dependsOnId: true,
-            dependsOn: { select: { id: true, title: true, status: true } },
+      const { workspaceId } = await requireWorkspaceAuth();
+      if (!workspaceId) {
+        return ok({ tasks: [] });
+      }
+      const tasks = await prisma.task.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          routineRule: {
+            select: { cadence: true, nextAt: true },
+          },
+          dependencies: {
+            select: {
+              dependsOnId: true,
+              dependsOn: { select: { id: true, title: true, status: true } },
+            },
           },
         },
-      },
-    });
+      });
       return ok({
         tasks: tasks.map(mapTaskWithDependencies),
       });
@@ -101,6 +101,7 @@ export async function POST(request: Request) {
         domain: "TASK",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("userID is required");
       const body = await parseBody(request, TaskCreateSchema, {
         code: "TASK_VALIDATION",
       });
@@ -146,9 +147,9 @@ export async function POST(request: Request) {
         : [];
       const allowedDependencies = dependencyList.length
         ? await prisma.task.findMany({
-            where: { id: { in: dependencyList }, workspaceId },
-            select: { id: true, title: true, status: true },
-          })
+          where: { id: { in: dependencyList }, workspaceId },
+          select: { id: true, title: true, status: true },
+        })
         : [];
       const statusValue = isTaskStatus(status) ? status : TASK_STATUS.BACKLOG;
       const typeValue = isTaskType(type) ? type : TASK_TYPE.PBI;
@@ -159,9 +160,9 @@ export async function POST(request: Request) {
       const parentCandidate = parentId ? String(parentId) : null;
       const parent = parentCandidate
         ? await prisma.task.findFirst({
-            where: { id: parentCandidate, workspaceId },
-            select: { id: true },
-          })
+          where: { id: parentCandidate, workspaceId },
+          select: { id: true },
+        })
         : null;
       if (
         statusValue !== TASK_STATUS.BACKLOG &&
@@ -172,10 +173,10 @@ export async function POST(request: Request) {
       const activeSprint =
         statusValue === TASK_STATUS.SPRINT
           ? await prisma.sprint.findFirst({
-              where: { workspaceId, status: "ACTIVE" },
-              orderBy: { startedAt: "desc" },
-              select: { id: true, capacityPoints: true },
-            })
+            where: { workspaceId, status: "ACTIVE" },
+            orderBy: { startedAt: "desc" },
+            select: { id: true, capacityPoints: true },
+          })
           : null;
       if (statusValue === TASK_STATUS.SPRINT && activeSprint) {
         const current = await prisma.task.aggregate({

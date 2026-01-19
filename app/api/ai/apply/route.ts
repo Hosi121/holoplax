@@ -24,6 +24,7 @@ export async function POST(request: Request) {
         domain: "AI",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("workspaceId not found");
       const body = await parseBody(request, AiApplySchema, { code: "AI_VALIDATION" });
       const taskId = body.taskId;
       const type = body.type;

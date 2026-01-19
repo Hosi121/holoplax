@@ -27,6 +27,7 @@ export async function PATCH(
         domain: "SPRINT",
         requireWorkspace: true,
       });
+      if (!workspaceId) return errors.unauthorized("userID is required");
       const { id } = await params;
       const body = await parseBody(request, SprintUpdateSchema, {
         code: "SPRINT_VALIDATION",
