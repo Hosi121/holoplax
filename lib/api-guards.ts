@@ -3,11 +3,24 @@ import { AppError } from "./http/errors";
 import prisma from "./prisma";
 import { resolveWorkspaceId } from "./workspace-context";
 
-type WorkspaceAuthOptions = {
+type WorkspaceAuthOptionsRequired = {
   domain?: string;
-  requireWorkspace?: boolean;
+  requireWorkspace: true;
   message?: string;
 };
+
+type WorkspaceAuthOptionsOptional = {
+  domain?: string;
+  requireWorkspace?: false;
+  message?: string;
+};
+
+type WorkspaceAuthOptions = WorkspaceAuthOptionsRequired | WorkspaceAuthOptionsOptional;
+
+type AuthResult = Awaited<ReturnType<typeof requireAuth>>;
+
+type WorkspaceAuthResultRequired = AuthResult & { workspaceId: string };
+type WorkspaceAuthResultOptional = AuthResult & { workspaceId: string | null };
 
 type WorkspaceRole = "owner" | "admin" | "member";
 
@@ -15,7 +28,15 @@ const forbid = (domain: string, message = "forbidden") => {
   throw new AppError(`${domain}_FORBIDDEN`, message, 403);
 };
 
-export const requireWorkspaceAuth = async (options: WorkspaceAuthOptions = {}) => {
+export async function requireWorkspaceAuth(
+  options: WorkspaceAuthOptionsRequired
+): Promise<WorkspaceAuthResultRequired>;
+export async function requireWorkspaceAuth(
+  options?: WorkspaceAuthOptionsOptional
+): Promise<WorkspaceAuthResultOptional>;
+export async function requireWorkspaceAuth(
+  options: WorkspaceAuthOptions = {}
+): Promise<WorkspaceAuthResultRequired | WorkspaceAuthResultOptional> {
   const auth = await requireAuth();
   const workspaceId = await resolveWorkspaceId(auth.userId);
   if (options.requireWorkspace && !workspaceId) {
@@ -26,8 +47,8 @@ export const requireWorkspaceAuth = async (options: WorkspaceAuthOptions = {}) =
       400,
     );
   }
-  return { ...auth, workspaceId };
-};
+  return { ...auth, workspaceId } as WorkspaceAuthResultRequired | WorkspaceAuthResultOptional;
+}
 
 export const requireAdmin = async (domain = "ADMIN") => {
   const auth = await requireAuth();
