@@ -6,6 +6,7 @@ import { SEVERITY, SEVERITY_LABELS, type Severity, TASK_STATUS } from "../../lib
 import { TaskCard } from "../components/task-card";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useSprintManagement } from "./hooks/use-sprint-management";
+import { useSprintOptimizer } from "./hooks/use-sprint-optimizer";
 import { useSprintTasks } from "./hooks/use-sprint-tasks";
 
 const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
@@ -57,6 +58,23 @@ export default function SprintPage() {
     isBlocked,
   } = useSprintTasks({ ready, workspaceId, sprintId: sprint?.id });
 
+  const {
+    optimizationResult,
+    loading: optimizerLoading,
+    adding: optimizerAdding,
+    showPanel: showOptimizerPanel,
+    summary: optimizerSummary,
+    runOptimization,
+    addSelectedTasks,
+    closePanel: closeOptimizerPanel,
+    calculateTaskScore,
+  } = useSprintOptimizer({
+    ready,
+    workspaceId,
+    capacity: sprintForm.capacityPoints - used,
+    onTasksAdded: () => void fetchTasks(),
+  });
+
   const fetchMembers = useCallback(async () => {
     if (!ready || !workspaceId) {
       setMembers([]);
@@ -104,6 +122,13 @@ export default function SprintPage() {
             >
               レビューへ
             </Link>
+            <button
+              onClick={runOptimization}
+              disabled={optimizerLoading}
+              className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-60"
+            >
+              {optimizerLoading ? "計算中..." : "最適化"}
+            </button>
             {sprint ? (
               <button
                 onClick={endSprint}
@@ -365,6 +390,90 @@ export default function SprintPage() {
           )}
         </div>
       </section>
+
+      {showOptimizerPanel && optimizationResult ? (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-y-auto border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">最適化結果</h3>
+                {optimizerSummary ? (
+                  <p className="text-sm text-slate-600">{optimizerSummary}</p>
+                ) : null}
+              </div>
+              <button
+                onClick={closeOptimizerPanel}
+                className="text-sm text-slate-500 transition hover:text-slate-800"
+              >
+                閉じる
+              </button>
+            </div>
+
+            {optimizationResult.selectedTasks.length > 0 ? (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    選択されたタスク ({optimizationResult.selectedTasks.length}件)
+                  </h4>
+                  <button
+                    onClick={addSelectedTasks}
+                    disabled={optimizerAdding}
+                    className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30 disabled:opacity-60"
+                  >
+                    {optimizerAdding ? "追加中..." : "一括追加"}
+                  </button>
+                </div>
+                <div className="mt-2 grid gap-2">
+                  {optimizationResult.selectedTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-center justify-between border border-slate-200 bg-slate-50 px-3 py-2"
+                    >
+                      <div className="flex-1">
+                        <span className="text-sm text-slate-800">{task.title}</span>
+                        <div className="flex gap-2 text-xs text-slate-500">
+                          <span>{task.points}pt</span>
+                          <span>緊急度: {SEVERITY_LABELS[task.urgency]}</span>
+                          <span>リスク: {SEVERITY_LABELS[task.risk]}</span>
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        スコア: {calculateTaskScore(task).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-slate-500">
+                キャパ内に収まるタスクがありません。
+              </div>
+            )}
+
+            {optimizationResult.excludedTasks.length > 0 ? (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-slate-700">
+                  除外されたタスク ({optimizationResult.excludedTasks.length}件)
+                </h4>
+                <div className="mt-2 grid gap-2">
+                  {optimizationResult.excludedTasks.map(({ task, reason }) => (
+                    <div
+                      key={task.id}
+                      className="flex items-center justify-between border border-slate-200 px-3 py-2 text-slate-500"
+                    >
+                      <div className="flex-1">
+                        <span className="text-sm">{task.title}</span>
+                        <span className="ml-2 text-xs">({task.points}pt)</span>
+                      </div>
+                      <span className="text-xs">{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {editItem ? (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">
