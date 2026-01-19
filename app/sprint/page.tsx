@@ -353,7 +353,7 @@ export default function SprintPage() {
             </p>
             <h1 className="text-3xl font-semibold text-slate-900">スプリント</h1>
             <p className="text-sm text-slate-600">
-              キャパはポイントベース（例: 24pt）。バックログから選んでコミットするモック。
+              キャパシティは各タスクの合計ポイント。バックログより<br />スプリント期間中に行うタスクを追加する。
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm">

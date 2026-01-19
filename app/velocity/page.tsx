@@ -61,7 +61,7 @@ export default function VelocityPage() {
               Velocity
             </p>
             <h1 className="text-3xl font-semibold text-slate-900">ベロシティ</h1>
-            <p className="text-sm text-slate-600">スプリント履歴のポイントとレンジを記録。</p>
+            <p className="text-sm text-slate-600">スプリント履歴のベロシティとレンジを記録。</p>
           </div>
         </div>
       </header>

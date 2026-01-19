@@ -122,11 +122,10 @@ export default function OnboardingPage() {
                     <button
                       key={option.id}
                       onClick={() => setIntent(option.id)}
-                      className={`border px-4 py-4 text-left transition ${
-                        intent === option.id
+                      className={`border px-4 py-4 text-left transition ${intent === option.id
                           ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
                           : "border-slate-200 bg-white hover:border-[#2323eb]/40"
-                      }`}
+                        }`}
                     >
                       <p className="text-sm font-semibold">{option.title}</p>
                       <p className="mt-2 text-xs text-slate-600">{option.summary}</p>
@@ -241,11 +240,10 @@ export default function OnboardingPage() {
                     <button
                       key={type}
                       onClick={() => setPrepType(type)}
-                      className={`border px-3 py-2 text-xs transition ${
-                        prepType === type
+                      className={`border px-3 py-2 text-xs transition ${prepType === type
                           ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
                           : "border-slate-200 bg-white hover:border-[#2323eb]/40"
-                      }`}
+                        }`}
                     >
                       {type === "CHECKLIST"
                         ? "チェックリスト"

@@ -48,14 +48,14 @@ export function FocusQueue() {
             Focus Queue
           </p>
           <h2 className="text-lg font-semibold text-slate-900">
-            いまやるべきこと 3件
+            優先処理すべきタスク 3件
           </h2>
         </div>
         <Link
           href="/backlog"
           className="text-xs font-semibold text-slate-500 hover:text-[#2323eb]"
         >
-          Planへ
+          バックログへ
         </Link>
       </div>
       {loading ? (

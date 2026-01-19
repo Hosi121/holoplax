@@ -59,7 +59,9 @@ export default function SignInPage() {
               人生に導入する。
             </h1>
             <p className="text-sm text-slate-600">
-              Backlog・Sprint・AI提案をあなた専用の空間に。チーム化の拡張も見据えた設計です。
+              Backlog・Sprint・AI提案をあなた専用の空間に。
+              <br />
+              タスクの自動収集/細分化にて人間がタスクを滑らかに遂行できる環境
             </p>
           </div>
 

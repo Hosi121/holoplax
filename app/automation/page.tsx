@@ -15,9 +15,9 @@ export default function AutomationPage() {
   const effectiveLow = thresholds.effectiveLow ?? thresholds.low;
   const effectiveHigh = thresholds.effectiveHigh ?? thresholds.high;
   const rules = [
-    { name: "低スコア自動委任", range: `< ${effectiveLow}`, status: "On" },
-    { name: "中スコア分解提案", range: `${effectiveLow}-${effectiveHigh}`, status: "On" },
-    { name: "高スコア分割必須", range: `> ${effectiveHigh}`, status: "On" },
+    { name: "AIによる自動タスク実行", range: `< ${effectiveLow}`, status: "On" },
+    { name: "タスクの分解提案", range: `${effectiveLow}-${effectiveHigh}`, status: "On" },
+    { name: "タスクの自動分割", range: `> ${effectiveHigh}`, status: "On" },
   ];
 
   const fetchThresholds = useCallback(async () => {
@@ -81,8 +81,7 @@ export default function AutomationPage() {
             </p>
             <h1 className="text-3xl font-semibold text-slate-900">自動化</h1>
             <p className="text-sm text-slate-600">
-              スコアしきい値ごとの挙動を管理。低スコアはAI委任キュー、高スコアは自動分解（承認モードは環境変数
-              AUTOMATION_REQUIRE_APPROVAL=true でON）。
+              AIによる自動化レベルの設定
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm">
@@ -118,7 +117,7 @@ export default function AutomationPage() {
             ステージ {thresholds.stage ?? 0}
           </span>
           <span className="border border-slate-200 bg-slate-50 px-2 py-1">
-            有効しきい値 {effectiveLow} / {effectiveHigh}
+            有効閾値 {effectiveLow} / {effectiveHigh}
           </span>
           <button
             onClick={resetStage}

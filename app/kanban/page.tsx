@@ -38,9 +38,9 @@ const taskTypeLabels: Record<TaskType, string> = {
 };
 
 const columns: Column[] = [
-  { key: TASK_STATUS.BACKLOG, label: "バックログ", hint: "あとでやる" },
-  { key: TASK_STATUS.SPRINT, label: "スプリント", hint: "今週やる" },
-  { key: TASK_STATUS.DONE, label: "完了", hint: "完了したもの" },
+  { key: TASK_STATUS.BACKLOG, label: "バックログ", hint: "後で行うタスク" },
+  { key: TASK_STATUS.SPRINT, label: "スプリント", hint: "本スプリント中にやるタスク" },
+  { key: TASK_STATUS.DONE, label: "完了", hint: "完了したタスク" },
 ];
 
 export default function KanbanPage() {
