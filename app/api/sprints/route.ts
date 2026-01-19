@@ -22,34 +22,31 @@ export async function GET(request: Request) {
       const { searchParams } = new URL(request.url);
       const statusParam = searchParams.get("status");
       const status = statusParam as SprintStatus | null;
+      // Single query with include to fetch sprints and tasks together
       const sprints = await prisma.sprint.findMany({
         where: { workspaceId, ...(status ? { status } : {}) },
         orderBy: { startedAt: "desc" },
-      });
-      const sprintIds = sprints.map((sprint) => sprint.id);
-      const tasks = sprintIds.length
-        ? await prisma.task.findMany({
-            where: { sprintId: { in: sprintIds } },
-            select: { sprintId: true, status: true, points: true },
-          })
-        : [];
-      const bySprint = tasks.reduce<Record<string, { committed: number; completed: number }>>(
-        (acc, task) => {
-          if (!task.sprintId) return acc;
-          if (!acc[task.sprintId]) acc[task.sprintId] = { committed: 0, completed: 0 };
-          acc[task.sprintId].committed += task.points;
-          if (task.status === "DONE") acc[task.sprintId].completed += task.points;
-          return acc;
+        include: {
+          tasks: {
+            select: { status: true, points: true },
+          },
         },
-        {},
-      );
+      });
 
       return ok({
-        sprints: sprints.map((sprint) => ({
-          ...sprint,
-          committedPoints: bySprint[sprint.id]?.committed ?? 0,
-          completedPoints: bySprint[sprint.id]?.completed ?? 0,
-        })),
+        sprints: sprints.map(({ tasks, ...sprint }) => {
+          let committed = 0;
+          let completed = 0;
+          for (const task of tasks) {
+            committed += task.points;
+            if (task.status === "DONE") completed += task.points;
+          }
+          return {
+            ...sprint,
+            committedPoints: committed,
+            completedPoints: completed,
+          };
+        }),
       });
     },
   );
