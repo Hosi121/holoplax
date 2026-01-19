@@ -332,8 +332,7 @@ export default function BacklogPage() {
   };
 
   useEffect(() => {
-    void fetchTasks();
-    void fetchMembers();
+    void Promise.all([fetchTasks(), fetchMembers()]);
   }, [fetchTasks, fetchMembers]);
 
   // Single pass to compute taskById, childCount, visibleItems, groupedByType, parentCandidates

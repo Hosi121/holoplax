@@ -87,10 +87,7 @@ export default function SprintPage() {
   }, [ready, workspaceId]);
 
   useEffect(() => {
-    void fetchTasks();
-    void fetchSprint();
-    void fetchSprintHistory();
-    void fetchMembers();
+    void Promise.all([fetchTasks(), fetchSprint(), fetchSprintHistory(), fetchMembers()]);
   }, [fetchTasks, fetchSprint, fetchSprintHistory, fetchMembers]);
 
   const activeCapacity = sprint?.capacityPoints ?? 24;
