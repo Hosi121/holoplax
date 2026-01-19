@@ -21,7 +21,7 @@ const taskTypeLabels: Record<TaskType, string> = {
 };
 const taskTypeOptions = [
   { value: TASK_TYPE.EPIC, label: "目標 (EPIC)" },
-  { value: TASK_TYPE.PBI, label: "PBI" },
+  { value: TASK_TYPE.PBI, label: "用件 (PBI)" },
   { value: TASK_TYPE.TASK, label: "タスク" },
   { value: TASK_TYPE.ROUTINE, label: "ルーティン" },
 ];
@@ -745,7 +745,7 @@ export default function BacklogPage() {
             </p>
             <h1 className="text-3xl font-semibold text-slate-900">バックログ</h1>
             <p className="text-sm text-slate-600">
-              ポイント/緊急度/リスクを入力し目標/PBI/タスク/ルーティーンを作成<br />
+              ポイント/緊急度/リスクを入力し目標/用件/タスク/ルーティーンを作成<br />
               実行タスクはスプリントへ送信
             </p>
           </div>
