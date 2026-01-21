@@ -22,9 +22,21 @@ export async function GET() {
       const { userId } = await requireAuth();
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, name: true, email: true, image: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          accounts: {
+            select: {
+              provider: true,
+              providerAccountId: true,
+            },
+          },
+        },
       });
-      return ok({ user });
+      const linkedProviders = user?.accounts.map((a) => a.provider) ?? [];
+      return ok({ user, linkedProviders });
     },
   );
 }

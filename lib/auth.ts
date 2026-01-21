@@ -87,6 +87,7 @@ export const authOptions: NextAuthOptions = {
   providers,
   pages: {
     signIn: "/auth/signin",
+    error: "/auth/error",
   },
   session: { strategy: "jwt" },
   callbacks: {
@@ -140,17 +141,21 @@ export const authOptions: NextAuthOptions = {
 
         if (existingUser?.disabledAt) return false;
 
-        if (existingUser) {
-          const existingAccount = await prisma.account.findUnique({
-            where: {
-              provider_providerAccountId: {
-                provider: account.provider,
-                providerAccountId: account.providerAccountId,
-              },
+        const linkedAccount = await prisma.account.findUnique({
+          where: {
+            provider_providerAccountId: {
+              provider: account.provider,
+              providerAccountId: account.providerAccountId,
             },
-          });
+          },
+        });
 
-          if (existingAccount) return true;
+        if (linkedAccount && linkedAccount.userId !== existingUser?.id) {
+          return false;
+        }
+
+        if (existingUser) {
+          if (linkedAccount) return true;
 
           const canLink =
             (account.provider === "google" &&
