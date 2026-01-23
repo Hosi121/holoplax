@@ -86,9 +86,6 @@ sudo -u ec2-user npx prisma generate
 # Run database migrations
 sudo -u ec2-user npx prisma migrate deploy
 
-# Build application
-sudo -u ec2-user npm run build
-
 # Start application with PM2
 sudo -u ec2-user pm2 delete holoplax 2>/dev/null || true
 sudo -u ec2-user pm2 start npm --name holoplax -- start
