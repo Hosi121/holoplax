@@ -1,9 +1,9 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 
-export default function AuthErrorPage() {
+function AuthErrorContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -20,4 +20,12 @@ export default function AuthErrorPage() {
   }, [searchParams, router]);
 
   return null;
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense>
+      <AuthErrorContent />
+    </Suspense>
+  );
 }

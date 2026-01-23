@@ -5,11 +5,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 type Providers = Record<string, { id: string; name: string }>;
 
 export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInContent />
+    </Suspense>
+  );
+}
+
+function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [providers, setProviders] = useState<Providers>({});

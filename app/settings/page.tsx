@@ -3,7 +3,7 @@
 import { Chrome, Github } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useAccount } from "./hooks/use-account";
 import {
@@ -16,6 +16,14 @@ import { formatQuestionValue, useMemoryQuestions } from "./hooks/use-memory-ques
 import { useThresholds } from "./hooks/use-thresholds";
 
 export default function SettingsPage() {
+  return (
+    <Suspense>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const { update } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
