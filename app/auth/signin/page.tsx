@@ -3,12 +3,15 @@
 import { Chrome, Github, Lock, Mail, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
 
 type Providers = Record<string, { id: string; name: string }>;
 
 export default function SignInPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [providers, setProviders] = useState<Providers>({});
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,6 +19,24 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    const callbackUrl = searchParams.get("callbackUrl");
+
+    if (errorParam && callbackUrl) {
+      try {
+        const url = new URL(callbackUrl);
+        if (url.pathname.startsWith("/settings")) {
+          const separator = url.search ? "&" : "?";
+          router.replace(`${url.pathname}${url.search}${separator}error=${errorParam}`);
+          return;
+        }
+      } catch {
+        // Invalid URL, ignore
+      }
+    }
+  }, [searchParams, router]);
 
   useEffect(() => {
     const loadProviders = async () => {

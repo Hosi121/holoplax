@@ -1,8 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { Chrome, Github } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useAccount } from "./hooks/use-account";
 import {
@@ -17,16 +18,40 @@ import { useThresholds } from "./hooks/use-thresholds";
 export default function SettingsPage() {
   const { update } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { workspaceId, ready } = useWorkspaceId();
   const [notifications, setNotifications] = useState(false);
+  const errorHandled = useRef(false);
 
-  const { account, accountDirty, fetchAccount, updateAccountField, saveAccount, uploadAvatar } =
-    useAccount({
-      onSessionUpdate: async (user) => {
-        await update({ user });
-      },
-      onRouterRefresh: () => router.refresh(),
-    });
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error && !errorHandled.current) {
+      errorHandled.current = true;
+      if (error === "OAuthAccountNotLinked") {
+        window.alert("このメールアドレスは既に別のユーザーに登録されています。");
+      } else {
+        window.alert(`連携に失敗しました: ${error}`);
+      }
+      router.replace("/settings");
+    }
+  }, [searchParams, router]);
+
+  const {
+    account,
+    accountDirty,
+    linkedProviders,
+    unlinking,
+    fetchAccount,
+    updateAccountField,
+    saveAccount,
+    uploadAvatar,
+    unlinkProvider,
+  } = useAccount({
+    onSessionUpdate: async (user) => {
+      await update({ user });
+    },
+    onRouterRefresh: () => router.refresh(),
+  });
 
   const { low, high, dirty, fetchThresholds, updateLow, updateHigh, saveThresholds } =
     useThresholds({ ready, workspaceId });
@@ -261,6 +286,69 @@ export default function SettingsPage() {
             >
               ログアウト
             </button>
+          </div>
+        </div>
+
+        <div className="border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+          <h3 className="text-lg font-semibold text-slate-900">外部アカウント連携</h3>
+          <p className="text-sm text-slate-600">
+            Google・GitHubアカウントと連携してログインできるようにします。
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Chrome size={20} className="text-slate-600" />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Google</p>
+                  <p className="text-xs text-slate-500">
+                    {linkedProviders.includes("google") ? "連携済み" : "未連携"}
+                  </p>
+                </div>
+              </div>
+              {linkedProviders.includes("google") ? (
+                <button
+                  onClick={() => unlinkProvider("google")}
+                  disabled={unlinking === "google"}
+                  className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                >
+                  {unlinking === "google" ? "解除中..." : "連携解除"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => signIn("google", { callbackUrl: "/settings" })}
+                  className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                >
+                  連携する
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-between border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Github size={20} className="text-slate-600" />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">GitHub</p>
+                  <p className="text-xs text-slate-500">
+                    {linkedProviders.includes("github") ? "連携済み" : "未連携"}
+                  </p>
+                </div>
+              </div>
+              {linkedProviders.includes("github") ? (
+                <button
+                  onClick={() => unlinkProvider("github")}
+                  disabled={unlinking === "github"}
+                  className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                >
+                  {unlinking === "github" ? "解除中..." : "連携解除"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => signIn("github", { callbackUrl: "/settings" })}
+                  className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                >
+                  連携する
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

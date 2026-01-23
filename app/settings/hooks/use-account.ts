@@ -18,6 +18,8 @@ export type UseAccountOptions = {
 export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptions = {}) {
   const [account, setAccount] = useState<AccountForm>({ name: "", email: "", image: "" });
   const [accountDirty, setAccountDirty] = useState(false);
+  const [linkedProviders, setLinkedProviders] = useState<string[]>([]);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
 
   const fetchAccount = useCallback(async () => {
     const res = await fetch("/api/account");
@@ -28,6 +30,7 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
       email: data.user?.email ?? "",
       image: data.user?.image ?? "",
     });
+    setLinkedProviders(data.linkedProviders ?? []);
     setAccountDirty(false);
   }, []);
 
@@ -73,12 +76,31 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
     setAccountDirty(true);
   };
 
+  const unlinkProvider = async (provider: string) => {
+    setUnlinking(provider);
+    try {
+      const res = await fetch("/api/account/providers", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      if (res.ok) {
+        setLinkedProviders((prev) => prev.filter((p) => p !== provider));
+      }
+    } finally {
+      setUnlinking(null);
+    }
+  };
+
   return {
     account,
     accountDirty,
+    linkedProviders,
+    unlinking,
     fetchAccount,
     updateAccountField,
     saveAccount,
     uploadAvatar,
+    unlinkProvider,
   };
 }

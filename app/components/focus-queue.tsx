@@ -44,10 +44,15 @@ export function FocusQueue() {
     <section className="border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Focus Queue</p>
-          <h2 className="text-lg font-semibold text-slate-900">いまやるべきこと 3件</h2>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
+            Focus Queue
+          </p>
+          <h2 className="text-lg font-semibold text-slate-900">ATOOSHI 3件</h2>
         </div>
-        <Link href="/backlog" className="text-xs font-semibold text-slate-500 hover:text-[#2323eb]">
+        <Link
+          href="/backlog"
+          className="text-xs font-semibold text-slate-500 hover:text-[#2323eb]"
+        >
           Planへ
         </Link>
       </div>
@@ -60,8 +65,12 @@ export function FocusQueue() {
               key={item.taskId}
               className="border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700"
             >
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{item.reason}</p>
-              <p className="mt-2 text-base font-semibold text-slate-900">{item.title}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                {item.reason}
+              </p>
+              <p className="mt-2 text-base font-semibold text-slate-900">
+                {item.title}
+              </p>
               <p className="mt-2 text-xs text-slate-500">
                 {item.dueDate
                   ? `期限 ${new Date(item.dueDate).toLocaleDateString("ja-JP")}`
@@ -73,7 +82,9 @@ export function FocusQueue() {
       ) : (
         <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
           <p className="font-semibold text-slate-800">まだ候補がありません。</p>
-          <p className="mt-1">バックログにタスクを追加するとここに表示されます。</p>
+          <p className="mt-1">
+            バックログにタスクを追加するとここに表示されます。
+          </p>
           <div className="mt-3 flex gap-2 text-xs">
             <Link
               href="/backlog"
@@ -86,15 +97,21 @@ export function FocusQueue() {
       )}
       {history.length ? (
         <div className="mt-6 border-t border-slate-200 pt-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Recent history</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+            Recent history
+          </p>
           <div className="mt-3 grid gap-2 text-xs text-slate-600">
             {history.map((entry, idx) => (
-              <div key={`${entry.computedAt}-${idx}`} className="flex flex-col gap-1">
+              <div
+                key={`${entry.computedAt}-${idx}`}
+                className="flex flex-col gap-1"
+              >
                 <span className="text-[11px] text-slate-500">
                   {new Date(entry.computedAt).toLocaleString("ja-JP")}
                 </span>
                 <span>
-                  {entry.items?.[0]?.title ?? "—"} / {entry.items?.[1]?.title ?? "—"} /{" "}
+                  {entry.items?.[0]?.title ?? "—"} /{" "}
+                  {entry.items?.[1]?.title ?? "—"} /{" "}
                   {entry.items?.[2]?.title ?? "—"}
                 </span>
               </div>
