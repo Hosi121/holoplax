@@ -4,6 +4,7 @@ import { Chrome, Github } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useAccount } from "./hooks/use-account";
 import {
@@ -28,6 +29,7 @@ function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { workspaceId, ready } = useWorkspaceId();
+  const toast = useToast();
   const [notifications, setNotifications] = useState(false);
   const errorHandled = useRef(false);
 
@@ -36,13 +38,13 @@ function SettingsContent() {
     if (error && !errorHandled.current) {
       errorHandled.current = true;
       if (error === "OAuthAccountNotLinked") {
-        window.alert("このメールアドレスは既に別のユーザーに登録されています。");
+        toast.error("このメールアドレスは既に別のユーザーに登録されています。");
       } else {
-        window.alert(`連携に失敗しました: ${error}`);
+        toast.error(`連携に失敗しました: ${error}`);
       }
       router.replace("/settings");
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, toast]);
 
   const {
     account,
@@ -79,7 +81,7 @@ function SettingsContent() {
     removeMemory,
     setEditingMemoryId,
     cancelEdit,
-  } = useMemory({ ready, workspaceId });
+  } = useMemory({ ready, workspaceId, onWarning: toast.warning });
 
   const {
     memoryQuestionLoading,

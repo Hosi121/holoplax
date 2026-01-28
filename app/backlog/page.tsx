@@ -16,6 +16,7 @@ import {
 import { FocusPanel } from "../components/focus-panel";
 import { LoadingButton } from "../components/loading-button";
 import { type AiSuggestionConfig, TaskCard } from "../components/task-card";
+import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useAiSuggestions } from "./hooks/use-ai-suggestions";
 import { useProactiveSuggestionsList } from "./hooks/use-proactive-suggestions";
@@ -51,14 +52,9 @@ const checklistFromText = (text: string) =>
       done: false,
     }));
 
-const checklistToText = (
-  checklist?: { id: string; text: string; done: boolean }[] | null,
-) => (checklist ?? []).map((item) => item.text).join("\n");
-const severityOptions: Severity[] = [
-  SEVERITY.LOW,
-  SEVERITY.MEDIUM,
-  SEVERITY.HIGH,
-];
+const checklistToText = (checklist?: { id: string; text: string; done: boolean }[] | null) =>
+  (checklist ?? []).map((item) => item.text).join("\n");
+const severityOptions: Severity[] = [SEVERITY.LOW, SEVERITY.MEDIUM, SEVERITY.HIGH];
 
 type AiPrepType = "EMAIL" | "IMPLEMENTATION" | "CHECKLIST";
 
@@ -89,10 +85,7 @@ const prepTypeLabels: Record<AiPrepType, string> = {
   EMAIL: "メール草案",
 };
 
-const prepStatusMeta: Record<
-  AiPrepOutput["status"],
-  { label: string; className: string }
-> = {
+const prepStatusMeta: Record<AiPrepOutput["status"], { label: string; className: string }> = {
   PENDING: {
     label: "承認待ち",
     className: "border-amber-200 bg-amber-50 text-amber-700",
@@ -114,6 +107,7 @@ const prepStatusMeta: Record<
 export default function BacklogPage() {
   const splitThreshold = 8;
   const { workspaceId, ready } = useWorkspaceId();
+  const toast = useToast();
   const [items, setItems] = useState<TaskDTO[]>([]);
 
   // Proactive suggestions (Beyond Agency)
@@ -123,9 +117,7 @@ export default function BacklogPage() {
 
   // Fetch functions need to be defined before useAiSuggestions
   const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[]) => {
-    const params = statuses
-      .map((status) => `status=${encodeURIComponent(status)}`)
-      .join("&");
+    const params = statuses.map((status) => `status=${encodeURIComponent(status)}`).join("&");
     const res = await fetch(`/api/tasks?${params}&limit=200`);
     if (!res.ok) return [];
     const data = await res.json();
@@ -206,18 +198,14 @@ export default function BacklogPage() {
     dependencyIds: [] as string[],
   });
   const [addLoading, setAddLoading] = useState(false);
-  const [approvalLoadingId, setApprovalLoadingId] = useState<string | null>(
-    null,
-  );
+  const [approvalLoadingId, setApprovalLoadingId] = useState<string | null>(null);
   const [prepModalOpen, setPrepModalOpen] = useState(false);
   const [prepTask, setPrepTask] = useState<TaskDTO | null>(null);
   const [prepType, setPrepType] = useState<AiPrepType>("CHECKLIST");
   const [prepOutputs, setPrepOutputs] = useState<AiPrepOutput[]>([]);
   const [prepLoading, setPrepLoading] = useState(false);
   const [prepFetchLoading, setPrepFetchLoading] = useState(false);
-  const [prepActionLoadingId, setPrepActionLoadingId] = useState<string | null>(
-    null,
-  );
+  const [prepActionLoadingId, setPrepActionLoadingId] = useState<string | null>(null);
   const [creationStep, setCreationStep] = useState<1 | 2 | 3>(1);
   const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [aiAnswers, setAiAnswers] = useState<Record<number, string>>({});
@@ -278,9 +266,7 @@ export default function BacklogPage() {
         urgency: scoreData.urgency ?? prev.urgency,
         risk: scoreData.risk ?? prev.risk,
       }));
-      setScoreHint(
-        scoreData.reason ?? `AI推定スコア: ${scoreData.score ?? ""}`,
-      );
+      setScoreHint(scoreData.reason ?? `AI推定スコア: ${scoreData.score ?? ""}`);
       const suggestionRes = await fetch("/api/ai/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,16 +282,11 @@ export default function BacklogPage() {
       }
       setAiQuestions([
         suggestionText || "このタスクの詳細／背景を教えてください。",
-        scoreData.reason
-          ? `AI推定理由: ${scoreData.reason}`
-          : "補足情報があれば教えてください。",
+        scoreData.reason ? `AI推定理由: ${scoreData.reason}` : "補足情報があれば教えてください。",
       ]);
     } catch {
       setAiError("AI支援に失敗しました。手動で入力できます。");
-      setAiQuestions([
-        "このタスクの目的は何ですか？",
-        "優先順位が高い理由は何ですか？",
-      ]);
+      setAiQuestions(["このタスクの目的は何ですか？", "優先順位が高い理由は何ですか？"]);
     } finally {
       setAiLoading(false);
     }
@@ -358,13 +339,7 @@ export default function BacklogPage() {
   }, [fetchTasks, fetchMembers]);
 
   // Single pass to compute taskById, childCount, visibleItems, groupedByType, parentCandidates
-  const {
-    taskById,
-    childCount,
-    visibleItems,
-    groupedByType,
-    parentCandidates,
-  } = useMemo(() => {
+  const { taskById, childCount, visibleItems, groupedByType, parentCandidates } = useMemo(() => {
     const taskById = new Map<string, TaskDTO>();
     const childCount = new Map<string, number>();
     const visibleItems: TaskDTO[] = [];
@@ -376,8 +351,7 @@ export default function BacklogPage() {
     };
     const parentCandidates: TaskDTO[] = [];
 
-    const targetStatus =
-      view === "product" ? TASK_STATUS.BACKLOG : TASK_STATUS.SPRINT;
+    const targetStatus = view === "product" ? TASK_STATUS.BACKLOG : TASK_STATUS.SPRINT;
 
     for (const item of items) {
       // taskById
@@ -419,8 +393,7 @@ export default function BacklogPage() {
 
   const addItem = async () => {
     if (!form.title.trim()) return;
-    const statusValue =
-      view === "sprint" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG;
+    const statusValue = view === "sprint" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG;
     const baseDescription = form.description.trim();
     const aiSupplement = buildAiSupplementText();
     const finalDescription = aiSupplement
@@ -450,25 +423,21 @@ export default function BacklogPage() {
             .split(",")
             .map((tag) => tag.trim())
             .filter(Boolean),
-          routineCadence:
-            form.type === TASK_TYPE.ROUTINE ? form.routineCadence : "NONE",
+          routineCadence: form.type === TASK_TYPE.ROUTINE ? form.routineCadence : "NONE",
           dependencyIds: form.dependencyIds,
         }),
       });
       if (res.ok) {
         const data = await res.json();
         setItems((prev) => [...prev, data.task]);
-        if (
-          data.task.points > splitThreshold &&
-          data.task.status === TASK_STATUS.BACKLOG
-        ) {
+        if (data.task.points > splitThreshold && data.task.status === TASK_STATUS.BACKLOG) {
           // しきい値超過の場合は即座に分解案を取得して表示
           void requestSplit(data.task);
         }
         closeModal();
       } else {
         const data = await res.json().catch(() => ({}));
-        window.alert(data?.error?.message ?? "タスクの追加に失敗しました。");
+        toast.error(data?.error?.message ?? "タスクの追加に失敗しました。");
       }
     } finally {
       setAddLoading(false);
@@ -477,9 +446,7 @@ export default function BacklogPage() {
 
   const moveToSprint = async (id: string) => {
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, status: TASK_STATUS.SPRINT } : item,
-      ),
+      prev.map((item) => (item.id === id ? { ...item, status: TASK_STATUS.SPRINT } : item)),
     );
     const res = await fetch(`/api/tasks/${id}`, {
       method: "PATCH",
@@ -488,9 +455,7 @@ export default function BacklogPage() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      window.alert(
-        data?.error?.message ?? "スプリントへの移動に失敗しました。",
-      );
+      toast.error(data?.error?.message ?? "スプリントへの移動に失敗しました。");
       void fetchTasks();
       return;
     }
@@ -499,9 +464,7 @@ export default function BacklogPage() {
 
   const moveToBacklog = async (id: string) => {
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, status: TASK_STATUS.BACKLOG } : item,
-      ),
+      prev.map((item) => (item.id === id ? { ...item, status: TASK_STATUS.BACKLOG } : item)),
     );
     const res = await fetch(`/api/tasks/${id}`, {
       method: "PATCH",
@@ -522,9 +485,7 @@ export default function BacklogPage() {
       item.id === checklistId ? { ...item, done: !item.done } : item,
     );
     setItems((prev) =>
-      prev.map((item) =>
-        item.id === taskId ? { ...item, checklist: nextChecklist } : item,
-      ),
+      prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
     await fetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
@@ -647,10 +608,7 @@ export default function BacklogPage() {
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean),
-        routineCadence:
-          editForm.type === TASK_TYPE.ROUTINE
-            ? editForm.routineCadence
-            : "NONE",
+        routineCadence: editForm.type === TASK_TYPE.ROUTINE ? editForm.routineCadence : "NONE",
         dependencyIds: editForm.dependencyIds,
       }),
     });
@@ -691,12 +649,8 @@ export default function BacklogPage() {
       <header className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
-              Backlog
-            </p>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              バックログ
-            </h1>
+            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Backlog</p>
+            <h1 className="text-3xl font-semibold text-slate-900">バックログ</h1>
             <p className="text-sm text-slate-600">
               手入力＋後でインポートを追加。点数と緊急度/リスクをセットしてスプリントに送れるように。
             </p>
@@ -752,9 +706,7 @@ export default function BacklogPage() {
       ).length ? (
         <section className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
-              AI委任キュー
-            </h2>
+            <h2 className="text-lg font-semibold text-slate-900">AI委任キュー</h2>
             <span className="text-xs text-slate-500">
               {
                 items.filter(
@@ -785,22 +737,17 @@ export default function BacklogPage() {
                     </span>
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-slate-700">
-                      {item.description}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-700">{item.description}</p>
                   ) : null}
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-700">
                     <span className="border border-slate-200 bg-white px-2 py-1">
                       {item.points} pt
                     </span>
                     <span className="border border-slate-200 bg-white px-2 py-1">
-                      緊急度:{" "}
-                      {SEVERITY_LABELS[item.urgency as Severity] ??
-                        item.urgency}
+                      緊急度: {SEVERITY_LABELS[item.urgency as Severity] ?? item.urgency}
                     </span>
                     <span className="border border-slate-200 bg-white px-2 py-1">
-                      リスク:{" "}
-                      {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
+                      リスク: {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
                     </span>
                   </div>
                 </div>
@@ -809,30 +756,21 @@ export default function BacklogPage() {
         </section>
       ) : null}
 
-      {items.filter(
-        (item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT,
-      ).length ? (
+      {items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT).length ? (
         <section className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
-              自動分解 承認待ち
-            </h2>
+            <h2 className="text-lg font-semibold text-slate-900">自動分解 承認待ち</h2>
             <span className="text-xs text-slate-500">
               {
-                items.filter(
-                  (item) =>
-                    item.automationState === AUTOMATION_STATE.PENDING_SPLIT,
-                ).length
+                items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT)
+                  .length
               }{" "}
               件
             </span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {items
-              .filter(
-                (item) =>
-                  item.automationState === AUTOMATION_STATE.PENDING_SPLIT,
-              )
+              .filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT)
               .map((item) => (
                 <div
                   key={item.id}
@@ -845,22 +783,17 @@ export default function BacklogPage() {
                     </span>
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-slate-700">
-                      {item.description}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-700">{item.description}</p>
                   ) : null}
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-700">
                     <span className="border border-slate-200 bg-white px-2 py-1">
                       {item.points} pt
                     </span>
                     <span className="border border-slate-200 bg-white px-2 py-1">
-                      緊急度:{" "}
-                      {SEVERITY_LABELS[item.urgency as Severity] ??
-                        item.urgency}
+                      緊急度: {SEVERITY_LABELS[item.urgency as Severity] ?? item.urgency}
                     </span>
                     <span className="border border-slate-200 bg-white px-2 py-1">
-                      リスク:{" "}
-                      {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
+                      リスク: {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -893,12 +826,8 @@ export default function BacklogPage() {
             return (
               <div key={type} className="grid gap-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    {taskTypeLabels[type]}
-                  </h2>
-                  <span className="text-xs text-slate-500">
-                    {bucket.length} 件
-                  </span>
+                  <h2 className="text-sm font-semibold text-slate-900">{taskTypeLabels[type]}</h2>
+                  <span className="text-xs text-slate-500">{bucket.length} 件</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {bucket.map((item) => {
@@ -913,14 +842,12 @@ export default function BacklogPage() {
                       score: scoreMap[item.id],
                       splits: splitMap[item.id],
                       proactiveSuggestion: proactiveSuggestionsMap.get(item.id),
-                      onGetSuggestion: () =>
-                        getSuggestion(item.title, item.description, item.id),
+                      onGetSuggestion: () => getSuggestion(item.title, item.description, item.id),
                       onEstimateScore: () => estimateScoreForTask(item),
                       onRequestSplit: () => requestSplit(item),
                       onApplySplit: () => applySplit(item, view),
                       onApplyTipSuggestion: () => applyTipSuggestion(item.id),
-                      onApplyScoreSuggestion: () =>
-                        applyScoreSuggestion(item.id),
+                      onApplyScoreSuggestion: () => applyScoreSuggestion(item.id),
                       onDismissTip: () => dismissTip(item.id),
                       onDismissScore: () => dismissScore(item.id),
                       onDismissSplit: () => rejectSplit(item.id),
@@ -931,11 +858,7 @@ export default function BacklogPage() {
                         key={item.id}
                         item={item}
                         variant="backlog"
-                        parentTask={
-                          item.parentId
-                            ? taskById.get(item.parentId)
-                            : undefined
-                        }
+                        parentTask={item.parentId ? taskById.get(item.parentId) : undefined}
                         childCount={childCount.get(item.id) ?? 0}
                         members={members.map((m) => ({
                           id: m.id,
@@ -944,14 +867,10 @@ export default function BacklogPage() {
                         isBlocked={isBlocked(item)}
                         aiConfig={aiConfig}
                         onMoveToSprint={
-                          view === "product"
-                            ? () => moveToSprint(item.id)
-                            : undefined
+                          view === "product" ? () => moveToSprint(item.id) : undefined
                         }
                         onMoveToBacklog={
-                          view === "sprint"
-                            ? () => moveToBacklog(item.id)
-                            : undefined
+                          view === "sprint" ? () => moveToBacklog(item.id) : undefined
                         }
                         onDelete={() => deleteItem(item.id)}
                         onEdit={() => openEdit(item)}
@@ -968,30 +887,21 @@ export default function BacklogPage() {
         </div>
       </section>
 
-      {items.filter(
-        (item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT,
-      ).length ? (
+      {items.filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT).length ? (
         <section className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
-              自動分解済み (元タスク)
-            </h2>
+            <h2 className="text-lg font-semibold text-slate-900">自動分解済み (元タスク)</h2>
             <span className="text-xs text-slate-500">
               {
-                items.filter(
-                  (item) =>
-                    item.automationState === AUTOMATION_STATE.SPLIT_PARENT,
-                ).length
+                items.filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT)
+                  .length
               }{" "}
               件
             </span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {items
-              .filter(
-                (item) =>
-                  item.automationState === AUTOMATION_STATE.SPLIT_PARENT,
-              )
+              .filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT)
               .map((item) => (
                 <div
                   key={item.id}
@@ -1004,9 +914,7 @@ export default function BacklogPage() {
                     </span>
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-slate-600">
-                      {item.description}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-600">{item.description}</p>
                   ) : null}
                   <p className="mt-2 text-[11px] text-slate-500">
                     自動分解で子タスクを作成しました。親は情報保持のみ。
@@ -1021,9 +929,7 @@ export default function BacklogPage() {
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-lg border border-slate-200 bg-white p-6 shadow-lg">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">
-                タスクを追加
-              </h3>
+              <h3 className="text-lg font-semibold text-slate-900">タスクを追加</h3>
               <button
                 onClick={closeModal}
                 className="text-sm text-slate-500 transition hover:text-slate-800"
@@ -1044,24 +950,18 @@ export default function BacklogPage() {
               <div className="mt-4 grid gap-3">
                 <input
                   value={form.title}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, title: e.target.value }))
-                  }
+                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                   placeholder="タイトル"
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 />
                 <textarea
                   value={form.description}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, description: e.target.value }))
-                  }
+                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
                   placeholder="概要（任意）"
                   rows={4}
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 />
-                {aiError ? (
-                  <p className="text-xs text-rose-600">{aiError}</p>
-                ) : null}
+                {aiError ? <p className="text-xs text-rose-600">{aiError}</p> : null}
                 <div className="mt-4 flex items-center justify-between">
                   <button
                     onClick={closeModal}
@@ -1095,9 +995,7 @@ export default function BacklogPage() {
                 </p>
                 <textarea
                   value={form.definitionOfDone}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, definitionOfDone: e.target.value }))
-                  }
+                  onChange={(e) => setForm((p) => ({ ...p, definitionOfDone: e.target.value }))}
                   placeholder="どうやったら終わる？"
                   rows={4}
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
@@ -1112,16 +1010,11 @@ export default function BacklogPage() {
                   <div className="mt-3 grid gap-3">
                     {aiQuestions.length ? (
                       aiQuestions.map((question, index) => (
-                        <div
-                          key={`${question}-${index}`}
-                          className="grid gap-2"
-                        >
+                        <div key={`${question}-${index}`} className="grid gap-2">
                           <p className="text-xs text-slate-600">{question}</p>
                           <textarea
                             value={aiAnswers[index] ?? ""}
-                            onChange={(e) =>
-                              handleAiAnswerChange(index, e.target.value)
-                            }
+                            onChange={(e) => handleAiAnswerChange(index, e.target.value)}
                             rows={2}
                             className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                             placeholder="回答を入力（任意）"
@@ -1169,8 +1062,7 @@ export default function BacklogPage() {
                 <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                   <p className="font-semibold text-slate-900">完了条件</p>
                   <p className="mt-1 whitespace-pre-wrap">
-                    {form.definitionOfDone ||
-                      "未入力のまま進めることもできます。"}
+                    {form.definitionOfDone || "未入力のまま進めることもできます。"}
                   </p>
                 </div>
                 <div className="grid gap-4">
@@ -1203,9 +1095,7 @@ export default function BacklogPage() {
                             <button
                               key={`urgency-${option}`}
                               type="button"
-                              onClick={() =>
-                                setForm((p) => ({ ...p, urgency: option }))
-                              }
+                              onClick={() => setForm((p) => ({ ...p, urgency: option }))}
                               aria-pressed={form.urgency === option}
                               className={`border px-3 py-1 text-sm transition ${
                                 form.urgency === option
@@ -1225,9 +1115,7 @@ export default function BacklogPage() {
                             <button
                               key={`risk-${option}`}
                               type="button"
-                              onClick={() =>
-                                setForm((p) => ({ ...p, risk: option }))
-                              }
+                              onClick={() => setForm((p) => ({ ...p, risk: option }))}
                               aria-pressed={form.risk === option}
                               className={`border px-3 py-1 text-sm transition ${
                                 form.risk === option
@@ -1267,9 +1155,7 @@ export default function BacklogPage() {
                     親アイテム
                     <select
                       value={form.parentId}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, parentId: e.target.value }))
-                      }
+                      onChange={(e) => setForm((p) => ({ ...p, parentId: e.target.value }))}
                       className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                     >
                       <option value="">未設定</option>
@@ -1306,9 +1192,7 @@ export default function BacklogPage() {
                     <input
                       type="date"
                       value={form.dueDate}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, dueDate: e.target.value }))
-                      }
+                      onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))}
                       className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                     />
                   </label>
@@ -1316,9 +1200,7 @@ export default function BacklogPage() {
                     担当
                     <select
                       value={form.assigneeId}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, assigneeId: e.target.value }))
-                      }
+                      onChange={(e) => setForm((p) => ({ ...p, assigneeId: e.target.value }))}
                       className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                     >
                       <option value="">未設定</option>
@@ -1333,9 +1215,7 @@ export default function BacklogPage() {
                     タグ
                     <input
                       value={form.tags}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, tags: e.target.value }))
-                      }
+                      onChange={(e) => setForm((p) => ({ ...p, tags: e.target.value }))}
                       placeholder="ui, sprint"
                       className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                     />
@@ -1362,9 +1242,7 @@ export default function BacklogPage() {
                   </select>
                   <button
                     type="button"
-                    onClick={() =>
-                      setForm((p) => ({ ...p, dependencyIds: [] }))
-                    }
+                    onClick={() => setForm((p) => ({ ...p, dependencyIds: [] }))}
                     className="w-fit text-[11px] text-slate-500 transition hover:text-[#2323eb]"
                   >
                     選択を解除
@@ -1416,9 +1294,7 @@ export default function BacklogPage() {
           <div className="w-full max-w-2xl border border-slate-200 bg-white p-6 shadow-lg">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  AI下準備
-                </h3>
+                <h3 className="text-lg font-semibold text-slate-900">AI下準備</h3>
                 <p className="text-xs text-slate-500">{prepTask.title}</p>
               </div>
               <button
@@ -1476,21 +1352,15 @@ export default function BacklogPage() {
                         {output.status === "PENDING" ? (
                           <>
                             <button
-                              onClick={() =>
-                                updatePrepOutput(output, "approve")
-                              }
-                              disabled={
-                                prepActionLoadingId === `${output.id}-approve`
-                              }
+                              onClick={() => updatePrepOutput(output, "approve")}
+                              disabled={prepActionLoadingId === `${output.id}-approve`}
                               className="border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50"
                             >
                               承認
                             </button>
                             <button
                               onClick={() => updatePrepOutput(output, "reject")}
-                              disabled={
-                                prepActionLoadingId === `${output.id}-reject`
-                              }
+                              disabled={prepActionLoadingId === `${output.id}-reject`}
                               className="border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700 transition hover:border-rose-300 disabled:opacity-50"
                             >
                               却下
@@ -1500,9 +1370,7 @@ export default function BacklogPage() {
                         {output.status === "APPROVED" ? (
                           <button
                             onClick={() => updatePrepOutput(output, "apply")}
-                            disabled={
-                              prepActionLoadingId === `${output.id}-apply`
-                            }
+                            disabled={prepActionLoadingId === `${output.id}-apply`}
                             className="border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-700 transition hover:border-sky-300 disabled:opacity-50"
                           >
                             適用
@@ -1511,9 +1379,7 @@ export default function BacklogPage() {
                         {output.status === "APPLIED" ? (
                           <button
                             onClick={() => updatePrepOutput(output, "revert")}
-                            disabled={
-                              prepActionLoadingId === `${output.id}-revert`
-                            }
+                            disabled={prepActionLoadingId === `${output.id}-revert`}
                             className="border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
                           >
                             取り消し
@@ -1537,9 +1403,7 @@ export default function BacklogPage() {
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">
           <div className="w-full max-w-lg border border-slate-200 bg-white p-6 shadow-lg">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">
-                タスクを編集
-              </h3>
+              <h3 className="text-lg font-semibold text-slate-900">タスクを編集</h3>
               <button
                 onClick={() => setEditItem(null)}
                 className="text-sm text-slate-500 transition hover:text-slate-800"
@@ -1550,17 +1414,13 @@ export default function BacklogPage() {
             <div className="mt-4 grid gap-3">
               <input
                 value={editForm.title}
-                onChange={(e) =>
-                  setEditForm((p) => ({ ...p, title: e.target.value }))
-                }
+                onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
                 placeholder="タイトル"
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
               />
               <textarea
                 value={editForm.description}
-                onChange={(e) =>
-                  setEditForm((p) => ({ ...p, description: e.target.value }))
-                }
+                onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
                 placeholder="概要（任意）"
                 rows={3}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
@@ -1578,9 +1438,7 @@ export default function BacklogPage() {
               />
               <textarea
                 value={editForm.checklistText}
-                onChange={(e) =>
-                  setEditForm((p) => ({ ...p, checklistText: e.target.value }))
-                }
+                onChange={(e) => setEditForm((p) => ({ ...p, checklistText: e.target.value }))}
                 placeholder="チェックリスト（1行1項目）"
                 rows={3}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
@@ -1659,9 +1517,7 @@ export default function BacklogPage() {
                   親アイテム
                   <select
                     value={editForm.parentId}
-                    onChange={(e) =>
-                      setEditForm((p) => ({ ...p, parentId: e.target.value }))
-                    }
+                    onChange={(e) => setEditForm((p) => ({ ...p, parentId: e.target.value }))}
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   >
                     <option value="">未設定</option>
@@ -1700,9 +1556,7 @@ export default function BacklogPage() {
                   <input
                     type="date"
                     value={editForm.dueDate}
-                    onChange={(e) =>
-                      setEditForm((p) => ({ ...p, dueDate: e.target.value }))
-                    }
+                    onChange={(e) => setEditForm((p) => ({ ...p, dueDate: e.target.value }))}
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   />
                 </label>
@@ -1710,9 +1564,7 @@ export default function BacklogPage() {
                   担当
                   <select
                     value={editForm.assigneeId}
-                    onChange={(e) =>
-                      setEditForm((p) => ({ ...p, assigneeId: e.target.value }))
-                    }
+                    onChange={(e) => setEditForm((p) => ({ ...p, assigneeId: e.target.value }))}
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   >
                     <option value="">未設定</option>
@@ -1727,9 +1579,7 @@ export default function BacklogPage() {
                   タグ
                   <input
                     value={editForm.tags}
-                    onChange={(e) =>
-                      setEditForm((p) => ({ ...p, tags: e.target.value }))
-                    }
+                    onChange={(e) => setEditForm((p) => ({ ...p, tags: e.target.value }))}
                     placeholder="ui, sprint"
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   />
@@ -1758,9 +1608,7 @@ export default function BacklogPage() {
                 </select>
                 <button
                   type="button"
-                  onClick={() =>
-                    setEditForm((p) => ({ ...p, dependencyIds: [] }))
-                  }
+                  onClick={() => setEditForm((p) => ({ ...p, dependencyIds: [] }))}
                   className="w-fit text-[11px] text-slate-500 transition hover:text-[#2323eb]"
                 >
                   選択を解除
