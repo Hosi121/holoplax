@@ -35,6 +35,11 @@ DB_NAME=$(echo $DB_SECRET | jq -r '.dbname')
 OPENAI_SECRET=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${openai_secret_name} --query SecretString --output text 2>/dev/null || echo '{}')
 OPENAI_API_KEY=$(echo $OPENAI_SECRET | jq -r '.api_key // empty')
 
+# Get application secrets (NEXTAUTH_SECRET, ENCRYPTION_KEY)
+APP_SECRET=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${app_secret_name} --query SecretString --output text)
+NEXTAUTH_SECRET=$(echo $APP_SECRET | jq -r '.nextauth_secret')
+ENCRYPTION_KEY=$(echo $APP_SECRET | jq -r '.encryption_key')
+
 # Install cron + uv for daily metrics job
 yum install -y cronie
 sudo -u ec2-user bash -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -44,7 +49,8 @@ sudo -u ec2-user bash -lc "/home/ec2-user/.local/bin/uv python install 3.11"
 cat > $APP_DIR/.env << EOF
 DATABASE_URL=postgresql://$DB_USER:$DB_PASS@$DB_HOST:5432/$DB_NAME
 NEXTAUTH_URL=${nextauth_url}
-NEXTAUTH_SECRET=$(openssl rand -base64 32)
+NEXTAUTH_SECRET=$NEXTAUTH_SECRET
+ENCRYPTION_KEY=$ENCRYPTION_KEY
 OPENAI_API_KEY=$OPENAI_API_KEY
 S3_BUCKET=${s3_bucket}
 AWS_REGION=${region}
