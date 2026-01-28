@@ -160,70 +160,104 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!workspaceId) {
         return errors.notFound("workspace not selected");
       }
+
+      // Optimized: Fetch task with related data in a single query
       const currentTask = await prisma.task.findFirst({
         where: { id, workspaceId },
-        include: { routineRule: true },
+        include: {
+          routineRule: true,
+          // Include blocking dependencies if status change is requested
+          dependencies:
+            statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE
+              ? {
+                  where: { dependsOn: { status: { not: TASK_STATUS.DONE } } },
+                  select: { dependsOn: { select: { id: true, title: true, status: true } } },
+                }
+              : false,
+        },
       });
       if (!currentTask) {
         return errors.notFound();
       }
-      if (statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE) {
-        const blocking = await prisma.taskDependency.findMany({
-          where: {
-            taskId: id,
-            dependsOn: { status: { not: TASK_STATUS.DONE } },
-          },
-          select: { dependsOn: { select: { id: true, title: true, status: true } } },
-        });
-        if (blocking.length > 0) {
-          return errors.badRequest("dependencies must be done before moving");
-        }
+
+      // Check blocking dependencies (already fetched above)
+      if (
+        (statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE) &&
+        currentTask.dependencies &&
+        currentTask.dependencies.length > 0
+      ) {
+        return errors.badRequest("dependencies must be done before moving");
       }
+
+      // Optimized: Batch fetch assignee validation, parent validation, and sprint info
+      const needsAssigneeCheck = body.assigneeId !== undefined && body.assigneeId;
+      const needsParentCheck = body.parentId !== undefined && body.parentId && body.parentId !== id;
+      const needsSprintCheck = statusValue === TASK_STATUS.SPRINT;
+
+      // Build parallel queries
+      const [memberResult, parentResult, sprintData] = await Promise.all([
+        needsAssigneeCheck
+          ? prisma.workspaceMember.findUnique({
+              where: { workspaceId_userId: { workspaceId, userId: String(body.assigneeId) } },
+              select: { userId: true },
+            })
+          : Promise.resolve(null),
+        needsParentCheck
+          ? prisma.task.findFirst({
+              where: { id: String(body.parentId), workspaceId },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+        needsSprintCheck
+          ? prisma.$transaction([
+              prisma.sprint.findFirst({
+                where: { workspaceId, status: "ACTIVE" },
+                orderBy: { startedAt: "desc" },
+                select: { id: true, capacityPoints: true },
+              }),
+              prisma.task.aggregate({
+                where: { workspaceId, status: TASK_STATUS.SPRINT, id: { not: id } },
+                _sum: { points: true },
+              }),
+            ])
+          : Promise.resolve(null),
+      ]);
+
+      // Process assignee
       if (body.assigneeId !== undefined) {
-        const nextAssigneeId = body.assigneeId ? String(body.assigneeId) : null;
-        if (nextAssigneeId) {
-          const member = await prisma.workspaceMember.findUnique({
-            where: { workspaceId_userId: { workspaceId, userId: nextAssigneeId } },
-            select: { userId: true },
-          });
-          data.assigneeId = member ? nextAssigneeId : null;
+        if (body.assigneeId) {
+          data.assigneeId = memberResult ? String(body.assigneeId) : null;
         } else {
           data.assigneeId = null;
         }
       }
+
+      // Process parent
       if (body.parentId !== undefined) {
-        const nextParentId = body.parentId ? String(body.parentId) : null;
-        if (nextParentId && nextParentId !== id) {
-          const parent = await prisma.task.findFirst({
-            where: { id: nextParentId, workspaceId },
-            select: { id: true },
-          });
-          data.parentId = parent ? parent.id : null;
+        if (body.parentId && body.parentId !== id) {
+          data.parentId = parentResult ? parentResult.id : null;
         } else {
           data.parentId = null;
         }
       }
+
+      // Process sprint capacity check
       if (statusValue === TASK_STATUS.SPRINT) {
-        const activeSprint = await prisma.sprint.findFirst({
-          where: { workspaceId, status: "ACTIVE" },
-          orderBy: { startedAt: "desc" },
-          select: { id: true, capacityPoints: true },
-        });
+        const [activeSprint, currentPointsAgg] = sprintData as [
+          { id: string; capacityPoints: number } | null,
+          { _sum: { points: number | null } },
+        ];
         if (!activeSprint) {
           return errors.badRequest("active sprint not found");
         }
-        const current = await prisma.task.aggregate({
-          where: { workspaceId, status: TASK_STATUS.SPRINT, id: { not: id } },
-          _sum: { points: true },
-        });
         const currentPoints = currentTask.points ?? 0;
         const nextPoints =
-          (current._sum.points ?? 0) +
+          (currentPointsAgg._sum.points ?? 0) +
           (typeof data.points === "number" ? data.points : currentPoints);
         if (nextPoints > activeSprint.capacityPoints) {
           return errors.badRequest("sprint capacity exceeded");
         }
-        data.sprintId = activeSprint?.id ?? null;
+        data.sprintId = activeSprint.id;
       }
       if (statusValue === TASK_STATUS.BACKLOG) {
         data.sprintId = null;
