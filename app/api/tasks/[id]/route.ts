@@ -262,151 +262,179 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (statusValue === TASK_STATUS.BACKLOG) {
         data.sprintId = null;
       }
-      const updated = await prisma.task.updateMany({
-        where: { id, workspaceId },
-        data,
-      });
-      if (!updated.count) {
-        return errors.notFound();
-      }
-      const task = await prisma.task.findFirst({
-        where: { id, workspaceId },
-        include: { routineRule: true },
-      });
-      if (Array.isArray(body.dependencyIds)) {
-        const dependencyIds = body.dependencyIds.map((depId: string) => String(depId));
-        const allowed = dependencyIds.length
-          ? await prisma.task.findMany({
-              where: { id: { in: dependencyIds }, workspaceId },
-              select: { id: true },
-            })
-          : [];
-        await prisma.taskDependency.deleteMany({ where: { taskId: id } });
-        if (allowed.length > 0) {
-          await prisma.taskDependency.createMany({
-            data: allowed
-              .map((dep) => dep.id)
-              .filter((depId) => depId && depId !== id)
-              .map((depId) => ({ taskId: id, dependsOnId: depId })),
-            skipDuplicates: true,
-          });
+
+      // Transaction: Ensure atomic updates for task, dependencies, routine rules, and audit
+      const { task, createdRoutineTask } = await prisma.$transaction(async (tx) => {
+        const updated = await tx.task.updateMany({
+          where: { id, workspaceId },
+          data,
+        });
+        if (!updated.count) {
+          throw new Error("TASK_NOT_FOUND");
         }
-      }
-      if (task) {
-        const finalType = (task.type ?? TASK_TYPE.PBI) as string;
-        if (finalType !== TASK_TYPE.ROUTINE && task.routineRule) {
-          await prisma.routineRule.delete({ where: { taskId: task.id } });
-        } else if (finalType === TASK_TYPE.ROUTINE) {
-          if (cadenceValue) {
-            const baseDate = task.dueDate ? new Date(task.dueDate) : new Date();
-            const nextAt =
-              routineNextAt ?? task.routineRule?.nextAt ?? nextRoutineAt(cadenceValue, baseDate);
-            await prisma.routineRule.upsert({
-              where: { taskId: task.id },
-              update: { cadence: cadenceValue, nextAt },
-              create: { taskId: task.id, cadence: cadenceValue, nextAt },
+
+        const updatedTask = await tx.task.findFirst({
+          where: { id, workspaceId },
+          include: { routineRule: true },
+        });
+
+        // Update dependencies
+        if (Array.isArray(body.dependencyIds)) {
+          const dependencyIds = body.dependencyIds.map((depId: string) => String(depId));
+          const allowed = dependencyIds.length
+            ? await tx.task.findMany({
+                where: { id: { in: dependencyIds }, workspaceId },
+                select: { id: true },
+              })
+            : [];
+          await tx.taskDependency.deleteMany({ where: { taskId: id } });
+          if (allowed.length > 0) {
+            await tx.taskDependency.createMany({
+              data: allowed
+                .map((dep) => dep.id)
+                .filter((depId) => depId && depId !== id)
+                .map((depId) => ({ taskId: id, dependsOnId: depId })),
+              skipDuplicates: true,
             });
-          } else if (routineNextAt && task.routineRule) {
-            await prisma.routineRule.update({
-              where: { taskId: task.id },
-              data: { nextAt: routineNextAt },
-            });
-          } else if (shouldClearRoutine && task.routineRule) {
-            await prisma.routineRule.delete({ where: { taskId: task.id } });
           }
         }
-      }
 
-      await logAudit({
-        actorId: userId,
-        action: "TASK_UPDATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { taskId: id },
-      });
-      if (task && statusValue && currentTask.status !== statusValue) {
-        await prisma.taskStatusEvent.create({
+        // Update routine rules
+        if (updatedTask) {
+          const finalType = (updatedTask.type ?? TASK_TYPE.PBI) as string;
+          if (finalType !== TASK_TYPE.ROUTINE && updatedTask.routineRule) {
+            await tx.routineRule.delete({ where: { taskId: updatedTask.id } });
+          } else if (finalType === TASK_TYPE.ROUTINE) {
+            if (cadenceValue) {
+              const baseDate = updatedTask.dueDate ? new Date(updatedTask.dueDate) : new Date();
+              const nextAt =
+                routineNextAt ??
+                updatedTask.routineRule?.nextAt ??
+                nextRoutineAt(cadenceValue, baseDate);
+              await tx.routineRule.upsert({
+                where: { taskId: updatedTask.id },
+                update: { cadence: cadenceValue, nextAt },
+                create: { taskId: updatedTask.id, cadence: cadenceValue, nextAt },
+              });
+            } else if (routineNextAt && updatedTask.routineRule) {
+              await tx.routineRule.update({
+                where: { taskId: updatedTask.id },
+                data: { nextAt: routineNextAt },
+              });
+            } else if (shouldClearRoutine && updatedTask.routineRule) {
+              await tx.routineRule.delete({ where: { taskId: updatedTask.id } });
+            }
+          }
+        }
+
+        // Create audit log
+        await tx.auditLog.create({
           data: {
-            taskId: task.id,
-            fromStatus: currentTask.status ?? null,
-            toStatus: statusValue,
             actorId: userId,
-            source: "api",
-            workspaceId,
+            action: "TASK_UPDATE",
+            targetWorkspaceId: workspaceId,
+            metadata: { taskId: id },
           },
         });
-      }
-      if (
-        task &&
-        statusValue === TASK_STATUS.DONE &&
-        currentTask.status !== TASK_STATUS.DONE &&
-        task.type === TASK_TYPE.ROUTINE
-      ) {
-        const rule = task.routineRule
-          ? task.routineRule
-          : await prisma.routineRule.findUnique({ where: { taskId: task.id } });
-        if (rule) {
-          const now = new Date();
-          const dueAt = rule.nextAt && rule.nextAt > now ? rule.nextAt : now;
-          const nextAt = nextRoutineAt(rule.cadence as "DAILY" | "WEEKLY", dueAt);
-          const resetChecklist = normalizeChecklistForReset(task.checklist);
-          const created = await prisma.task.create({
+
+        // Create status event if status changed
+        if (updatedTask && statusValue && currentTask.status !== statusValue) {
+          await tx.taskStatusEvent.create({
             data: {
-              title: task.title,
-              description: task.description ?? "",
-              definitionOfDone: task.definitionOfDone ?? "",
-              checklist: toNullableJsonInput(resetChecklist),
-              points: task.points,
-              urgency: task.urgency,
-              risk: task.risk,
-              status: TASK_STATUS.BACKLOG,
-              type: TASK_TYPE.ROUTINE,
-              dueDate: dueAt,
-              tags: task.tags ?? [],
-              assigneeId: task.assigneeId ?? null,
-              userId: task.userId ?? userId,
-              workspaceId,
-            },
-          });
-          await prisma.routineRule.update({
-            where: { taskId: task.id },
-            data: { taskId: created.id, nextAt },
-          });
-          await prisma.taskStatusEvent.create({
-            data: {
-              taskId: created.id,
-              fromStatus: null,
-              toStatus: TASK_STATUS.BACKLOG,
+              taskId: updatedTask.id,
+              fromStatus: currentTask.status ?? null,
+              toStatus: statusValue,
               actorId: userId,
-              source: "routine",
+              source: "api",
               workspaceId,
-            },
-          });
-          await applyAutomationForTask({
-            userId,
-            workspaceId,
-            task: {
-              id: created.id,
-              title: created.title,
-              description: created.description ?? "",
-              points: created.points,
-              status: created.status,
             },
           });
         }
+
+        // Handle routine task completion - create next occurrence
+        let newRoutineTask = null;
+        if (
+          updatedTask &&
+          statusValue === TASK_STATUS.DONE &&
+          currentTask.status !== TASK_STATUS.DONE &&
+          updatedTask.type === TASK_TYPE.ROUTINE
+        ) {
+          const rule = updatedTask.routineRule
+            ? updatedTask.routineRule
+            : await tx.routineRule.findUnique({ where: { taskId: updatedTask.id } });
+          if (rule) {
+            const now = new Date();
+            const dueAt = rule.nextAt && rule.nextAt > now ? rule.nextAt : now;
+            const nextAt = nextRoutineAt(rule.cadence as "DAILY" | "WEEKLY", dueAt);
+            const resetChecklist = normalizeChecklistForReset(updatedTask.checklist);
+            newRoutineTask = await tx.task.create({
+              data: {
+                title: updatedTask.title,
+                description: updatedTask.description ?? "",
+                definitionOfDone: updatedTask.definitionOfDone ?? "",
+                checklist: toNullableJsonInput(resetChecklist),
+                points: updatedTask.points,
+                urgency: updatedTask.urgency,
+                risk: updatedTask.risk,
+                status: TASK_STATUS.BACKLOG,
+                type: TASK_TYPE.ROUTINE,
+                dueDate: dueAt,
+                tags: updatedTask.tags ?? [],
+                assigneeId: updatedTask.assigneeId ?? null,
+                userId: updatedTask.userId ?? userId,
+                workspaceId,
+              },
+            });
+            await tx.routineRule.update({
+              where: { taskId: updatedTask.id },
+              data: { taskId: newRoutineTask.id, nextAt },
+            });
+            await tx.taskStatusEvent.create({
+              data: {
+                taskId: newRoutineTask.id,
+                fromStatus: null,
+                toStatus: TASK_STATUS.BACKLOG,
+                actorId: userId,
+                source: "routine",
+                workspaceId,
+              },
+            });
+          }
+        }
+
+        return { task: updatedTask, createdRoutineTask: newRoutineTask };
+      });
+
+      if (!task) {
+        return errors.notFound();
       }
-      if (task) {
+
+      // Apply automation (outside transaction - may have side effects)
+      if (createdRoutineTask) {
         await applyAutomationForTask({
           userId,
           workspaceId,
           task: {
-            id: task.id,
-            title: task.title,
-            description: task.description ?? "",
-            points: task.points,
-            status: task.status,
+            id: createdRoutineTask.id,
+            title: createdRoutineTask.title,
+            description: createdRoutineTask.description ?? "",
+            points: createdRoutineTask.points,
+            status: createdRoutineTask.status,
           },
         });
       }
+      await applyAutomationForTask({
+        userId,
+        workspaceId,
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description ?? "",
+          points: task.points,
+          status: task.status,
+        },
+      });
+
       return ok({ task });
     },
   );
