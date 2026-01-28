@@ -60,10 +60,12 @@ module "network" {
 module "alb" {
   source = "../../modules/alb"
 
-  name_prefix       = var.name_prefix
-  vpc_id            = module.network.vpc_id
-  public_subnet_ids = module.network.public_subnet_ids
-  app_port          = var.app_port
+  name_prefix           = var.name_prefix
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnet_ids
+  app_port              = var.app_port
+  certificate_arn       = var.certificate_arn
+  enable_https_redirect = var.enable_https_redirect
 }
 
 module "s3" {
