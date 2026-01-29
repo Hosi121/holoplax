@@ -1,19 +1,39 @@
+/**
+ * Re-export Prisma enum types for consistency
+ * These are the source of truth for enum values
+ */
+export {
+  AutomationState,
+  Severity,
+  SprintStatus,
+  TaskStatus,
+  TaskType,
+} from "@prisma/client";
+
+import type {
+  AutomationState as PrismaAutomationState,
+  Severity as PrismaSeverity,
+  SprintStatus as PrismaSprintStatus,
+  TaskStatus as PrismaTaskStatus,
+  TaskType as PrismaTaskType,
+} from "@prisma/client";
+
+/**
+ * Runtime constants for enum values
+ * Use these for comparisons and iterations
+ */
 export const TASK_STATUS = {
   BACKLOG: "BACKLOG",
   SPRINT: "SPRINT",
   DONE: "DONE",
-} as const;
-
-export type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS];
+} as const satisfies Record<string, PrismaTaskStatus>;
 
 export const TASK_TYPE = {
   EPIC: "EPIC",
   PBI: "PBI",
   TASK: "TASK",
   ROUTINE: "ROUTINE",
-} as const;
-
-export type TaskType = (typeof TASK_TYPE)[keyof typeof TASK_TYPE];
+} as const satisfies Record<string, PrismaTaskType>;
 
 export const AUTOMATION_STATE = {
   NONE: "NONE",
@@ -22,32 +42,41 @@ export const AUTOMATION_STATE = {
   SPLIT_PARENT: "SPLIT_PARENT",
   SPLIT_CHILD: "SPLIT_CHILD",
   SPLIT_REJECTED: "SPLIT_REJECTED",
-} as const;
-
-export type AutomationState = (typeof AUTOMATION_STATE)[keyof typeof AUTOMATION_STATE];
+} as const satisfies Record<string, PrismaAutomationState>;
 
 export const SEVERITY = {
   LOW: "LOW",
   MEDIUM: "MEDIUM",
   HIGH: "HIGH",
-} as const;
+} as const satisfies Record<string, PrismaSeverity>;
 
-export type Severity = (typeof SEVERITY)[keyof typeof SEVERITY];
+export const SPRINT_STATUS = {
+  ACTIVE: "ACTIVE",
+  CLOSED: "CLOSED",
+} as const satisfies Record<string, PrismaSprintStatus>;
 
-// Labels for display (Japanese)
-export const SEVERITY_LABELS: Record<Severity, string> = {
-  [SEVERITY.LOW]: "低",
-  [SEVERITY.MEDIUM]: "中",
-  [SEVERITY.HIGH]: "高",
+/**
+ * Labels for display (Japanese)
+ */
+export const SEVERITY_LABELS: Record<PrismaSeverity, string> = {
+  LOW: "低",
+  MEDIUM: "中",
+  HIGH: "高",
 };
 
-// Reverse mapping for parsing Japanese input
-export const SEVERITY_FROM_LABEL: Record<string, Severity> = {
-  低: SEVERITY.LOW,
-  中: SEVERITY.MEDIUM,
-  高: SEVERITY.HIGH,
+/**
+ * Reverse mapping for parsing Japanese input
+ */
+export const SEVERITY_FROM_LABEL: Record<string, PrismaSeverity> = {
+  低: "LOW",
+  中: "MEDIUM",
+  高: "HIGH",
 };
 
+/**
+ * DTO types for API responses
+ * These represent the shape of data sent to/from the API
+ */
 export type TaskDTO = {
   id: string;
   title: string;
@@ -55,11 +84,11 @@ export type TaskDTO = {
   definitionOfDone?: string;
   checklist?: { id: string; text: string; done: boolean }[] | null;
   points: 1 | 2 | 3 | 5 | 8 | 13 | 21 | 34;
-  urgency: Severity;
-  risk: Severity;
-  status: TaskStatus;
-  type?: TaskType;
-  automationState?: AutomationState;
+  urgency: PrismaSeverity;
+  risk: PrismaSeverity;
+  status: PrismaTaskStatus;
+  type?: PrismaTaskType;
+  automationState?: PrismaAutomationState;
   routineCadence?: "DAILY" | "WEEKLY" | null;
   routineNextAt?: string | Date | null;
   parentId?: string | null;
@@ -68,7 +97,7 @@ export type TaskDTO = {
   sprintId?: string | null;
   tags?: string[];
   dependencyIds?: string[];
-  dependencies?: { id: string; title: string; status: TaskStatus }[];
+  dependencies?: { id: string; title: string; status: PrismaTaskStatus }[];
   createdAt?: string | Date;
   updatedAt?: string | Date;
 };
@@ -102,7 +131,7 @@ export type AiSuggestionDTO = {
 export type SprintDTO = {
   id: string;
   name: string;
-  status: "ACTIVE" | "CLOSED";
+  status: PrismaSprintStatus;
   capacityPoints: number;
   startedAt?: string | Date;
   plannedEndAt?: string | Date | null;
