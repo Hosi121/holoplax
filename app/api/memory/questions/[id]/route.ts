@@ -5,6 +5,7 @@ import { ok } from "../../../../../lib/api-response";
 import { MemoryQuestionActionSchema } from "../../../../../lib/contracts/memory";
 import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
+import { logger } from "../../../../../lib/logger";
 import prisma from "../../../../../lib/prisma";
 
 const pickClaimValue = (question: {
@@ -13,7 +14,7 @@ const pickClaimValue = (question: {
   valueBool: boolean | null;
   valueJson: unknown | null;
 }) => {
-  console.info("MEMORY_QUESTION_ACCEPT values", {
+  logger.debug("MEMORY_QUESTION_ACCEPT values", {
     valueJsonType: typeof question.valueJson,
     valueJsonNull: question.valueJson === null,
   });
