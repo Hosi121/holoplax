@@ -482,7 +482,7 @@ export function TaskCreateWizard({
                   <option value="">未設定</option>
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.name ?? member.email ?? member.id}
+                      {member.name ?? member.email ?? "メンバー"}
                     </option>
                   ))}
                 </select>

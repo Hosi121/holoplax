@@ -848,7 +848,7 @@ export default function BacklogPage() {
                   <option value="">すべて</option>
                   {members.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name ?? m.email ?? m.id}
+                      {m.name ?? m.email ?? "メンバー"}
                     </option>
                   ))}
                 </select>
@@ -1539,7 +1539,7 @@ export default function BacklogPage() {
                       <option value="">未設定</option>
                       {members.map((member) => (
                         <option key={member.id} value={member.id}>
-                          {member.name ?? member.email ?? member.id}
+                          {member.name ?? member.email ?? "メンバー"}
                         </option>
                       ))}
                     </select>
@@ -1903,7 +1903,7 @@ export default function BacklogPage() {
                     <option value="">未設定</option>
                     {members.map((member) => (
                       <option key={member.id} value={member.id}>
-                        {member.name ?? member.email ?? member.id}
+                        {member.name ?? member.email ?? "メンバー"}
                       </option>
                     ))}
                   </select>

@@ -109,7 +109,7 @@ export async function POST(request: Request) {
 
       return ok({
         response_type: "in_channel",
-        text: `タスクを作成しました: ${title} (id: ${task.id}, workspace: ${workspaceId})`,
+        text: `タスクを作成しました: ${title} (${task.points}pt)`,
       });
     },
   );
