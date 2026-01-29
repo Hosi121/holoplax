@@ -130,12 +130,17 @@ export default function OnboardingPage() {
                     </button>
                   ))}
                 </div>
-                <input
-                  value={workspaceName}
-                  onChange={(event) => setWorkspaceName(event.target.value)}
-                  placeholder="宇宙の名前（例: Holoplax Launch）"
-                  className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                />
+                <label className="grid gap-1">
+                  <span className="text-xs text-slate-500">
+                    宇宙の名前 <span className="text-red-500">*</span>
+                  </span>
+                  <input
+                    value={workspaceName}
+                    onChange={(event) => setWorkspaceName(event.target.value)}
+                    placeholder="例: Holoplax Launch"
+                    className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  />
+                </label>
               </div>
             ) : null}
 
@@ -146,12 +151,17 @@ export default function OnboardingPage() {
                   いま一番大切な目標と、毎日/毎週回したいルーティンを設定します。
                 </p>
                 <div className="grid gap-2">
-                  <input
-                    value={goalTitle}
-                    onChange={(event) => setGoalTitle(event.target.value)}
-                    placeholder="目標（例: 新しいサービスのLPを整える）"
-                    className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
+                  <label className="grid gap-1">
+                    <span className="text-xs text-slate-500">
+                      目標 <span className="text-red-500">*</span>
+                    </span>
+                    <input
+                      value={goalTitle}
+                      onChange={(event) => setGoalTitle(event.target.value)}
+                      placeholder="例: 新しいサービスのLPを整える"
+                      className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                    />
+                  </label>
                   <textarea
                     value={goalDescription}
                     onChange={(event) => setGoalDescription(event.target.value)}
@@ -175,12 +185,17 @@ export default function OnboardingPage() {
                   </label>
                 </div>
                 <div className="grid gap-2">
-                  <input
-                    value={routineTitle}
-                    onChange={(event) => setRoutineTitle(event.target.value)}
-                    placeholder="ルーティン（例: 朝のレビュー）"
-                    className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
+                  <label className="grid gap-1">
+                    <span className="text-xs text-slate-500">
+                      ルーティン <span className="text-red-500">*</span>
+                    </span>
+                    <input
+                      value={routineTitle}
+                      onChange={(event) => setRoutineTitle(event.target.value)}
+                      placeholder="例: 朝のレビュー"
+                      className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                    />
+                  </label>
                   <textarea
                     value={routineDescription}
                     onChange={(event) => setRoutineDescription(event.target.value)}
@@ -265,6 +280,22 @@ export default function OnboardingPage() {
             {error}
           </div>
         ) : null}
+
+        {!canNext && step === 0 && (
+          <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            宇宙の名前を入力してください
+          </div>
+        )}
+        {!canNext && step === 1 && (
+          <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            目標とルーティンの両方を入力してください
+          </div>
+        )}
+        {!canNext && step === 2 && (
+          <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            少なくとも1つのフォーカスタスクを入力してください
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <button
