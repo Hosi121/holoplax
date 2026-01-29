@@ -7,8 +7,17 @@ import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
 import prisma from "../../../../../lib/prisma";
 
-const buildAppendix = (type: string, prepId: string, output: string) =>
-  `\n\n---\nAI下準備(${type}:${prepId})\n${output}`;
+const prepTypeLabels: Record<string, string> = {
+  CHECKLIST: "チェックリスト",
+  IMPLEMENTATION: "実装手順",
+  EMAIL: "メール草案",
+};
+
+const buildAppendix = (type: string, prepId: string, output: string) => {
+  const label = prepTypeLabels[type] ?? type;
+  // Include prepId as HTML comment for tracking (invisible to users)
+  return `\n\n---\nAI下準備: ${label}<!-- prep:${prepId} -->\n${output}`;
+};
 const errors = createDomainErrors("AI");
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
