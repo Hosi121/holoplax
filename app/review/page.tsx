@@ -341,13 +341,17 @@ export default async function ReviewPage() {
           ) : (
             <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
               <p className="font-semibold text-slate-800">ベロシティデータがありません。</p>
-              <p className="mt-1">スプリントを開始して完了すると自動で記録されます。</p>
+              <p className="mt-1">
+                {sprint
+                  ? "スプリントを完了するとベロシティが記録されます。"
+                  : "スプリントを開始して完了すると自動で記録されます。"}
+              </p>
               <div className="mt-3 flex gap-2 text-xs">
                 <Link
                   href="/sprint"
                   className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                 >
-                  スプリントを始める
+                  {sprint ? "スプリントを確認" : "スプリントを始める"}
                 </Link>
                 <Link
                   href="/backlog"
@@ -407,13 +411,17 @@ export default async function ReviewPage() {
           ) : (
             <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
               <p className="font-semibold text-slate-800">バーンダウンはまだありません。</p>
-              <p className="mt-1">スプリントを開始し、タスクの進行が蓄積されると表示されます。</p>
+              <p className="mt-1">
+                {sprint
+                  ? "タスクを完了していくとバーンダウンが表示されます。"
+                  : "スプリントを開始し、タスクの進行が蓄積されると表示されます。"}
+              </p>
               <div className="mt-3 flex gap-2 text-xs">
                 <Link
                   href="/sprint"
                   className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                 >
-                  スプリントを始める
+                  {sprint ? "スプリントを確認" : "スプリントを始める"}
                 </Link>
                 <Link
                   href="/backlog"

@@ -28,7 +28,12 @@ export async function GET() {
         where: { workspaceId },
         orderBy: { createdAt: "desc" },
       });
-      const recent = velocity.slice(0, 5).map((entry) => entry.points);
+      // 7件未満の場合は全データを、7件以上の場合は直近7件を使用
+      const targetCount = 7;
+      const recent =
+        velocity.length < targetCount
+          ? velocity.map((entry) => entry.points)
+          : velocity.slice(0, targetCount).map((entry) => entry.points);
       const avg =
         recent.length > 0 ? recent.reduce((sum, value) => sum + value, 0) / recent.length : 0;
       const variance =
