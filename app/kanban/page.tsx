@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AUTOMATION_STATE, TASK_STATUS, type TaskDTO, type TaskStatus } from "../../lib/types";
 import { TaskCard } from "../components/task-card";
+import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
 
 type MemberRow = {
@@ -32,6 +33,7 @@ const columns: Column[] = [
 
 export default function KanbanPage() {
   const { workspaceId, ready } = useWorkspaceId();
+  const toast = useToast();
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [sprint, setSprint] = useState<SprintInfo>(null);
@@ -109,13 +111,13 @@ export default function KanbanPage() {
     const target = items.find((item) => item.id === draggingId);
     if (target && (status === TASK_STATUS.SPRINT || status === TASK_STATUS.DONE)) {
       if (isBlocked(target)) {
-        window.alert("依存タスクが未完了のため移動できません。");
+        toast.warning("依存タスクが未完了のため移動できません。");
         setDraggingId(null);
         setHoverColumn(null);
         return;
       }
       if (status === TASK_STATUS.DONE && target.checklist?.some((item) => !item.done)) {
-        window.alert("チェックリストが未完了のため完了にできません。");
+        toast.warning("チェックリストが未完了のため完了にできません。");
         setDraggingId(null);
         setHoverColumn(null);
         return;
@@ -137,13 +139,13 @@ export default function KanbanPage() {
         errorData.message || errorData.error || "移動に失敗しました。",
       );
       if (message.includes("active sprint not found")) {
-        window.alert("アクティブなスプリントがありません。スプリントを開始してください。");
+        toast.error("アクティブなスプリントがありません。スプリントを開始してください。");
       } else if (message.includes("sprint capacity exceeded")) {
-        window.alert("スプリントの容量を超えています。");
+        toast.error("スプリントの容量を超えています。");
       } else if (message.includes("dependencies must be done")) {
-        window.alert("依存タスクが未完了のため移動できません。");
+        toast.warning("依存タスクが未完了のため移動できません。");
       } else {
-        window.alert(message);
+        toast.error(message);
       }
       return;
     }

@@ -78,3 +78,15 @@ variable "deploy_version" {
   default     = ""
   description = "Deployment version (commit hash) to trigger EC2 recreation"
 }
+
+variable "certificate_arn" {
+  type        = string
+  default     = ""
+  description = "ACM certificate ARN for HTTPS"
+}
+
+variable "enable_https_redirect" {
+  type        = bool
+  default     = true
+  description = "Redirect HTTP to HTTPS"
+}

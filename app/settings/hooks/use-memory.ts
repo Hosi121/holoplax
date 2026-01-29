@@ -53,9 +53,10 @@ export const formatClaimValue = (type: MemoryTypeRow, claim?: MemoryClaimRow) =>
 export type UseMemoryOptions = {
   ready: boolean;
   workspaceId: string | null;
+  onWarning?: (message: string) => void;
 };
 
-export function useMemory({ ready, workspaceId }: UseMemoryOptions) {
+export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
   const [memoryTypes, setMemoryTypes] = useState<MemoryTypeRow[]>([]);
   const [memoryClaims, setMemoryClaims] = useState<Record<string, MemoryClaimRow>>({});
   const [memoryDrafts, setMemoryDrafts] = useState<Record<string, string>>({});
@@ -110,7 +111,7 @@ export function useMemory({ ready, workspaceId }: UseMemoryOptions) {
   const saveMemory = async (type: MemoryTypeRow) => {
     const value = memoryDrafts[type.id];
     if (value === undefined || value === "") {
-      window.alert("値を入力してください。");
+      onWarning?.("値を入力してください。");
       return;
     }
     setMemorySavingId(type.id);

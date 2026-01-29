@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SEVERITY, SEVERITY_LABELS, type Severity, TASK_STATUS } from "../../lib/types";
 import { TaskCard } from "../components/task-card";
+import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useSprintManagement } from "./hooks/use-sprint-management";
 import { useSprintOptimizer } from "./hooks/use-sprint-optimizer";
@@ -20,6 +21,7 @@ type MemberRow = {
 
 export default function SprintPage() {
   const { workspaceId, ready } = useWorkspaceId();
+  const toast = useToast();
   const [members, setMembers] = useState<MemberRow[]>([]);
 
   const {
@@ -56,7 +58,7 @@ export default function SprintPage() {
     saveEdit,
     toggleChecklistItem,
     isBlocked,
-  } = useSprintTasks({ ready, workspaceId, sprintId: sprint?.id });
+  } = useSprintTasks({ ready, workspaceId, sprintId: sprint?.id, onWarning: toast.warning });
 
   const {
     optimizationResult,

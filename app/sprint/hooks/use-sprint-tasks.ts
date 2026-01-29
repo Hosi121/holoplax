@@ -43,6 +43,7 @@ export type UseSprintTasksOptions = {
   ready: boolean;
   workspaceId: string | null;
   sprintId?: string | null;
+  onWarning?: (message: string) => void;
 };
 
 const defaultNewForm: NewTaskForm = {
@@ -56,7 +57,7 @@ const defaultNewForm: NewTaskForm = {
   tags: "",
 };
 
-export function useSprintTasks({ ready, workspaceId, sprintId }: UseSprintTasksOptions) {
+export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseSprintTasksOptions) {
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [newItem, setNewItem] = useState<NewTaskForm>(defaultNewForm);
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
@@ -137,11 +138,11 @@ export function useSprintTasks({ ready, workspaceId, sprintId }: UseSprintTasksO
   const markDone = async (id: string) => {
     const target = items.find((item) => item.id === id);
     if (target && isBlocked(target)) {
-      window.alert("依存タスクが未完了のため完了にできません。");
+      onWarning?.("依存タスクが未完了のため完了にできません。");
       return;
     }
     if (target?.checklist?.some((item) => !item.done)) {
-      window.alert("チェックリストが未完了です。完了にする前に確認してください。");
+      onWarning?.("チェックリストが未完了です。完了にする前に確認してください。");
       return;
     }
     await fetch(`/api/tasks/${id}`, {

@@ -33,12 +33,13 @@ locals {
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
   db_password = var.db_password_override != "" ? var.db_password_override : random_password.db.result
   user_data = templatefile("${path.module}/user_data.sh.tpl", {
-    region             = var.region
-    s3_bucket          = var.bucket_name
-    db_secret_name     = "${var.name_prefix}-db-secret"
-    openai_secret_name = "${var.name_prefix}-openai-secret"
-    nextauth_url       = var.app_domain != "" ? "https://${var.app_domain}" : "http://${module.alb.dns_name}"
-    deploy_version     = var.deploy_version
+    region              = var.region
+    s3_bucket           = var.bucket_name
+    db_secret_name      = "${var.name_prefix}-db-secret"
+    openai_secret_name  = "${var.name_prefix}-openai-secret"
+    app_secret_name     = "${var.name_prefix}-app-secret"
+    nextauth_url        = var.app_domain != "" ? "https://${var.app_domain}" : "http://${module.alb.dns_name}"
+    deploy_version      = var.deploy_version
   })
 }
 
@@ -60,10 +61,12 @@ module "network" {
 module "alb" {
   source = "../../modules/alb"
 
-  name_prefix       = var.name_prefix
-  vpc_id            = module.network.vpc_id
-  public_subnet_ids = module.network.public_subnet_ids
-  app_port          = var.app_port
+  name_prefix           = var.name_prefix
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnet_ids
+  app_port              = var.app_port
+  certificate_arn       = var.certificate_arn
+  enable_https_redirect = var.enable_https_redirect
 }
 
 module "s3" {
@@ -89,7 +92,7 @@ module "ec2" {
   enable_alb             = true
   s3_bucket_arn          = module.s3.bucket_arn
   enable_s3_access       = true
-  secrets_arns           = [aws_secretsmanager_secret.db.arn, aws_secretsmanager_secret.openai.arn]
+  secrets_arns           = [aws_secretsmanager_secret.db.arn, aws_secretsmanager_secret.openai.arn, aws_secretsmanager_secret.app.arn]
 }
 
 module "rds" {
@@ -112,6 +115,29 @@ resource "aws_secretsmanager_secret" "db" {
 
 resource "aws_secretsmanager_secret" "openai" {
   name = "${var.name_prefix}-openai-secret"
+}
+
+# Application secrets (NEXTAUTH_SECRET, ENCRYPTION_KEY)
+resource "aws_secretsmanager_secret" "app" {
+  name = "${var.name_prefix}-app-secret"
+}
+
+resource "random_password" "nextauth_secret" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "encryption_key" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret_version" "app" {
+  secret_id = aws_secretsmanager_secret.app.id
+  secret_string = jsonencode({
+    nextauth_secret = random_password.nextauth_secret.result
+    encryption_key  = random_password.encryption_key.result
+  })
 }
 
 resource "aws_secretsmanager_secret_version" "db" {
@@ -143,4 +169,8 @@ output "openai_secret_arn" {
 
 output "s3_bucket_name" {
   value = module.s3.bucket_name
+}
+
+output "app_secret_arn" {
+  value = aws_secretsmanager_secret.app.arn
 }

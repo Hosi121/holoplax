@@ -12,6 +12,7 @@ import {
   type TaskType,
 } from "../../lib/types";
 import { DropdownMenu } from "./dropdown-menu";
+import { useToast } from "./toast";
 
 const taskTypeLabels: Record<TaskType, string> = {
   [TASK_TYPE.EPIC]: "目標",
@@ -205,6 +206,7 @@ export function TaskCard({
   isDragging,
   className = "",
 }: TaskCardProps) {
+  const toast = useToast();
   const isCompact = variant === "compact";
   const isKanban = variant === "kanban";
 
@@ -349,7 +351,7 @@ export function TaskCard({
                   className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                   onClick={() => {
                     if (isBlocked) {
-                      window.alert("依存タスクが未完了のため移動できません。");
+                      toast.warning("依存タスクが未完了のため移動できません。");
                       return;
                     }
                     onMoveToSprint();

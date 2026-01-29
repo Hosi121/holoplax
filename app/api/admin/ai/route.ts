@@ -3,6 +3,7 @@ import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
 import { AdminAiUpdateSchema } from "../../../../lib/contracts/admin";
+import { encrypt, isEncrypted, safeDecrypt } from "../../../../lib/encryption";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
@@ -88,8 +89,16 @@ export async function POST(request: Request) {
         where: { id: 1 },
         select: { apiKey: true },
       });
-      const nextApiKey = apiKey || existing?.apiKey || "";
-      if (!nextApiKey) {
+
+      // Determine the API key to use
+      let nextApiKey: string;
+      if (apiKey) {
+        // New API key provided - encrypt it
+        nextApiKey = encrypt(apiKey);
+      } else if (existing?.apiKey) {
+        // Keep existing (already encrypted or legacy)
+        nextApiKey = isEncrypted(existing.apiKey) ? existing.apiKey : encrypt(existing.apiKey);
+      } else {
         return errors.badRequest("apiKey is required");
       }
 

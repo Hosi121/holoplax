@@ -11,3 +11,9 @@ db_username        = "holoplax"
 db_multi_az        = true
 bucket_name        = "holoplax-prod-avatars-unique"
 public_read        = true
+
+# HTTPS/TLS Configuration
+# Set your ACM certificate ARN here to enable HTTPS
+# Example: certificate_arn = "arn:aws:acm:ap-northeast-3:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+certificate_arn       = ""
+enable_https_redirect = true
