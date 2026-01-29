@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -19,8 +20,10 @@ import { type AiSuggestionConfig, TaskCard } from "../components/task-card";
 import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useAiSuggestions } from "./hooks/use-ai-suggestions";
+import { useBulkOperations } from "./hooks/use-bulk-operations";
 import { useProactiveSuggestionsList } from "./hooks/use-proactive-suggestions";
 import { useSuggestionContext } from "./hooks/use-suggestion-context";
+import { useTaskSearch } from "./hooks/use-task-search";
 
 const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 const taskTypeLabels: Record<TaskType, string> = {
@@ -115,10 +118,39 @@ export default function BacklogPage() {
   const proactiveSuggestionsMap = useProactiveSuggestionsList(items, aiContext);
   const [view, setView] = useState<"product" | "sprint">("product");
 
+  // Search and filter
+  const {
+    filters,
+    updateFilter,
+    resetFilters,
+    hasActiveFilters,
+    buildQueryParams,
+    isFilterOpen,
+    setIsFilterOpen,
+  } = useTaskSearch();
+
+  // Bulk operations
+  const {
+    selectedIds,
+    isSelectionMode,
+    loading: bulkLoading,
+    toggleSelection,
+    selectAll,
+    clearSelection,
+    toggleSelectionMode,
+    bulkUpdateStatus,
+    bulkDelete,
+    bulkUpdatePoints,
+    selectedCount,
+  } = useBulkOperations(() => {
+    void fetchTasks();
+  });
+
   // Fetch functions need to be defined before useAiSuggestions
-  const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[]) => {
+  const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[], searchParams?: string) => {
     const params = statuses.map((status) => `status=${encodeURIComponent(status)}`).join("&");
-    const res = await fetch(`/api/tasks?${params}&limit=200`);
+    const searchQuery = searchParams ? `&${searchParams}` : "";
+    const res = await fetch(`/api/tasks?${params}&limit=200${searchQuery}`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.tasks ?? [];
@@ -130,16 +162,17 @@ export default function BacklogPage() {
       setItems([]);
       return;
     }
+    const searchParams = buildQueryParams();
     const [backlogTasks, sprintTasks] = await Promise.all([
-      fetchTasksByStatus([TASK_STATUS.BACKLOG]),
-      fetchTasksByStatus([TASK_STATUS.SPRINT]),
+      fetchTasksByStatus([TASK_STATUS.BACKLOG], searchParams),
+      fetchTasksByStatus([TASK_STATUS.SPRINT], searchParams),
     ]);
     const mergedMap = new Map<string, TaskDTO>();
     [...backlogTasks, ...sprintTasks].forEach((task) => {
       mergedMap.set(task.id, task);
     });
     setItems(Array.from(mergedMap.values()));
-  }, [ready, workspaceId, fetchTasksByStatus]);
+  }, [ready, workspaceId, fetchTasksByStatus, buildQueryParams]);
 
   // AI Suggestions hook
   const {
@@ -646,23 +679,23 @@ export default function BacklogPage() {
 
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
-      <header className="border border-slate-200 bg-white p-6 shadow-sm">
+      <header className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Backlog</p>
-            <h1 className="text-3xl font-semibold text-slate-900">バックログ</h1>
-            <p className="text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-[0.28em] text-[var(--text-muted)]">Backlog</p>
+            <h1 className="text-3xl font-semibold text-[var(--text-primary)]">バックログ</h1>
+            <p className="text-sm text-[var(--text-secondary)]">
               手入力＋後でインポートを追加。点数と緊急度/リスクをセットしてスプリントに送れるように。
             </p>
           </div>
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <div className="flex items-center gap-2 whitespace-nowrap border border-slate-200 bg-white p-1 text-xs text-slate-700">
+            <div className="flex items-center gap-2 whitespace-nowrap border border-[var(--border)] bg-[var(--surface)] p-1 text-xs text-[var(--text-secondary)]">
               <button
                 onClick={() => setView("product")}
                 className={`px-3 py-1 transition ${
                   view === "product"
-                    ? "bg-[#2323eb]/10 text-[#2323eb]"
-                    : "text-slate-600 hover:text-[#2323eb]"
+                    ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
                 }`}
               >
                 目標リスト
@@ -671,8 +704,8 @@ export default function BacklogPage() {
                 onClick={() => setView("sprint")}
                 className={`px-3 py-1 transition ${
                   view === "sprint"
-                    ? "bg-[#2323eb]/10 text-[#2323eb]"
-                    : "text-slate-600 hover:text-[#2323eb]"
+                    ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
                 }`}
               >
                 スプリントバックログ
@@ -680,7 +713,7 @@ export default function BacklogPage() {
             </div>
             <Link
               href="/sprint"
-              className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+              className="border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-secondary)] transition hover:border-[var(--accent)]/60 hover:text-[var(--accent)]"
             >
               スプリントへ
             </Link>
@@ -689,11 +722,296 @@ export default function BacklogPage() {
                 fetchTasks();
                 openAddModal();
               }}
-              className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30"
+              className="bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[var(--accent)]/30"
             >
               タスクを追加
             </button>
           </div>
+        </div>
+
+        {/* Search and Filter Bar */}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input
+              type="text"
+              value={filters.q}
+              onChange={(e) => {
+                updateFilter("q", e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  void fetchTasks();
+                }
+              }}
+              placeholder="タスクを検索..."
+              className="w-full border border-[var(--border)] bg-[var(--background)] pl-10 pr-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          <button
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className={`flex items-center gap-2 border px-3 py-2 text-sm transition ${
+              hasActiveFilters()
+                ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)]/60"
+            }`}
+          >
+            <Filter className="h-4 w-4" />
+            フィルタ
+            {hasActiveFilters() && (
+              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-xs text-white">
+                !
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => fetchTasks()}
+            className="border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-secondary)] transition hover:border-[var(--accent)]/60 hover:text-[var(--accent)]"
+          >
+            検索
+          </button>
+          {hasActiveFilters() && (
+            <button
+              onClick={() => {
+                resetFilters();
+                setTimeout(() => fetchTasks(), 0);
+              }}
+              className="flex items-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
+            >
+              <X className="h-4 w-4" />
+              リセット
+            </button>
+          )}
+        </div>
+
+        {/* Filter Panel */}
+        {isFilterOpen && (
+          <div className="mt-4 border border-[var(--border)] bg-[var(--background)] p-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                タイプ
+                <select
+                  multiple
+                  value={filters.types}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions).map(
+                      (o) => o.value as TaskType,
+                    );
+                    updateFilter("types", selected);
+                  }}
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                >
+                  {taskTypeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                緊急度
+                <select
+                  value={filters.urgency ?? ""}
+                  onChange={(e) => updateFilter("urgency", (e.target.value as Severity) || null)}
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                >
+                  <option value="">すべて</option>
+                  {severityOptions.map((sev) => (
+                    <option key={sev} value={sev}>
+                      {SEVERITY_LABELS[sev]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                リスク
+                <select
+                  value={filters.risk ?? ""}
+                  onChange={(e) => updateFilter("risk", (e.target.value as Severity) || null)}
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                >
+                  <option value="">すべて</option>
+                  {severityOptions.map((sev) => (
+                    <option key={sev} value={sev}>
+                      {SEVERITY_LABELS[sev]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                担当者
+                <select
+                  value={filters.assigneeId ?? ""}
+                  onChange={(e) => updateFilter("assigneeId", e.target.value || null)}
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                >
+                  <option value="">すべて</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name ?? m.email ?? m.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                タグ (カンマ区切り)
+                <input
+                  type="text"
+                  value={filters.tags.join(",")}
+                  onChange={(e) =>
+                    updateFilter(
+                      "tags",
+                      e.target.value
+                        .split(",")
+                        .map((t) => t.trim())
+                        .filter(Boolean),
+                    )
+                  }
+                  placeholder="ui,api"
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                期限 (以前)
+                <input
+                  type="date"
+                  value={filters.dueBefore ?? ""}
+                  onChange={(e) => updateFilter("dueBefore", e.target.value || null)}
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-[var(--text-muted)]">
+                期限 (以降)
+                <input
+                  type="date"
+                  value={filters.dueAfter ?? ""}
+                  onChange={(e) => updateFilter("dueAfter", e.target.value || null)}
+                  className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                />
+              </label>
+              <div className="grid gap-1 text-xs text-[var(--text-muted)]">
+                ポイント範囲
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="34"
+                    value={filters.minPoints ?? ""}
+                    onChange={(e) =>
+                      updateFilter("minPoints", e.target.value ? Number(e.target.value) : null)
+                    }
+                    placeholder="最小"
+                    className="w-1/2 border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="34"
+                    value={filters.maxPoints ?? ""}
+                    onChange={(e) =>
+                      updateFilter("maxPoints", e.target.value ? Number(e.target.value) : null)
+                    }
+                    placeholder="最大"
+                    className="w-1/2 border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Operations Toolbar */}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={toggleSelectionMode}
+            className={`flex items-center gap-2 border px-3 py-2 text-sm transition ${
+              isSelectionMode
+                ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)]/60"
+            }`}
+          >
+            <CheckSquare className="h-4 w-4" />
+            {isSelectionMode ? "選択モード終了" : "一括選択"}
+          </button>
+
+          {isSelectionMode && (
+            <>
+              <span className="text-sm text-[var(--text-muted)]">{selectedCount}件選択中</span>
+              <button
+                onClick={() => selectAll(visibleItems.map((i) => i.id))}
+                className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
+              >
+                すべて選択
+              </button>
+              <button
+                onClick={clearSelection}
+                className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
+              >
+                選択解除
+              </button>
+
+              {selectedCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-l border-[var(--border)] pl-3">
+                  <select
+                    disabled={bulkLoading}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        void bulkUpdateStatus(e.target.value as TaskStatus);
+                        e.target.value = "";
+                      }
+                    }}
+                    className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      ステータス変更
+                    </option>
+                    <option value="BACKLOG">バックログ</option>
+                    <option value="SPRINT">スプリント</option>
+                    <option value="DONE">完了</option>
+                  </select>
+
+                  <select
+                    disabled={bulkLoading}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        void bulkUpdatePoints(Number(e.target.value));
+                        e.target.value = "";
+                      }
+                    }}
+                    className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      ポイント変更
+                    </option>
+                    {storyPoints.map((pt) => (
+                      <option key={pt} value={pt}>
+                        {pt} pt
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`${selectedCount}件のタスクを削除しますか？`)) {
+                        void bulkDelete();
+                      }
+                    }}
+                    disabled={bulkLoading}
+                    className="flex items-center gap-1 border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    削除
+                  </button>
+
+                  {bulkLoading && (
+                    <span className="text-sm text-[var(--text-muted)]">処理中...</span>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </header>
 
@@ -704,10 +1022,10 @@ export default function BacklogPage() {
           item.status === TASK_STATUS.BACKLOG &&
           item.automationState === AUTOMATION_STATE.DELEGATED,
       ).length ? (
-        <section className="border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">AI委任キュー</h2>
-            <span className="text-xs text-slate-500">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI委任キュー</h2>
+            <span className="text-xs text-[var(--text-muted)]">
               {
                 items.filter(
                   (item) =>
@@ -728,25 +1046,25 @@ export default function BacklogPage() {
               .map((item) => (
                 <div
                   key={item.id}
-                  className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-slate-800"
+                  className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-[var(--text-primary)] dark:border-amber-800 dark:bg-amber-950"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-slate-900">{item.title}</p>
-                    <span className="border border-amber-200 bg-white px-2 py-1 text-xs text-amber-700">
+                    <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
+                    <span className="border border-amber-200 bg-[var(--surface)] px-2 py-1 text-xs text-amber-700 dark:border-amber-800 dark:text-amber-400">
                       AI委任候補
                     </span>
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-slate-700">{item.description}</p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.description}</p>
                   ) : null}
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-700">
-                    <span className="border border-slate-200 bg-white px-2 py-1">
+                  <div className="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                       {item.points} pt
                     </span>
-                    <span className="border border-slate-200 bg-white px-2 py-1">
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                       緊急度: {SEVERITY_LABELS[item.urgency as Severity] ?? item.urgency}
                     </span>
-                    <span className="border border-slate-200 bg-white px-2 py-1">
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                       リスク: {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
                     </span>
                   </div>
@@ -757,10 +1075,10 @@ export default function BacklogPage() {
       ) : null}
 
       {items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT).length ? (
-        <section className="border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">自動分解 承認待ち</h2>
-            <span className="text-xs text-slate-500">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">自動分解 承認待ち</h2>
+            <span className="text-xs text-[var(--text-muted)]">
               {
                 items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT)
                   .length
@@ -774,25 +1092,25 @@ export default function BacklogPage() {
               .map((item) => (
                 <div
                   key={item.id}
-                  className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-slate-800"
+                  className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-[var(--text-primary)] dark:border-amber-800 dark:bg-amber-950"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-slate-900">{item.title}</p>
-                    <span className="border border-amber-200 bg-white px-2 py-1 text-[11px] text-amber-700">
+                    <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
+                    <span className="border border-amber-200 bg-[var(--surface)] px-2 py-1 text-[11px] text-amber-700 dark:border-amber-800 dark:text-amber-400">
                       承認待ち
                     </span>
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-slate-700">{item.description}</p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.description}</p>
                   ) : null}
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-700">
-                    <span className="border border-slate-200 bg-white px-2 py-1">
+                  <div className="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                       {item.points} pt
                     </span>
-                    <span className="border border-slate-200 bg-white px-2 py-1">
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                       緊急度: {SEVERITY_LABELS[item.urgency as Severity] ?? item.urgency}
                     </span>
-                    <span className="border border-slate-200 bg-white px-2 py-1">
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
                       リスク: {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
                     </span>
                   </div>
@@ -800,14 +1118,14 @@ export default function BacklogPage() {
                     <LoadingButton
                       onClick={() => approveAutomation(item.id)}
                       loading={approvalLoadingId === item.id}
-                      className="border border-emerald-300 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 transition hover:border-emerald-400"
+                      className="border border-emerald-300 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 transition hover:border-emerald-400 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
                     >
                       BARABARA
                     </LoadingButton>
                     <button
                       onClick={() => rejectAutomation(item.id)}
                       disabled={approvalLoadingId === item.id}
-                      className="border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-300"
+                      className="border border-[var(--border)] bg-[var(--surface)] px-3 py-1 font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent)]"
                     >
                       却下
                     </button>
@@ -818,7 +1136,7 @@ export default function BacklogPage() {
         </section>
       ) : null}
 
-      <section className="border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
         <div className="grid gap-5">
           {taskTypeOrder.map((type) => {
             const bucket = groupedByType[type];
@@ -826,8 +1144,10 @@ export default function BacklogPage() {
             return (
               <div key={type} className="grid gap-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-900">{taskTypeLabels[type]}</h2>
-                  <span className="text-xs text-slate-500">{bucket.length} 件</span>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                    {taskTypeLabels[type]}
+                  </h2>
+                  <span className="text-xs text-[var(--text-muted)]">{bucket.length} 件</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {bucket.map((item) => {
@@ -854,30 +1174,41 @@ export default function BacklogPage() {
                       onOpenPrepModal: () => openPrepModal(item),
                     };
                     return (
-                      <TaskCard
-                        key={item.id}
-                        item={item}
-                        variant="backlog"
-                        parentTask={item.parentId ? taskById.get(item.parentId) : undefined}
-                        childCount={childCount.get(item.id) ?? 0}
-                        members={members.map((m) => ({
-                          id: m.id,
-                          name: m.name,
-                        }))}
-                        isBlocked={isBlocked(item)}
-                        aiConfig={aiConfig}
-                        onMoveToSprint={
-                          view === "product" ? () => moveToSprint(item.id) : undefined
-                        }
-                        onMoveToBacklog={
-                          view === "sprint" ? () => moveToBacklog(item.id) : undefined
-                        }
-                        onDelete={() => deleteItem(item.id)}
-                        onEdit={() => openEdit(item)}
-                        onToggleChecklistItem={(checklistId) =>
-                          toggleChecklistItem(item.id, checklistId)
-                        }
-                      />
+                      <div key={item.id} className="relative">
+                        {isSelectionMode && (
+                          <label className="absolute left-2 top-2 z-10 flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(item.id)}
+                              onChange={() => toggleSelection(item.id)}
+                              className="h-4 w-4 rounded border-[var(--border)] text-[var(--accent)]"
+                            />
+                          </label>
+                        )}
+                        <TaskCard
+                          item={item}
+                          variant="backlog"
+                          parentTask={item.parentId ? taskById.get(item.parentId) : undefined}
+                          childCount={childCount.get(item.id) ?? 0}
+                          members={members.map((m) => ({
+                            id: m.id,
+                            name: m.name,
+                          }))}
+                          isBlocked={isBlocked(item)}
+                          aiConfig={aiConfig}
+                          onMoveToSprint={
+                            view === "product" ? () => moveToSprint(item.id) : undefined
+                          }
+                          onMoveToBacklog={
+                            view === "sprint" ? () => moveToBacklog(item.id) : undefined
+                          }
+                          onDelete={() => deleteItem(item.id)}
+                          onEdit={() => openEdit(item)}
+                          onToggleChecklistItem={(checklistId) =>
+                            toggleChecklistItem(item.id, checklistId)
+                          }
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -888,10 +1219,12 @@ export default function BacklogPage() {
       </section>
 
       {items.filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT).length ? (
-        <section className="border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">自動分解済み (元タスク)</h2>
-            <span className="text-xs text-slate-500">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              自動分解済み (元タスク)
+            </h2>
+            <span className="text-xs text-[var(--text-muted)]">
               {
                 items.filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT)
                   .length
@@ -905,18 +1238,18 @@ export default function BacklogPage() {
               .map((item) => (
                 <div
                   key={item.id}
-                  className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+                  className="border border-[var(--border)] bg-[var(--muted)] px-4 py-3 text-sm text-[var(--text-primary)]"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-slate-900">{item.title}</p>
-                    <span className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                    <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
+                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-secondary)]">
                       分解済み
                     </span>
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-slate-600">{item.description}</p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.description}</p>
                   ) : null}
-                  <p className="mt-2 text-[11px] text-slate-500">
+                  <p className="mt-2 text-[11px] text-[var(--text-muted)]">
                     自動分解で子タスクを作成しました。親は情報保持のみ。
                   </p>
                 </div>
