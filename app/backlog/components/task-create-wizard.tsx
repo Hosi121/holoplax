@@ -74,7 +74,7 @@ export function TaskCreateWizard({
     type: view === "sprint" ? TASK_TYPE.TASK : TASK_TYPE.PBI,
     parentId: "",
     dueDate: "",
-    assigneeId: "",
+    assigneeId: members.length === 1 ? members[0].id : "",
     tags: "",
     routineCadence: "NONE",
     dependencyIds: [],

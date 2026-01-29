@@ -92,6 +92,13 @@ export default function SprintPage() {
     void Promise.all([fetchTasks(), fetchSprint(), fetchSprintHistory(), fetchMembers()]);
   }, [fetchTasks, fetchSprint, fetchSprintHistory, fetchMembers]);
 
+  // 1人しかいない場合は自動的に担当者を設定
+  useEffect(() => {
+    if (members.length === 1 && !newItem.assigneeId) {
+      setNewItem((prev) => ({ ...prev, assigneeId: members[0].id }));
+    }
+  }, [members, newItem.assigneeId, setNewItem]);
+
   const activeCapacity = sprint?.capacityPoints ?? 24;
   const remaining = activeCapacity - used;
 

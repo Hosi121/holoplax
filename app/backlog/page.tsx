@@ -265,6 +265,10 @@ export default function BacklogPage() {
   const openAddModal = () => {
     resetFormToDefaults();
     resetAiCreationState();
+    // 1人しかいない場合は自動的に担当者を設定
+    if (members.length === 1) {
+      setForm((prev) => ({ ...prev, assigneeId: members[0].id }));
+    }
     setModalOpen(true);
   };
   const closeModal = () => {
@@ -335,6 +339,13 @@ export default function BacklogPage() {
     const data = await res.json();
     setMembers(data.members ?? []);
   }, [ready, workspaceId]);
+
+  // 1人しかいない場合は自動的に担当者を設定
+  useEffect(() => {
+    if (members.length === 1 && !form.assigneeId) {
+      setForm((prev) => ({ ...prev, assigneeId: members[0].id }));
+    }
+  }, [members, form.assigneeId]);
 
   const handleStepOneNext = () => {
     if (!form.title.trim()) {
