@@ -298,6 +298,11 @@ model AuditLog {
   targetUser        User?      @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
   targetWorkspace   Workspace? @relation(fields: [targetWorkspaceId], references: [id], onDelete: SetNull)
   createdAt         DateTime   @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([targetWorkspaceId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetUserId, createdAt])
 }
 
 model Task {
