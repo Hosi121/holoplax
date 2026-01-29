@@ -21,6 +21,9 @@ const isTaskStatus = (value: unknown): value is TaskStatus =>
 const isTaskType = (value: unknown): value is TaskType =>
   Object.values(TASK_TYPE).includes(value as TaskType);
 
+const isSeverity = (value: unknown): value is "LOW" | "MEDIUM" | "HIGH" =>
+  ["LOW", "MEDIUM", "HIGH"].includes(value as string);
+
 const toNullableJsonInput = (
   value: unknown | null | undefined,
 ): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
@@ -73,6 +76,19 @@ export async function GET(request: Request) {
         .filter(Boolean);
       const statuses = rawStatuses.filter((value) => isTaskStatus(value));
 
+      // Search and filter parameters
+      const q = searchParams.get("q")?.trim() ?? "";
+      const rawTypes = searchParams.get("type")?.split(",").filter(Boolean) ?? [];
+      const types = rawTypes.filter((t) => isTaskType(t));
+      const urgencyParam = searchParams.get("urgency");
+      const riskParam = searchParams.get("risk");
+      const tagsParam = searchParams.get("tags")?.split(",").filter(Boolean) ?? [];
+      const assigneeId = searchParams.get("assigneeId");
+      const dueBefore = searchParams.get("dueBefore");
+      const dueAfter = searchParams.get("dueAfter");
+      const minPoints = Number(searchParams.get("minPoints"));
+      const maxPoints = Number(searchParams.get("maxPoints"));
+
       // Pagination parameters
       const limitParam = Number(searchParams.get("limit") ?? "200");
       const take = Math.min(500, Math.max(10, Number.isFinite(limitParam) ? limitParam : 200));
@@ -84,6 +100,36 @@ export async function GET(request: Request) {
       const where: Prisma.TaskWhereInput = {
         workspaceId,
         ...(statuses.length ? { status: { in: statuses } } : {}),
+        ...(types.length ? { type: { in: types } } : {}),
+        ...(isSeverity(urgencyParam) ? { urgency: urgencyParam } : {}),
+        ...(isSeverity(riskParam) ? { risk: riskParam } : {}),
+        ...(assigneeId ? { assigneeId } : {}),
+        ...(tagsParam.length ? { tags: { hasSome: tagsParam } } : {}),
+        ...(dueBefore || dueAfter
+          ? {
+              dueDate: {
+                ...(dueBefore ? { lte: new Date(dueBefore) } : {}),
+                ...(dueAfter ? { gte: new Date(dueAfter) } : {}),
+              },
+            }
+          : {}),
+        ...(Number.isFinite(minPoints) && minPoints > 0 ? { points: { gte: minPoints } } : {}),
+        ...(Number.isFinite(maxPoints) && maxPoints > 0
+          ? {
+              points: {
+                ...(Number.isFinite(minPoints) && minPoints > 0 ? { gte: minPoints } : {}),
+                lte: maxPoints,
+              },
+            }
+          : {}),
+        ...(q
+          ? {
+              OR: [
+                { title: { contains: q, mode: "insensitive" } },
+                { description: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
       };
 
       // Use cursor-based pagination if cursor is provided
