@@ -88,6 +88,13 @@ export function assertEnv(): void {
 }
 
 // Auto-validate on import in non-test environments
-if (typeof window === "undefined" && process.env.NODE_ENV !== "test") {
+// Skip validation during build phase (next build sets NEXT_PHASE)
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+if (
+  typeof window === "undefined" &&
+  process.env.NODE_ENV !== "test" &&
+  !isBuildPhase &&
+  !process.env.SKIP_ENV_VALIDATION
+) {
   assertEnv();
 }
