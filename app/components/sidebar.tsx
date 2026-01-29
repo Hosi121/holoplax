@@ -166,7 +166,7 @@ const AccountSection = memo(function AccountSection({
   status: ReturnType<typeof useSession>["status"];
 }) {
   return (
-    <div className="mt-auto border-t border-[var(--border)] pt-4 text-xs text-[var(--text-secondary)]">
+    <div className="border-t border-[var(--border)] pt-4 text-xs text-[var(--text-secondary)]">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
           Theme
@@ -292,8 +292,8 @@ export function Sidebar() {
   return (
     <>
       <div className="hidden w-60 lg:block" aria-hidden />
-      <aside className="fixed left-0 top-0 hidden h-screen w-60 flex-col border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm lg:flex">
-        <div className="border-b border-[var(--border)] pb-4">
+      <aside className="fixed left-0 top-0 hidden h-screen w-60 flex-col border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm lg:flex overflow-hidden">
+        <div className="shrink-0 border-b border-[var(--border)] pb-4">
           <Image
             src="/logo_holoplax.webp"
             alt="Holoplax logo"
@@ -304,9 +304,15 @@ export function Sidebar() {
             priority
           />
         </div>
-        <WorkspaceSelector />
-        <NavigationLinks pathname={pathname} isAdmin={session?.user?.role === "ADMIN"} />
-        <AccountSection session={session} status={status} />
+        <div className="shrink-0">
+          <WorkspaceSelector />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <NavigationLinks pathname={pathname} isAdmin={session?.user?.role === "ADMIN"} />
+        </div>
+        <div className="shrink-0">
+          <AccountSection session={session} status={status} />
+        </div>
       </aside>
     </>
   );
