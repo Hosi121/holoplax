@@ -165,6 +165,7 @@ model User {
   memoryQuestions          MemoryQuestion[]
   automationStageHistories AutomationStageHistory[]
   aiSuggestionReactions    AiSuggestionReaction[]
+  taskComments             TaskComment[]
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
 }
@@ -258,6 +259,7 @@ model Workspace {
   focusQueues              FocusQueue[]
   automationStageHistories AutomationStageHistory[]
   aiSuggestionReactions    AiSuggestionReaction[]
+  taskComments             TaskComment[]
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
 }
@@ -339,6 +341,7 @@ model Task {
   intakeItems      IntakeItem[]
   statusEvents     TaskStatusEvent[]
   routineRule      RoutineRule?
+  comments         TaskComment[]
 
   @@index([parentId])
   @@index([workspaceId, status])
@@ -678,4 +681,20 @@ model IntakeItem {
 
   @@index([workspaceId, status])
   @@index([userId, status])
+}
+
+model TaskComment {
+  id          String    @id @default(cuid())
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  content     String
+  editedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([taskId, createdAt])
 }
