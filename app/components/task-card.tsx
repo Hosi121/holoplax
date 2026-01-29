@@ -12,6 +12,7 @@ import {
   type TaskType,
 } from "../../lib/types";
 import { DropdownMenu } from "./dropdown-menu";
+import { ExpandableText } from "./expandable-text";
 import { useToast } from "./toast";
 
 const taskTypeLabels: Record<TaskType, string> = {
@@ -282,11 +283,15 @@ export function TaskCard({
 
       {/* Description */}
       {item.description && (
-        <p
+        <div
           className={`mt-1 break-words ${isCompact ? "text-xs text-slate-500" : "text-sm text-slate-700"}`}
         >
-          {item.description}
-        </p>
+          <ExpandableText
+            text={item.description}
+            maxLength={isCompact ? 60 : 150}
+            className="whitespace-pre-wrap"
+          />
+        </div>
       )}
 
       {/* Definition of Done */}
@@ -434,7 +439,8 @@ export function TaskCard({
       {/* AI Tip Suggestion */}
       {aiConfig?.suggestion && (
         <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-          <p>{aiConfig.suggestion.text}</p>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">AI Tip</p>
+          <ExpandableText text={aiConfig.suggestion.text} maxLength={120} className="text-sm" />
           <div className="mt-2 flex items-center gap-2">
             <button
               onClick={aiConfig.onApplyTipSuggestion}
@@ -469,7 +475,9 @@ export function TaskCard({
             </span>
           </div>
           {aiConfig.score.reason && (
-            <p className="mt-2 text-[11px] text-slate-500">{aiConfig.score.reason}</p>
+            <p className="mt-2 text-[11px] text-slate-500">
+              <ExpandableText text={aiConfig.score.reason} maxLength={100} />
+            </p>
           )}
           <div className="mt-2 flex items-center gap-2">
             <button
@@ -564,11 +572,13 @@ export function TaskCard({
           <div className="mt-2 grid gap-2">
             {aiConfig.splits.map((split, idx) => (
               <div key={`${item.id}-${idx}`} className="flex items-start justify-between gap-3">
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-900">{split.title}</p>
-                  <p className="text-[11px] text-slate-600">{split.detail}</p>
+                  <p className="text-[11px] text-slate-600">
+                    <ExpandableText text={split.detail} maxLength={80} />
+                  </p>
                 </div>
-                <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700">
+                <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 shrink-0">
                   {split.points} pt
                 </span>
               </div>
