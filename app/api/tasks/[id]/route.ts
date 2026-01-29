@@ -8,6 +8,7 @@ import { applyAutomationForTask } from "../../../../lib/automation";
 import { TaskUpdateSchema } from "../../../../lib/contracts/task";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
+import { logger } from "../../../../lib/logger";
 import { badPoints } from "../../../../lib/points";
 import prisma from "../../../../lib/prisma";
 import {
@@ -95,7 +96,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const body = await parseBody(request, TaskUpdateSchema, {
         code: "TASK_VALIDATION",
       });
-      console.info("TASK_UPDATE input", {
+      logger.debug("TASK_UPDATE input", {
         id,
         status: body.status,
         type: body.type,
@@ -136,7 +137,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         data.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
       }
       const statusValue = body.status && isTaskStatus(body.status) ? body.status : null;
-      console.info("TASK_UPDATE narrowed", {
+      logger.debug("TASK_UPDATE narrowed", {
         statusValue,
         typeValue: data.type ?? null,
       });

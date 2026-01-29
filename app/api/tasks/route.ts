@@ -9,6 +9,7 @@ import { applyAutomationForTask } from "../../../lib/automation";
 import { TaskCreateSchema } from "../../../lib/contracts/task";
 import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
+import { logger } from "../../../lib/logger";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
 import { badPoints } from "../../../lib/points";
 import prisma from "../../../lib/prisma";
@@ -171,7 +172,7 @@ export async function POST(request: Request) {
       const body = await parseBody(request, TaskCreateSchema, {
         code: "TASK_VALIDATION",
       });
-      console.info("TASK_CREATE input", {
+      logger.debug("TASK_CREATE input", {
         status: body.status,
         type: body.type,
         checklistType: Array.isArray(body.checklist) ? "array" : typeof body.checklist,
@@ -219,7 +220,7 @@ export async function POST(request: Request) {
         : [];
       const statusValue = isTaskStatus(status) ? status : TASK_STATUS.BACKLOG;
       const typeValue = isTaskType(type) ? type : TASK_TYPE.PBI;
-      console.info("TASK_CREATE narrowed", {
+      logger.debug("TASK_CREATE narrowed", {
         statusValue,
         typeValue,
       });

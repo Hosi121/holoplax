@@ -1,5 +1,6 @@
 import { type AiUsageContext, recordAiUsage } from "./ai-usage";
 import { safeDecrypt } from "./encryption";
+import { logger } from "./logger";
 import prisma from "./prisma";
 
 export type AiProviderConfig = {
@@ -88,7 +89,7 @@ export async function resolveAiProvider(): Promise<AiProviderConfig | null> {
     // Decrypt API key if encrypted, otherwise use as-is (legacy or env)
     const decryptedApiKey = safeDecrypt(setting.apiKey);
     if (!decryptedApiKey) {
-      console.error("Failed to decrypt AI API key");
+      logger.error("Failed to decrypt AI API key");
       return null;
     }
     return {

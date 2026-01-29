@@ -5,6 +5,7 @@ import { ok } from "../../../../lib/api-response";
 import { AuthRegisterSchema } from "../../../../lib/contracts/auth";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
+import { logger } from "../../../../lib/logger";
 import { sendEmail } from "../../../../lib/mailer";
 import prisma from "../../../../lib/prisma";
 
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
             html: `<p>以下のリンクからメール認証を完了してください。</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
           });
         } catch (mailError) {
-          console.error("Email verification send failed", mailError);
+          logger.error("Email verification send failed", {}, mailError);
         }
       }
 

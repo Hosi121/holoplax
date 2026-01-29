@@ -11,6 +11,7 @@ import { ok } from "../../../lib/api-response";
 import { MemoryClaimCreateSchema, MemoryClaimDeleteSchema } from "../../../lib/contracts/memory";
 import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
+import { logger } from "../../../lib/logger";
 import prisma from "../../../lib/prisma";
 
 const errors = createDomainErrors("MEMORY");
@@ -225,7 +226,7 @@ export async function POST(request: Request) {
       const body = await parseBody(request, MemoryClaimCreateSchema, {
         code: "MEMORY_VALIDATION",
       });
-      console.info("MEMORY_CLAIM_CREATE input", {
+      logger.debug("MEMORY_CLAIM_CREATE input", {
         typeId: body.typeId,
         valueType: typeof body.value,
         valueNull: body.value === null,
@@ -248,7 +249,7 @@ export async function POST(request: Request) {
       }
 
       const parsed = parseValue(rawValue, type.valueType);
-      console.info("MEMORY_CLAIM_CREATE parsed", {
+      logger.debug("MEMORY_CLAIM_CREATE parsed", {
         ok: parsed.ok,
         valueType: type.valueType,
       });

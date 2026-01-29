@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { logger } from "./logger";
 
 /**
  * AES-256-GCM encryption utilities for sensitive data
@@ -113,8 +114,8 @@ export function safeDecrypt(value: string | null | undefined): string | null {
 
   try {
     return decrypt(value);
-  } catch {
-    console.error("Failed to decrypt value");
+  } catch (error) {
+    logger.error("Failed to decrypt value", {}, error);
     return null;
   }
 }

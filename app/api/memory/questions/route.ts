@@ -5,6 +5,7 @@ import { ok } from "../../../../lib/api-response";
 import { MemoryQuestionCreateSchema } from "../../../../lib/contracts/memory";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
+import { logger } from "../../../../lib/logger";
 import prisma from "../../../../lib/prisma";
 
 const CONFIDENCE_THRESHOLD = 0.7;
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
       const body = await parseBody(request, MemoryQuestionCreateSchema, {
         code: "MEMORY_VALIDATION",
       });
-      console.info("MEMORY_QUESTION_CREATE input", {
+      logger.debug("MEMORY_QUESTION_CREATE input", {
         typeId: body.typeId,
         valueJsonType: typeof body.valueJson,
         valueJsonNull: body.valueJson === null,
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
       const valueNum = body.valueNum ?? null;
       const valueBool = body.valueBool ?? null;
       const valueJson = body.valueJson ?? null;
-      console.info("MEMORY_QUESTION_CREATE normalized", {
+      logger.debug("MEMORY_QUESTION_CREATE normalized", {
         valueJsonType: typeof valueJson,
         valueJsonNull: valueJson === null,
       });
