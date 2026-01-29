@@ -1,5 +1,6 @@
 import { handleAuthError } from "./api-response";
 import { errorResponse } from "./http/errors";
+import { logger } from "./logger";
 
 type ErrorFallback = {
   code: string;
@@ -10,6 +11,7 @@ type ErrorFallback = {
 type ApiHandlerOptions = {
   logLabel: string;
   errorFallback: ErrorFallback;
+  requestId?: string;
 };
 
 export const withApiHandler = async (
@@ -21,7 +23,14 @@ export const withApiHandler = async (
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;
-    console.error(`${options.logLabel} error`, error);
+    logger.error(
+      `${options.logLabel} failed`,
+      {
+        requestId: options.requestId,
+        code: options.errorFallback.code,
+      },
+      error,
+    );
     return errorResponse(error, options.errorFallback);
   }
 };
