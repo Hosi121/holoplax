@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     async () => {
       const { workspaceId } = await requireWorkspaceAuth();
       if (!workspaceId) {
-        return ok({ tasks: [] });
+        return ok({ tasks: [], nextCursor: null });
       }
       const { searchParams } = new URL(request.url);
       const rawStatuses = searchParams
@@ -71,19 +71,59 @@ export async function GET(request: Request) {
         .map((value) => String(value ?? "").trim())
         .filter(Boolean);
       const statuses = rawStatuses.filter((value) => isTaskStatus(value));
+
+      // Pagination parameters
       const limitParam = Number(searchParams.get("limit") ?? "200");
-      const pageParam = Number(searchParams.get("page") ?? "0");
       const take = Math.min(500, Math.max(10, Number.isFinite(limitParam) ? limitParam : 200));
-      const skip = Math.max(0, Number.isFinite(pageParam) ? pageParam : 0) * take;
+
+      // Support both cursor-based and offset-based pagination
+      const cursor = searchParams.get("cursor");
+      const pageParam = Number(searchParams.get("page") ?? "0");
+
       const where: Prisma.TaskWhereInput = {
         workspaceId,
         ...(statuses.length ? { status: { in: statuses } } : {}),
       };
+
+      // Use cursor-based pagination if cursor is provided
+      if (cursor) {
+        const tasks = await prisma.task.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: take + 1, // Fetch one extra to determine if there's a next page
+          cursor: { id: cursor },
+          skip: 1, // Skip the cursor item itself
+          include: {
+            routineRule: {
+              select: { cadence: true, nextAt: true },
+            },
+            dependencies: {
+              select: {
+                dependsOnId: true,
+                dependsOn: { select: { id: true, title: true, status: true } },
+              },
+            },
+          },
+        });
+
+        const hasMore = tasks.length > take;
+        const results = hasMore ? tasks.slice(0, take) : tasks;
+        const nextCursor = hasMore ? results[results.length - 1]?.id : null;
+
+        return ok({
+          tasks: results.map(mapTaskWithDependencies),
+          nextCursor,
+          hasMore,
+        });
+      }
+
+      // Fallback to offset-based pagination for backward compatibility
+      const skip = Math.max(0, Number.isFinite(pageParam) ? pageParam : 0) * take;
       const tasks = await prisma.task.findMany({
         where,
         orderBy: { createdAt: "desc" },
         skip,
-        take,
+        take: take + 1, // Fetch one extra to determine if there's a next page
         include: {
           routineRule: {
             select: { cadence: true, nextAt: true },
@@ -96,8 +136,17 @@ export async function GET(request: Request) {
           },
         },
       });
+
+      const hasMore = tasks.length > take;
+      const results = hasMore ? tasks.slice(0, take) : tasks;
+      const nextCursor = hasMore ? results[results.length - 1]?.id : null;
+
       return ok({
-        tasks: tasks.map(mapTaskWithDependencies),
+        tasks: results.map(mapTaskWithDependencies),
+        nextCursor,
+        hasMore,
+        // Include page info for offset pagination
+        page: pageParam,
       });
     },
   );

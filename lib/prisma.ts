@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import "./env"; // Validate environment variables on startup
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
