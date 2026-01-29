@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
@@ -7,6 +8,8 @@ import {
   validateCsrfToken,
 } from "./lib/csrf";
 import { getRateLimitConfig, getRateLimitHeaders, rateLimiter } from "./lib/rate-limiter";
+
+const REQUEST_ID_HEADER = "x-request-id";
 
 /**
  * Methods that require CSRF validation
@@ -40,7 +43,11 @@ function getClientIp(request: NextRequest): string {
 /**
  * Create a rate limit exceeded response
  */
-function rateLimitExceededResponse(headers: Record<string, string>, resetAt: number): NextResponse {
+function rateLimitExceededResponse(
+  headers: Record<string, string>,
+  resetAt: number,
+  requestId: string,
+): NextResponse {
   const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
   return new NextResponse(
     JSON.stringify({
@@ -55,6 +62,7 @@ function rateLimitExceededResponse(headers: Record<string, string>, resetAt: num
       headers: {
         "Content-Type": "application/json",
         "Retry-After": String(retryAfter),
+        [REQUEST_ID_HEADER]: requestId,
         ...headers,
       },
     },
@@ -64,7 +72,7 @@ function rateLimitExceededResponse(headers: Record<string, string>, resetAt: num
 /**
  * Create a CSRF validation failed response
  */
-function csrfFailedResponse(reason: string): NextResponse {
+function csrfFailedResponse(reason: string, requestId: string): NextResponse {
   return new NextResponse(
     JSON.stringify({
       error: {
@@ -76,6 +84,7 @@ function csrfFailedResponse(reason: string): NextResponse {
       status: 403,
       headers: {
         "Content-Type": "application/json",
+        [REQUEST_ID_HEADER]: requestId,
       },
     },
   );
@@ -91,9 +100,18 @@ function isCsrfExempt(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Generate or extract request ID for tracing
+  const requestId =
+    request.headers.get(REQUEST_ID_HEADER) ??
+    request.headers.get("x-correlation-id") ??
+    request.headers.get("x-trace-id") ??
+    randomUUID();
+
   // Only apply to API routes
   if (!pathname.startsWith("/api")) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    response.headers.set(REQUEST_ID_HEADER, requestId);
+    return response;
   }
 
   const isSecure = request.nextUrl.protocol === "https:";
@@ -104,13 +122,14 @@ export function middleware(request: NextRequest) {
   if (CSRF_PROTECTED_METHODS.includes(request.method) && !isCsrfExempt(pathname)) {
     const validation = validateCsrfToken(cookieHeader, request.headers);
     if (!validation.valid) {
-      return csrfFailedResponse(validation.reason ?? "CSRF validation failed");
+      return csrfFailedResponse(validation.reason ?? "CSRF validation failed", requestId);
     }
   }
 
   // Skip rate limiting for health checks
   if (pathname === "/api/health") {
     const response = NextResponse.next();
+    response.headers.set(REQUEST_ID_HEADER, requestId);
     // Ensure CSRF cookie is set
     if (!existingToken) {
       const newToken = generateCsrfToken();
@@ -128,11 +147,12 @@ export function middleware(request: NextRequest) {
   const result = rateLimiter.check(key, config);
 
   if (!result.allowed) {
-    return rateLimitExceededResponse(getRateLimitHeaders(result), result.resetAt);
+    return rateLimitExceededResponse(getRateLimitHeaders(result), result.resetAt, requestId);
   }
 
-  // Build response with rate limit headers
+  // Build response with rate limit headers and request ID
   const response = NextResponse.next();
+  response.headers.set(REQUEST_ID_HEADER, requestId);
   const headers = getRateLimitHeaders(result);
   for (const [headerName, headerValue] of Object.entries(headers)) {
     response.headers.set(headerName, headerValue);
