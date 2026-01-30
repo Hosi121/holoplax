@@ -110,6 +110,17 @@ resource "aws_iam_role_policy" "ecs_deploy" {
         Resource = [
           "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}-*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances",
+          "rds:StartDBInstance",
+          "rds:StopDBInstance"
+        ]
+        Resource = [
+          "arn:aws:rds:${var.region}:${var.account_id}:db:${var.name_prefix}-*"
+        ]
       }
     ]
   })

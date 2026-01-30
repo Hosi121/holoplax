@@ -16,6 +16,7 @@ env:
   AWS_REGION: ap-northeast-3
   CLUSTER_NAME: holoplax-staging-cluster
   SERVICE_NAME: holoplax-staging-app
+  RDS_INSTANCE: holoplax-staging-db
 
 jobs:
   control:
@@ -34,35 +35,96 @@ jobs:
       - name: Get current status
         id: status
         run: |
-          STATUS=$(aws ecs describe-services \
+          echo "### Current Status" >> $GITHUB_STEP_SUMMARY
+
+          # ECS Status
+          ECS_STATUS=$(aws ecs describe-services \
             --cluster ${{ env.CLUSTER_NAME }} \
             --services ${{ env.SERVICE_NAME }} \
             --query 'services[0].{running:runningCount,desired:desiredCount}' \
             --output json)
-          echo "current=$STATUS" >> $GITHUB_OUTPUT
-          echo "### Current Status" >> $GITHUB_STEP_SUMMARY
+          echo "#### ECS Service" >> $GITHUB_STEP_SUMMARY
           echo '```json' >> $GITHUB_STEP_SUMMARY
-          echo "$STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "$ECS_STATUS" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+          # RDS Status
+          RDS_STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --query 'DBInstances[0].DBInstanceStatus' \
+            --output text 2>/dev/null || echo "not-found")
+          echo "#### RDS Instance" >> $GITHUB_STEP_SUMMARY
+          echo "Status: \`$RDS_STATUS\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "ecs_status=$ECS_STATUS" >> $GITHUB_OUTPUT
+          echo "rds_status=$RDS_STATUS" >> $GITHUB_OUTPUT
 
       - name: Start staging
         if: inputs.action == 'start'
         run: |
+          echo "### Starting Staging Environment" >> $GITHUB_STEP_SUMMARY
+
+          # Start RDS first
+          RDS_STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --query 'DBInstances[0].DBInstanceStatus' \
+            --output text)
+
+          if [ "$RDS_STATUS" == "stopped" ]; then
+            echo "Starting RDS instance..." >> $GITHUB_STEP_SUMMARY
+            aws rds start-db-instance --db-instance-identifier ${{ env.RDS_INSTANCE }}
+
+            echo "Waiting for RDS to become available (this may take several minutes)..." >> $GITHUB_STEP_SUMMARY
+            aws rds wait db-instance-available --db-instance-identifier ${{ env.RDS_INSTANCE }}
+            echo "✅ RDS started" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "RDS is already in state: $RDS_STATUS" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Start ECS service
           aws ecs update-service \
             --cluster ${{ env.CLUSTER_NAME }} \
             --service ${{ env.SERVICE_NAME }} \
             --desired-count 1
+          echo "✅ ECS service started" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### ✅ Staging Started" >> $GITHUB_STEP_SUMMARY
           echo "URL: http://holoplax-staging-alb-1675199248.ap-northeast-3.elb.amazonaws.com/" >> $GITHUB_STEP_SUMMARY
 
       - name: Stop staging
         if: inputs.action == 'stop'
         run: |
+          echo "### Stopping Staging Environment" >> $GITHUB_STEP_SUMMARY
+
+          # Stop ECS service first
           aws ecs update-service \
             --cluster ${{ env.CLUSTER_NAME }} \
             --service ${{ env.SERVICE_NAME }} \
             --desired-count 0
+          echo "✅ ECS service stopped" >> $GITHUB_STEP_SUMMARY
+
+          # Wait for tasks to drain
+          echo "Waiting for ECS tasks to stop..." >> $GITHUB_STEP_SUMMARY
+          sleep 30
+
+          # Stop RDS
+          RDS_STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --query 'DBInstances[0].DBInstanceStatus' \
+            --output text)
+
+          if [ "$RDS_STATUS" == "available" ]; then
+            echo "Stopping RDS instance..." >> $GITHUB_STEP_SUMMARY
+            aws rds stop-db-instance --db-instance-identifier ${{ env.RDS_INSTANCE }}
+            echo "✅ RDS stop initiated (will complete in background)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "RDS is already in state: $RDS_STATUS" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### ⏹️ Staging Stopped" >> $GITHUB_STEP_SUMMARY
+          echo "Monthly savings: ~$60/month" >> $GITHUB_STEP_SUMMARY
 
       - name: Show status only
         if: inputs.action == 'status'
