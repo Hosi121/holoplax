@@ -170,16 +170,15 @@ resource "random_password" "nextauth_secret" {
   special = false
 }
 
-resource "random_password" "encryption_key" {
-  length  = 32
-  special = false
+resource "random_id" "encryption_key" {
+  byte_length = 32
 }
 
 resource "aws_secretsmanager_secret_version" "app" {
   secret_id = aws_secretsmanager_secret.app.id
   secret_string = jsonencode({
     nextauth_secret = random_password.nextauth_secret.result
-    encryption_key  = random_password.encryption_key.result
+    encryption_key  = random_id.encryption_key.hex
   })
 }
 
