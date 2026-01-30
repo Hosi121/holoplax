@@ -59,7 +59,7 @@ resource "aws_iam_role" "task" {
 }
 
 data "aws_iam_policy_document" "s3_access" {
-  count = var.s3_bucket_arn != null ? 1 : 0
+  count = var.enable_s3_access ? 1 : 0
 
   statement {
     actions = [
@@ -75,7 +75,7 @@ data "aws_iam_policy_document" "s3_access" {
 }
 
 resource "aws_iam_role_policy" "s3_access" {
-  count  = var.s3_bucket_arn != null ? 1 : 0
+  count  = var.enable_s3_access ? 1 : 0
   name   = "${var.name_prefix}-s3-access"
   role   = aws_iam_role.task.id
   policy = data.aws_iam_policy_document.s3_access[0].json

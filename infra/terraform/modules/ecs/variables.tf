@@ -86,3 +86,9 @@ variable "s3_bucket_arn" {
   default     = null
   description = "S3 bucket ARN for task role permissions"
 }
+
+variable "enable_s3_access" {
+  type        = bool
+  default     = false
+  description = "Enable S3 access for task role"
+}

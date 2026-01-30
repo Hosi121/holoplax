@@ -101,6 +101,7 @@ module "ecs" {
   memory                = var.ecs_memory
   desired_count         = var.ecs_desired_count
   s3_bucket_arn         = module.s3.bucket_arn
+  enable_s3_access      = true
 
   environment_variables = [
     { name = "NODE_ENV", value = "production" },
