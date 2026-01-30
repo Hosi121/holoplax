@@ -88,14 +88,55 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Run Prisma migrations
+      - name: Run Prisma migrations via ECS
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          export DATABASE_URL=$(aws secretsmanager get-secret-value \
-            --secret-id holoplax-staging-db-secret \
-            --query 'SecretString' \
-            --output text | jq -r '.database_url')
-          npm ci
-          npx prisma migrate deploy
+          # Get current task definition and modify for migration
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition holoplax-staging-app \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Create migration task definition with updated image and command
+          MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-app:$IMAGE_TAG" \
+            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE |
+             (.containerDefinitions[] | select(.name == "app")).command = ["npx", "prisma", "migrate", "deploy"] |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
+             .family = "holoplax-staging-migrate"')
+
+          # Register migration task definition
+          MIGRATE_TASK_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$MIGRATE_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Run migration task
+          TASK_ARN=$(aws ecs run-task \
+            --cluster holoplax-staging-cluster \
+            --task-definition $MIGRATE_TASK_ARN \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$(aws ecs describe-services --cluster holoplax-staging-cluster --services holoplax-staging-app --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ',')],securityGroups=[$(aws ecs describe-services --cluster holoplax-staging-cluster --services holoplax-staging-app --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ',')],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "Migration task started: $TASK_ARN"
+
+          # Wait for migration task to complete
+          aws ecs wait tasks-stopped --cluster holoplax-staging-cluster --tasks $TASK_ARN
+
+          # Check exit code
+          EXIT_CODE=$(aws ecs describe-tasks --cluster holoplax-staging-cluster --tasks $TASK_ARN \
+            --query 'tasks[0].containers[?name==`app`].exitCode' --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed with exit code: $EXIT_CODE"
+            aws logs tail /ecs/holoplax-staging/app --since 5m || true
+            exit 1
+          fi
+
+          echo "Migration completed successfully"
 
       - name: Update ECS service
         env:
@@ -152,14 +193,55 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Run Prisma migrations
+      - name: Run Prisma migrations via ECS
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          export DATABASE_URL=$(aws secretsmanager get-secret-value \
-            --secret-id holoplax-prod-db-secret \
-            --query 'SecretString' \
-            --output text | jq -r '.database_url')
-          npm ci
-          npx prisma migrate deploy
+          # Get current task definition and modify for migration
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition holoplax-prod-app \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Create migration task definition with updated image and command
+          MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-app:$IMAGE_TAG" \
+            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE |
+             (.containerDefinitions[] | select(.name == "app")).command = ["npx", "prisma", "migrate", "deploy"] |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
+             .family = "holoplax-prod-migrate"')
+
+          # Register migration task definition
+          MIGRATE_TASK_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$MIGRATE_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Run migration task
+          TASK_ARN=$(aws ecs run-task \
+            --cluster holoplax-prod-cluster \
+            --task-definition $MIGRATE_TASK_ARN \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$(aws ecs describe-services --cluster holoplax-prod-cluster --services holoplax-prod-app --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ',')],securityGroups=[$(aws ecs describe-services --cluster holoplax-prod-cluster --services holoplax-prod-app --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ',')],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "Migration task started: $TASK_ARN"
+
+          # Wait for migration task to complete
+          aws ecs wait tasks-stopped --cluster holoplax-prod-cluster --tasks $TASK_ARN
+
+          # Check exit code
+          EXIT_CODE=$(aws ecs describe-tasks --cluster holoplax-prod-cluster --tasks $TASK_ARN \
+            --query 'tasks[0].containers[?name==`app`].exitCode' --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed with exit code: $EXIT_CODE"
+            aws logs tail /ecs/holoplax-prod/app --since 5m || true
+            exit 1
+          fi
+
+          echo "Migration completed successfully"
 
       - name: Update ECS service
         env:

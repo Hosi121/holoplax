@@ -55,9 +55,21 @@ resource "aws_iam_role_policy" "ecs_deploy" {
           "ecs:DescribeTaskDefinition",
           "ecs:RegisterTaskDefinition",
           "ecs:ListTasks",
-          "ecs:DescribeTasks"
+          "ecs:DescribeTasks",
+          "ecs:RunTask"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:GetLogEvents",
+          "logs:FilterLogEvents",
+          "logs:StartLiveTail"
+        ]
+        Resource = [
+          "arn:aws:logs:${var.region}:${var.account_id}:log-group:/ecs/${var.name_prefix}-*:*"
+        ]
       },
       {
         Effect = "Allow"
