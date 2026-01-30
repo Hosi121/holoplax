@@ -218,6 +218,19 @@ output "app_secret_arn" {
   value = aws_secretsmanager_secret.app.arn
 }
 
+module "github_oidc" {
+  source = "../../modules/github-oidc"
+
+  name_prefix = "holoplax"
+  github_repo = "Hosi121/holoplax"
+  region      = var.region
+  account_id  = local.account_id
+}
+
+output "github_actions_role_arn" {
+  value = module.github_oidc.role_arn
+}
+
 output "ecr_app_repository_url" {
   value = module.ecr_app.repository_url
 }
