@@ -52,7 +52,7 @@ resource "aws_lb_target_group" "app" {
   port        = var.app_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
-  target_type = "instance"
+  target_type = var.target_type
 
   health_check {
     path                = "/"
@@ -65,7 +65,6 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
-# HTTP Listener - forwards to app or redirects to HTTPS
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
@@ -87,7 +86,6 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# HTTPS Listener - only created when certificate is provided
 resource "aws_lb_listener" "https" {
   count = local.enable_https ? 1 : 0
 

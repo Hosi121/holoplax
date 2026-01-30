@@ -25,3 +25,9 @@ variable "enable_https_redirect" {
   default     = true
   description = "Redirect HTTP to HTTPS when certificate is provided"
 }
+
+variable "target_type" {
+  type        = string
+  default     = "instance"
+  description = "Target type for the target group (instance or ip)"
+}

@@ -14,11 +14,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
-      s3_bucket: ${{ steps.set-env.outputs.s3_bucket }}
+      ecr_registry: ${{ steps.login-ecr.outputs.registry }}
+      image_tag: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,58 +28,51 @@ jobs:
         run: |
           if [[ "${{ github.ref_name }}" == "main" ]]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
-            echo "s3_bucket=holoplax-prod-avatars-unique" >> $GITHUB_OUTPUT
+            echo "name_prefix=holoplax-prod" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref_name }}" == "staging" ]]; then
             echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "s3_bucket=holoplax-staging-avatars-unique" >> $GITHUB_OUTPUT
+            echo "name_prefix=holoplax-staging" >> $GITHUB_OUTPUT
           fi
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Generate Prisma Client
-        run: npx prisma generate
-
-      - name: Build application
-        run: npm run build
-
-      - name: Create deployment package
+      - name: Build and push app image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.set-env.outputs.name_prefix }}-app
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          tar -czf holoplax-app.tar.gz \
-            .next \
-            package.json \
-            package-lock.json \
-            prisma \
-            public \
-            next.config.ts \
-            tsconfig.json
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-package
-          path: holoplax-app.tar.gz
-          retention-days: 1
+      - name: Build and push metrics image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.set-env.outputs.name_prefix }}-metrics
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./scripts/metrics
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
   deploy-staging:
-    needs: build
+    needs: build-and-push
     if: github.ref_name == 'staging'
     runs-on: ubuntu-latest
     environment: staging
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-package
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -86,39 +80,59 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload to S3
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Run Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          aws s3 cp holoplax-app.tar.gz s3://${{ needs.build.outputs.s3_bucket }}/deploy/holoplax-app.tar.gz
+          npm ci
+          npx prisma migrate deploy
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.5.0'
-
-      - name: Terraform Init
-        working-directory: infra/terraform/envs/staging
-        run: terraform init
-
-      - name: Terraform Apply
-        working-directory: infra/terraform/envs/staging
+      - name: Update ECS service
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          terraform apply -auto-approve \
-            -var="db_password_override=${{ secrets.DB_PASSWORD }}" \
-            -var="deploy_version=${{ github.sha }}"
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition holoplax-staging-app \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Update image in task definition (by container name)
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-app:$IMAGE_TAG" \
+            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Update service with new task definition
+          aws ecs update-service \
+            --cluster holoplax-staging-cluster \
+            --service holoplax-staging-app \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster holoplax-staging-cluster \
+            --services holoplax-staging-app
 
   deploy-prod:
-    needs: build
+    needs: build-and-push
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-package
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -126,22 +140,47 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload to S3
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Run Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          aws s3 cp holoplax-app.tar.gz s3://${{ needs.build.outputs.s3_bucket }}/deploy/holoplax-app.tar.gz
+          npm ci
+          npx prisma migrate deploy
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.5.0'
-
-      - name: Terraform Init
-        working-directory: infra/terraform/envs/prod
-        run: terraform init
-
-      - name: Terraform Apply
-        working-directory: infra/terraform/envs/prod
+      - name: Update ECS service
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          terraform apply -auto-approve \
-            -var="db_password_override=${{ secrets.DB_PASSWORD }}" \
-            -var="deploy_version=${{ github.sha }}"
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition holoplax-prod-app \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Update image in task definition (by container name)
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-app:$IMAGE_TAG" \
+            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Update service with new task definition
+          aws ecs update-service \
+            --cluster holoplax-prod-cluster \
+            --service holoplax-prod-app \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster holoplax-prod-cluster \
+            --services holoplax-prod-app

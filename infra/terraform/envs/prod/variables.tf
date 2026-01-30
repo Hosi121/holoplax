@@ -22,10 +22,6 @@ variable "app_port" {
   type = number
 }
 
-variable "instance_type" {
-  type = string
-}
-
 variable "db_instance_class" {
   type = string
 }
@@ -51,16 +47,6 @@ variable "public_read" {
   default = true
 }
 
-variable "ssh_key_name" {
-  type    = string
-  default = null
-}
-
-variable "user_data" {
-  type    = string
-  default = ""
-}
-
 variable "db_password_override" {
   type      = string
   default   = ""
@@ -73,12 +59,6 @@ variable "app_domain" {
   description = "Custom domain for the application"
 }
 
-variable "deploy_version" {
-  type        = string
-  default     = ""
-  description = "Deployment version (commit hash) to trigger EC2 recreation"
-}
-
 variable "certificate_arn" {
   type        = string
   default     = ""
@@ -89,4 +69,22 @@ variable "enable_https_redirect" {
   type        = bool
   default     = true
   description = "Redirect HTTP to HTTPS"
+}
+
+variable "ecs_cpu" {
+  type        = number
+  default     = 512
+  description = "CPU units for ECS task"
+}
+
+variable "ecs_memory" {
+  type        = number
+  default     = 1024
+  description = "Memory (MB) for ECS task"
+}
+
+variable "ecs_desired_count" {
+  type        = number
+  default     = 1
+  description = "Desired number of ECS tasks"
 }
