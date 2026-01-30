@@ -88,20 +88,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Get DATABASE_URL from Secrets Manager
-        id: get-db-url
+      - name: Run Prisma migrations
         run: |
-          DATABASE_URL=$(aws secretsmanager get-secret-value \
+          export DATABASE_URL=$(aws secretsmanager get-secret-value \
             --secret-id holoplax-staging-db-secret \
             --query 'SecretString' \
             --output text | jq -r '.database_url')
-          echo "::add-mask::$DATABASE_URL"
-          echo "database_url=$DATABASE_URL" >> $GITHUB_OUTPUT
-
-      - name: Run Prisma migrations
-        env:
-          DATABASE_URL: ${{ steps.get-db-url.outputs.database_url }}
-        run: |
           npm ci
           npx prisma migrate deploy
 
@@ -160,20 +152,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Get DATABASE_URL from Secrets Manager
-        id: get-db-url
+      - name: Run Prisma migrations
         run: |
-          DATABASE_URL=$(aws secretsmanager get-secret-value \
+          export DATABASE_URL=$(aws secretsmanager get-secret-value \
             --secret-id holoplax-prod-db-secret \
             --query 'SecretString' \
             --output text | jq -r '.database_url')
-          echo "::add-mask::$DATABASE_URL"
-          echo "database_url=$DATABASE_URL" >> $GITHUB_OUTPUT
-
-      - name: Run Prisma migrations
-        env:
-          DATABASE_URL: ${{ steps.get-db-url.outputs.database_url }}
-        run: |
           npm ci
           npx prisma migrate deploy
 
