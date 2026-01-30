@@ -89,6 +89,15 @@ resource "aws_iam_role_policy" "ecs_deploy" {
         Resource = [
           "arn:aws:iam::${var.account_id}:role/${var.name_prefix}-*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}-*"
+        ]
       }
     ]
   })
