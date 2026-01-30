@@ -29,10 +29,8 @@ RUN useradd --system --uid 1001 --gid nodejs nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
-# Copy prisma CLI for migrations
-COPY --from=deps /app/node_modules/prisma ./node_modules/prisma
-COPY --from=deps /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=deps /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+# Install prisma CLI globally for migrations
+RUN npm install -g prisma@5.20.0
 
 RUN mkdir .next
 RUN chown nextjs:nodejs .next

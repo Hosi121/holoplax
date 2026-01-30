@@ -102,7 +102,7 @@ jobs:
           # Create migration task definition with updated image and command
           MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-app:$IMAGE_TAG" \
             '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE |
-             (.containerDefinitions[] | select(.name == "app")).command = ["node_modules/.bin/prisma", "migrate", "deploy"] |
+             (.containerDefinitions[] | select(.name == "app")).command = ["prisma", "migrate", "deploy"] |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
              .family = "holoplax-staging-migrate"')
 
@@ -207,7 +207,7 @@ jobs:
           # Create migration task definition with updated image and command
           MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-app:$IMAGE_TAG" \
             '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE |
-             (.containerDefinitions[] | select(.name == "app")).command = ["node_modules/.bin/prisma", "migrate", "deploy"] |
+             (.containerDefinitions[] | select(.name == "app")).command = ["prisma", "migrate", "deploy"] |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
              .family = "holoplax-prod-migrate"')
 
