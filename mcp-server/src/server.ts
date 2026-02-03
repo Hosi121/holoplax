@@ -4,10 +4,15 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "crypto";
 import express from "express";
+import { type AuthContext, verifyAuth } from "./auth.js";
 import { getConfig, validateConfig } from "./config.js";
+import { type ExecutionContext, runWithContext } from "./context.js";
 import { getToolByName, listToolDefinitions } from "./tools/index.js";
 
-export async function createServer(): Promise<Server> {
+// Session to auth context mapping for HTTP mode
+const sessionContextMap = new Map<string, ExecutionContext>();
+
+export async function createServer(sessionId?: string): Promise<Server> {
   validateConfig();
 
   const server = new Server(
@@ -37,7 +42,18 @@ export async function createServer(): Promise<Server> {
     }
 
     try {
-      const result = await tool.handler(args ?? {});
+      // In HTTP mode, get context from session map
+      const context = sessionId ? sessionContextMap.get(sessionId) : undefined;
+
+      let result: unknown;
+      if (context) {
+        // Run with authenticated context
+        result = await runWithContext(context, () => tool.handler(args ?? {}));
+      } else {
+        // Stdio mode: context comes from env vars
+        result = await tool.handler(args ?? {});
+      }
+
       return {
         content: [
           {
@@ -73,7 +89,6 @@ export async function startStdioServer(): Promise<void> {
 export async function startHttpServer(): Promise<void> {
   const config = getConfig();
   const port = config.httpPort;
-  const apiKey = config.apiKey;
 
   const app = express();
   app.use(express.json());
@@ -83,42 +98,58 @@ export async function startHttpServer(): Promise<void> {
     res.json({ status: "ok" });
   });
 
-  // Session management
+  // Session management: transport and auth context
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
-  // MCP endpoint
+  // MCP endpoint with JWT authentication
   app.all("/mcp", async (req, res) => {
-    // API key authentication
-    if (apiKey) {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+    // Verify JWT authentication
+    const authResult = await verifyAuth(req.headers.authorization);
+    if (!authResult.success) {
+      res.status(401).json({ error: authResult.error });
+      return;
     }
+
+    const authContext: ExecutionContext = {
+      userId: authResult.context.userId,
+      workspaceId: authResult.context.workspaceId,
+    };
 
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     let transport: StreamableHTTPServerTransport;
 
     if (sessionId && transports.has(sessionId)) {
+      // Existing session - verify same user
+      const existingContext = sessionContextMap.get(sessionId);
+      if (existingContext && existingContext.userId !== authContext.userId) {
+        res.status(403).json({ error: "Session belongs to different user" });
+        return;
+      }
       transport = transports.get(sessionId)!;
     } else if (req.method === "POST" && !sessionId) {
       // New session
+      const newSessionId = randomUUID();
       transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
+        sessionIdGenerator: () => newSessionId,
       });
 
-      const server = await createServer();
+      const server = await createServer(newSessionId);
       await server.connect(transport);
 
-      if (transport.sessionId) {
-        transports.set(transport.sessionId, transport);
-        transport.onclose = () => {
-          if (transport.sessionId) {
-            transports.delete(transport.sessionId);
-          }
-        };
-      }
+      // Store auth context for this session
+      sessionContextMap.set(newSessionId, authContext);
+      transports.set(newSessionId, transport);
+
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          transports.delete(transport.sessionId);
+          sessionContextMap.delete(transport.sessionId);
+        }
+      };
+
+      console.error(
+        `New MCP session: ${newSessionId} for user ${authContext.userId} in workspace ${authContext.workspaceId}`,
+      );
     } else {
       res.status(400).json({ error: "Invalid session" });
       return;
