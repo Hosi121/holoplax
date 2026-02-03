@@ -27,6 +27,9 @@ npm run build
 | `MCP_WORKSPACE_ID` | Yes | 操作対象のワークスペースID |
 | `MCP_USER_ID` | Yes | 操作ユーザーのID |
 | `ENCRYPTION_KEY` | No | AI設定の復号用キー（将来の拡張用） |
+| `MCP_TRANSPORT` | No | トランスポート種別 (`stdio` or `http`、デフォルト: `stdio`) |
+| `MCP_PORT` | No | HTTPモード時のポート番号（デフォルト: `3001`） |
+| `MCP_API_KEY` | No | HTTPモード時のAPIキー認証 |
 
 ### 4. サーバーの起動
 
@@ -35,6 +38,8 @@ npm start
 ```
 
 ## Claude Desktop での設定
+
+### ローカル実行（Stdioモード）
 
 `claude_desktop_config.json` に以下を追加：
 
@@ -53,6 +58,39 @@ npm start
   }
 }
 ```
+
+### リモートサーバー接続（HTTPモード）
+
+サーバー側で MCP サーバーを HTTP モードで起動：
+
+```bash
+MCP_TRANSPORT=http \
+MCP_PORT=3001 \
+MCP_API_KEY=your-secret-key \
+DATABASE_URL=postgresql://... \
+MCP_WORKSPACE_ID=clxxxxxx \
+MCP_USER_ID=clxxxxxx \
+npm start
+```
+
+Claude Desktop でリモートサーバーに接続：
+
+```json
+{
+  "mcpServers": {
+    "holoplax": {
+      "url": "https://your-server.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer your-secret-key"
+      }
+    }
+  }
+}
+```
+
+**エンドポイント：**
+- `GET /health` - ヘルスチェック
+- `POST /mcp` - MCP プロトコルエンドポイント
 
 ## 提供ツール一覧
 
