@@ -24,12 +24,22 @@ npm run build
 | 変数名 | 必須 | 説明 |
 |--------|------|------|
 | `DATABASE_URL` | Yes | PostgreSQL接続URL |
-| `MCP_WORKSPACE_ID` | Yes | 操作対象のワークスペースID |
-| `MCP_USER_ID` | Yes | 操作ユーザーのID |
-| `ENCRYPTION_KEY` | No | AI設定の復号用キー（将来の拡張用） |
 | `MCP_TRANSPORT` | No | トランスポート種別 (`stdio` or `http`、デフォルト: `stdio`) |
 | `MCP_PORT` | No | HTTPモード時のポート番号（デフォルト: `3001`） |
-| `MCP_API_KEY` | No | HTTPモード時のAPIキー認証 |
+| `ENCRYPTION_KEY` | No | AI設定の復号用キー（将来の拡張用） |
+
+**Stdioモード専用：**
+| 変数名 | 必須 | 説明 |
+|--------|------|------|
+| `MCP_WORKSPACE_ID` | Yes* | 操作対象のワークスペースID |
+| `MCP_USER_ID` | Yes* | 操作ユーザーのID |
+
+**HTTPモード専用：**
+| 変数名 | 必須 | 説明 |
+|--------|------|------|
+| `NEXTAUTH_SECRET` | Yes* | holoplaxと同じJWTシークレット |
+
+*モードに応じて必須
 
 ### 4. サーバーの起動
 
@@ -61,15 +71,16 @@ npm start
 
 ### リモートサーバー接続（HTTPモード）
 
+HTTPモードでは、holoplaxのセッショントークン（JWT）を使って認証します。
+各ユーザーが自分のアカウントでMCPを利用できます。
+
 サーバー側で MCP サーバーを HTTP モードで起動：
 
 ```bash
 MCP_TRANSPORT=http \
 MCP_PORT=3001 \
-MCP_API_KEY=your-secret-key \
 DATABASE_URL=postgresql://... \
-MCP_WORKSPACE_ID=clxxxxxx \
-MCP_USER_ID=clxxxxxx \
+NEXTAUTH_SECRET=<holoplaxと同じシークレット> \
 npm start
 ```
 
@@ -79,14 +90,20 @@ Claude Desktop でリモートサーバーに接続：
 {
   "mcpServers": {
     "holoplax": {
-      "url": "https://your-server.example.com/mcp",
+      "url": "https://mcp.holoplax.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer your-secret-key"
+        "Authorization": "Bearer <your-session-token>"
       }
     }
   }
 }
 ```
+
+**セッショントークンの取得方法：**
+
+1. holoplaxにログイン
+2. ブラウザの開発者ツール → Application → Cookies
+3. `next-auth.session-token` の値をコピー
 
 **エンドポイント：**
 - `GET /health` - ヘルスチェック
