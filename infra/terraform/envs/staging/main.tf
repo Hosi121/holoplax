@@ -233,3 +233,198 @@ output "ecs_cluster_name" {
 output "ecs_service_name" {
   value = module.ecs.service_name
 }
+
+# =============================================================================
+# MCP Server Infrastructure
+# =============================================================================
+
+module "ecr_mcp" {
+  source = "../../modules/ecr"
+
+  repository_name = "${var.name_prefix}-mcp"
+}
+
+locals {
+  ecr_mcp_url = "${local.account_id}.dkr.ecr.${var.region}.amazonaws.com/${var.name_prefix}-mcp"
+  mcp_port    = 3001
+}
+
+# CloudWatch Log Group for MCP
+resource "aws_cloudwatch_log_group" "mcp" {
+  name              = "/ecs/${var.name_prefix}/mcp"
+  retention_in_days = 30
+}
+
+# Target Group for MCP
+resource "aws_lb_target_group" "mcp" {
+  name        = "${var.name_prefix}-mcp-tg"
+  port        = local.mcp_port
+  protocol    = "HTTP"
+  vpc_id      = module.network.vpc_id
+  target_type = "ip"
+
+  health_check {
+    path                = "/health"
+    protocol            = "HTTP"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    matcher             = "200"
+  }
+}
+
+# ALB Listener Rule for MCP (route /mcp and /health to MCP service)
+resource "aws_lb_listener_rule" "mcp" {
+  count = module.alb.https_listener_arn != null ? 1 : 0
+
+  listener_arn = module.alb.https_listener_arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.mcp.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/mcp", "/mcp/*", "/health"]
+    }
+  }
+}
+
+# Security Group for MCP ECS tasks
+resource "aws_security_group" "mcp" {
+  name        = "${var.name_prefix}-mcp-sg"
+  description = "MCP ECS tasks security group"
+  vpc_id      = module.network.vpc_id
+
+  ingress {
+    from_port       = local.mcp_port
+    to_port         = local.mcp_port
+    protocol        = "tcp"
+    security_groups = [module.alb.security_group_id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.name_prefix}-mcp-sg"
+  }
+}
+
+# Allow MCP to access RDS
+resource "aws_security_group_rule" "mcp_to_rds" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.mcp.id
+  security_group_id        = module.rds.security_group_id
+}
+
+# MCP Task Definition
+resource "aws_ecs_task_definition" "mcp" {
+  family                   = "${var.name_prefix}-mcp"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = module.ecs.task_execution_role_arn
+  task_role_arn            = module.ecs.task_role_arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "mcp"
+      image     = "${module.ecr_mcp.repository_url}:latest"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = local.mcp_port
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        { name = "NODE_ENV", value = "production" },
+        { name = "MCP_TRANSPORT", value = "http" },
+        { name = "MCP_PORT", value = tostring(local.mcp_port) },
+      ]
+
+      secrets = [
+        { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.db.arn}:database_url::" },
+        { name = "NEXTAUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.app.arn}:nextauth_secret::" },
+        { name = "ENCRYPTION_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:encryption_key::" },
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.mcp.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "mcp"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${local.mcp_port}/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
+    }
+  ])
+
+  tags = {
+    Name = "${var.name_prefix}-mcp"
+  }
+}
+
+# MCP ECS Service
+resource "aws_ecs_service" "mcp" {
+  name            = "${var.name_prefix}-mcp"
+  cluster         = module.ecs.cluster_id
+  task_definition = aws_ecs_task_definition.mcp.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = module.network.public_subnet_ids
+    security_groups  = [aws_security_group.mcp.id]
+    assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.mcp.arn
+    container_name   = "mcp"
+    container_port   = local.mcp_port
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
+  tags = {
+    Name = "${var.name_prefix}-mcp"
+  }
+}
+
+output "ecr_mcp_repository_url" {
+  value = module.ecr_mcp.repository_url
+}
+
+output "mcp_service_name" {
+  value = aws_ecs_service.mcp.name
+}

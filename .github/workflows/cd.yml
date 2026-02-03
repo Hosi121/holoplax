@@ -67,6 +67,16 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
+      - name: Build and push MCP server image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ steps.set-env.outputs.name_prefix }}-mcp
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f mcp-server/Dockerfile .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
   deploy-staging:
     needs: build-and-push
     if: github.ref_name == 'staging'
@@ -166,11 +176,53 @@ jobs:
             --task-definition $NEW_TASK_DEF_ARN \
             --force-new-deployment
 
-      - name: Wait for deployment
+      - name: Wait for app deployment
         run: |
           aws ecs wait services-stable \
             --cluster holoplax-staging-cluster \
             --services holoplax-staging-app
+
+      - name: Update MCP ECS service
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Check if MCP service exists
+          if ! aws ecs describe-services --cluster holoplax-staging-cluster --services holoplax-staging-mcp --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
+            echo "MCP service not found, skipping deployment"
+            exit 0
+          fi
+
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition holoplax-staging-mcp \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Update image in task definition
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-mcp:$IMAGE_TAG" \
+            '(.containerDefinitions[] | select(.name == "mcp")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Update service with new task definition
+          aws ecs update-service \
+            --cluster holoplax-staging-cluster \
+            --service holoplax-staging-mcp \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --force-new-deployment
+
+      - name: Wait for MCP deployment
+        run: |
+          if aws ecs describe-services --cluster holoplax-staging-cluster --services holoplax-staging-mcp --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
+            aws ecs wait services-stable \
+              --cluster holoplax-staging-cluster \
+              --services holoplax-staging-mcp
+          fi
 
   deploy-prod:
     needs: build-and-push
@@ -271,8 +323,50 @@ jobs:
             --task-definition $NEW_TASK_DEF_ARN \
             --force-new-deployment
 
-      - name: Wait for deployment
+      - name: Wait for app deployment
         run: |
           aws ecs wait services-stable \
             --cluster holoplax-prod-cluster \
             --services holoplax-prod-app
+
+      - name: Update MCP ECS service
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Check if MCP service exists
+          if ! aws ecs describe-services --cluster holoplax-prod-cluster --services holoplax-prod-mcp --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
+            echo "MCP service not found, skipping deployment"
+            exit 0
+          fi
+
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition holoplax-prod-mcp \
+            --query 'taskDefinition' \
+            --output json)
+
+          # Update image in task definition
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-mcp:$IMAGE_TAG" \
+            '(.containerDefinitions[] | select(.name == "mcp")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Update service with new task definition
+          aws ecs update-service \
+            --cluster holoplax-prod-cluster \
+            --service holoplax-prod-mcp \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --force-new-deployment
+
+      - name: Wait for MCP deployment
+        run: |
+          if aws ecs describe-services --cluster holoplax-prod-cluster --services holoplax-prod-mcp --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
+            aws ecs wait services-stable \
+              --cluster holoplax-prod-cluster \
+              --services holoplax-prod-mcp
+          fi
