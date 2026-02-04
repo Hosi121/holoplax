@@ -44,6 +44,7 @@ RUN useradd --system --uid 1001 --gid nodejs mcp
 
 # Copy built application
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/mcp-server/node_modules ./mcp-server/node_modules
 COPY --from=builder /app/mcp-server/dist ./mcp-server/dist
 COPY --from=builder /app/mcp-server/package.json ./mcp-server/
 
