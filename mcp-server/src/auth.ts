@@ -1,9 +1,10 @@
 /**
- * JWT authentication for MCP server
- * Verifies NextAuth.js JWT tokens
+ * Authentication for MCP server
+ * Supports both API keys (mcp_*) and NextAuth.js JWT tokens
  */
 
 import { PrismaClient } from "@prisma/client";
+import { createHash } from "crypto";
 import { jwtDecrypt } from "jose";
 
 const prisma = new PrismaClient();
@@ -53,30 +54,77 @@ export interface AuthError {
 export type AuthResponse = AuthResult | AuthError;
 
 /**
- * Verify JWT token from Authorization header and resolve workspace
+ * Hash an API key for comparison
  */
-export async function verifyAuth(authHeader: string | undefined): Promise<AuthResponse> {
+function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * Verify API key (mcp_* format)
+ */
+async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
+  const keyHash = hashApiKey(apiKey);
+
+  const keyRecord = await prisma.mcpApiKey.findUnique({
+    where: { keyHash },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, disabledAt: true },
+      },
+    },
+  });
+
+  if (!keyRecord) {
+    return { success: false, error: "Invalid API key" };
+  }
+
+  if (keyRecord.revokedAt) {
+    return { success: false, error: "API key has been revoked" };
+  }
+
+  if (keyRecord.expiresAt && keyRecord.expiresAt < new Date()) {
+    return { success: false, error: "API key has expired" };
+  }
+
+  if (keyRecord.user.disabledAt) {
+    return { success: false, error: "User account is disabled" };
+  }
+
+  // Update last used timestamp (fire and forget)
+  prisma.mcpApiKey
+    .update({
+      where: { id: keyRecord.id },
+      data: { lastUsedAt: new Date() },
+    })
+    .catch(() => {
+      // Ignore errors
+    });
+
+  return {
+    success: true,
+    context: {
+      userId: keyRecord.userId,
+      workspaceId: keyRecord.workspaceId,
+      email: keyRecord.user.email ?? undefined,
+      name: keyRecord.user.name ?? undefined,
+    },
+  };
+}
+
+/**
+ * Verify NextAuth.js JWT token (legacy support)
+ */
+async function verifyJwtToken(token: string): Promise<AuthResponse> {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret) {
     return { success: false, error: "NEXTAUTH_SECRET not configured" };
   }
 
-  if (!authHeader) {
-    return { success: false, error: "Authorization header required" };
-  }
-
-  // Support "Bearer <token>" format
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-
-  if (!token) {
-    return { success: false, error: "Token not provided" };
-  }
-
   try {
-    // Decode NextAuth.js encrypted JWT
     const encryptionKey = await getDerivedEncryptionKey(secret);
     const { payload } = await jwtDecrypt(token, encryptionKey, {
-      clockTolerance: 15, // 15 seconds tolerance
+      clockTolerance: 15,
     });
 
     const userId = payload.sub;
@@ -84,7 +132,6 @@ export async function verifyAuth(authHeader: string | undefined): Promise<AuthRe
       return { success: false, error: "Invalid token: missing user ID" };
     }
 
-    // Check if user exists and is not disabled
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, name: true, disabledAt: true },
@@ -98,13 +145,13 @@ export async function verifyAuth(authHeader: string | undefined): Promise<AuthRe
       return { success: false, error: "User account is disabled" };
     }
 
-    // Resolve workspace: from token payload or first membership
+    // Resolve workspace
     let workspaceId: string | undefined;
     if (payload.workspaceId && typeof payload.workspaceId === "string") {
       workspaceId = payload.workspaceId;
     }
-    let resolvedWorkspaceId: string;
 
+    let resolvedWorkspaceId: string;
     if (workspaceId) {
       resolvedWorkspaceId = workspaceId;
     } else {
@@ -121,7 +168,6 @@ export async function verifyAuth(authHeader: string | undefined): Promise<AuthRe
       resolvedWorkspaceId = membership.workspaceId;
     }
 
-    // Verify user has access to the workspace
     const hasAccess = await prisma.workspaceMember.findFirst({
       where: { userId, workspaceId: resolvedWorkspaceId },
     });
@@ -141,7 +187,6 @@ export async function verifyAuth(authHeader: string | undefined): Promise<AuthRe
     };
   } catch (error) {
     if (error instanceof Error) {
-      // Common JWT errors
       if (error.message.includes("JWE")) {
         return { success: false, error: "Invalid token format" };
       }
@@ -149,7 +194,33 @@ export async function verifyAuth(authHeader: string | undefined): Promise<AuthRe
         return { success: false, error: "Token expired" };
       }
     }
-    console.error("Auth error:", error);
+    console.error("JWT auth error:", error);
     return { success: false, error: "Authentication failed" };
   }
+}
+
+/**
+ * Verify authentication from Authorization header
+ * Supports:
+ * - API keys: "Bearer mcp_..."
+ * - JWT tokens: "Bearer eyJ..." (legacy)
+ */
+export async function verifyAuth(authHeader: string | undefined): Promise<AuthResponse> {
+  if (!authHeader) {
+    return { success: false, error: "Authorization header required" };
+  }
+
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+
+  if (!token) {
+    return { success: false, error: "Token not provided" };
+  }
+
+  // Check if it's an API key (mcp_* format)
+  if (token.startsWith("mcp_")) {
+    return verifyApiKey(token);
+  }
+
+  // Otherwise try JWT token (legacy)
+  return verifyJwtToken(token);
 }
