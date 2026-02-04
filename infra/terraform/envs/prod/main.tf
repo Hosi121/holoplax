@@ -388,9 +388,9 @@ resource "aws_ecs_task_definition" "mcp" {
       healthCheck = {
         command     = ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${local.mcp_port}/health || exit 1"]
         interval    = 30
-        timeout     = 5
+        timeout     = 15
         retries     = 3
-        startPeriod = 60
+        startPeriod = 90
       }
     }
   ])

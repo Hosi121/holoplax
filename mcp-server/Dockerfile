@@ -37,7 +37,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 --gid nodejs mcp
@@ -45,6 +45,8 @@ RUN useradd --system --uid 1001 --gid nodejs mcp
 # Copy built application
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/mcp-server/node_modules ./mcp-server/node_modules
+# Copy generated Prisma client to mcp-server node_modules
+COPY --from=builder /app/node_modules/.prisma ./mcp-server/node_modules/.prisma
 COPY --from=builder /app/mcp-server/dist ./mcp-server/dist
 COPY --from=builder /app/mcp-server/package.json ./mcp-server/
 
