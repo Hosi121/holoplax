@@ -55,13 +55,13 @@ resource "aws_lb_target_group" "app" {
   target_type = var.target_type
 
   health_check {
-    path                = "/"
+    path                = "/api/health"
     protocol            = "HTTP"
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2
     unhealthy_threshold = 3
-    matcher             = "200-399"
+    matcher             = "200"
   }
 }
 
