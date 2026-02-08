@@ -15,6 +15,7 @@ import {
   type TaskType,
 } from "../../lib/types";
 import { FocusPanel } from "../components/focus-panel";
+import { HelpTooltip } from "../components/help-tooltip";
 import { LoadingButton } from "../components/loading-button";
 import { type AiSuggestionConfig, TaskCard } from "../components/task-card";
 import { useToast } from "../components/toast";
@@ -1326,8 +1327,9 @@ export default function BacklogPage() {
               <div className="mt-4 grid gap-3">
                 {estimatedScore ? (
                   <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                    <p className="font-semibold text-slate-900">
+                    <p className="inline-flex items-center gap-1 font-semibold text-slate-900">
                       AIがポイント・緊急度・リスクを先行推定済みです。
+                      <HelpTooltip text="AIがタスクの内容から自動でスコアを推定します。手動で変更もできます。" />
                     </p>
                     <p className="mt-1 text-[11px] text-slate-500">
                       {`推定: ${estimatedScore.points} pt / 緊急度: ${SEVERITY_LABELS[estimatedScore.urgency as Severity] ?? estimatedScore.urgency} / リスク: ${SEVERITY_LABELS[estimatedScore.risk as Severity] ?? estimatedScore.risk}`}
@@ -1411,7 +1413,10 @@ export default function BacklogPage() {
                 </div>
                 <div className="grid gap-4">
                   <div className="grid gap-1 text-xs text-slate-500">
-                    <span>ポイント</span>
+                    <span className="inline-flex items-center gap-1">
+                      ポイント
+                      <HelpTooltip text="ストーリーポイントはタスクの相対的な大きさを表します。1が最小、13以上は分解を検討してください。" />
+                    </span>
                     <div className="flex flex-wrap gap-2">
                       {storyPoints.map((pt) => (
                         <button
@@ -1433,7 +1438,10 @@ export default function BacklogPage() {
                   <div className="grid gap-2 text-xs text-slate-500">
                     <div className="flex items-end gap-4">
                       <div className="flex-1 min-w-0">
-                        <span>緊急度</span>
+                        <span className="inline-flex items-center gap-1">
+                          緊急度
+                          <HelpTooltip text="緊急度はいつまでにやるか、リスクは不確実性の高さを表します。" />
+                        </span>
                         <div className="mt-1 flex flex-wrap gap-2">
                           {severityOptions.map((option) => (
                             <button

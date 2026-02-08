@@ -1,8 +1,11 @@
 "use client";
 
+import { Inbox } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SEVERITY, SEVERITY_LABELS, type Severity, TASK_STATUS } from "../../lib/types";
+import { EmptyState } from "../components/empty-state";
+import { HelpTooltip } from "../components/help-tooltip";
 import { TaskCard } from "../components/task-card";
 import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
@@ -116,8 +119,9 @@ export default function SprintPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
+            <span className="inline-flex items-center gap-1 border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
               キャパ {activeCapacity} pt
+              <HelpTooltip text="1スプリントで消化できるポイント数です。最初は低めに設定しましょう。" />
             </span>
             <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
               残り {remaining} pt
@@ -128,13 +132,16 @@ export default function SprintPage() {
             >
               レビューへ
             </Link>
-            <button
-              onClick={runOptimization}
-              disabled={optimizerLoading}
-              className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-60"
-            >
-              {optimizerLoading ? "計算中..." : "最適化"}
-            </button>
+            <span className="inline-flex items-center gap-1">
+              <button
+                onClick={runOptimization}
+                disabled={optimizerLoading}
+                className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-60"
+              >
+                {optimizerLoading ? "計算中..." : "最適化"}
+              </button>
+              <HelpTooltip text="残りキャパシティに合うタスクをAIが提案します。" />
+            </span>
             {sprint ? (
               <button
                 onClick={endSprint}
@@ -321,22 +328,32 @@ export default function SprintPage() {
 
       <section className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3">
-          {displayedItems
-            .filter((item) => item.status !== TASK_STATUS.DONE)
-            .map((item) => (
-              <TaskCard
-                key={item.id}
-                item={item}
-                variant="sprint"
-                members={members.map((m) => ({ id: m.id, name: m.name }))}
-                isBlocked={isBlocked(item)}
-                showSeverity={false}
-                onMarkDone={() => markDone(item.id)}
-                onEdit={() => openEdit(item)}
-                onDelete={() => deleteItem(item.id)}
-                onToggleChecklistItem={(checklistId) => toggleChecklistItem(item.id, checklistId)}
-              />
-            ))}
+          {displayedItems.filter((item) => item.status !== TASK_STATUS.DONE).length > 0 ? (
+            displayedItems
+              .filter((item) => item.status !== TASK_STATUS.DONE)
+              .map((item) => (
+                <TaskCard
+                  key={item.id}
+                  item={item}
+                  variant="sprint"
+                  members={members.map((m) => ({ id: m.id, name: m.name }))}
+                  isBlocked={isBlocked(item)}
+                  showSeverity={false}
+                  onMarkDone={() => markDone(item.id)}
+                  onEdit={() => openEdit(item)}
+                  onDelete={() => deleteItem(item.id)}
+                  onToggleChecklistItem={(checklistId) => toggleChecklistItem(item.id, checklistId)}
+                />
+              ))
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title="スプリントにタスクがありません"
+              description="バックログからタスクを追加するか、上のフォームから直接作成しましょう。"
+              actionLabel="バックログを見る"
+              actionHref="/backlog"
+            />
+          )}
         </div>
       </section>
 

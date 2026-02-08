@@ -1,7 +1,9 @@
 "use client";
 
+import { CheckCircle2, Inbox, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AUTOMATION_STATE, TASK_STATUS, type TaskDTO, type TaskStatus } from "../../lib/types";
+import { EmptyState } from "../components/empty-state";
 import { TaskCard } from "../components/task-card";
 import { useToast } from "../components/toast";
 import { useWorkspaceId } from "../components/use-workspace-id";
@@ -198,28 +200,54 @@ export default function KanbanPage() {
             </div>
 
             <div className="mt-3 grid flex-1 content-start gap-3 overflow-y-auto">
-              {grouped[col.key].map((item) => (
-                <TaskCard
-                  key={item.id}
-                  item={item}
-                  variant="kanban"
-                  members={members.map((m) => ({ id: m.id, name: m.name }))}
-                  isBlocked={isBlocked(item)}
-                  showAiTaskBadge
-                  isAiTask={isAiTask(item)}
-                  showChecklist={false}
-                  showMetadata={false}
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggingId(item.id);
-                    e.dataTransfer.setData("text/plain", item.id);
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragEnd={() => setDraggingId(null)}
-                  isDragging={draggingId === item.id}
-                  className="min-w-0 break-words transition"
+              {grouped[col.key].length > 0 ? (
+                grouped[col.key].map((item) => (
+                  <TaskCard
+                    key={item.id}
+                    item={item}
+                    variant="kanban"
+                    members={members.map((m) => ({ id: m.id, name: m.name }))}
+                    isBlocked={isBlocked(item)}
+                    showAiTaskBadge
+                    isAiTask={isAiTask(item)}
+                    showChecklist={false}
+                    showMetadata={false}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggingId(item.id);
+                      e.dataTransfer.setData("text/plain", item.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => setDraggingId(null)}
+                    isDragging={draggingId === item.id}
+                    className="min-w-0 break-words transition"
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  icon={
+                    col.key === TASK_STATUS.BACKLOG
+                      ? Inbox
+                      : col.key === TASK_STATUS.SPRINT
+                        ? Zap
+                        : CheckCircle2
+                  }
+                  title={
+                    col.key === TASK_STATUS.BACKLOG
+                      ? "バックログは空です"
+                      : col.key === TASK_STATUS.SPRINT
+                        ? "スプリントにタスクがありません"
+                        : "完了タスクはまだありません"
+                  }
+                  description={
+                    col.key === TASK_STATUS.BACKLOG
+                      ? "バックログページからタスクを追加しましょう。"
+                      : col.key === TASK_STATUS.SPRINT
+                        ? "バックログからドラッグしてタスクをコミットしましょう。"
+                        : "タスクをここにドラッグすると完了になります。"
+                  }
                 />
-              ))}
+              )}
             </div>
           </div>
         ))}

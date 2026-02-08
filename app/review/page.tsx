@@ -2,10 +2,12 @@ import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   ListTodo,
   Timer,
+  TrendingDown,
 } from "lucide-react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
@@ -15,8 +17,11 @@ import { resolveWorkspaceId } from "@/lib/workspace-context";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
+import { EmptyState } from "../components/empty-state";
 import { FocusQueue } from "../components/focus-queue";
+import { HelpTooltip } from "../components/help-tooltip";
 import { InboxWidget } from "../components/inbox-widget";
+import { QuickStartCard } from "../components/quick-start-card";
 
 const splitThreshold = 8;
 
@@ -277,6 +282,8 @@ export default async function ReviewPage() {
         </div>
       </header>
 
+      <QuickStartCard />
+
       <section className="grid gap-4 lg:grid-cols-5">
         {kpis.map((kpi) => (
           <div key={kpi.label} className="border border-slate-200 bg-white p-4 shadow-sm">
@@ -310,7 +317,10 @@ export default async function ReviewPage() {
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">ベロシティ推移</h2>
+            <span className="inline-flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">ベロシティ推移</h2>
+              <HelpTooltip text="過去のスプリントで完了したポイント数の推移です。安定するほど計画精度が上がります。" />
+            </span>
             <span className="text-xs text-slate-500">直近7スプリント</span>
           </div>
           {velocitySeries.length ? (
@@ -339,28 +349,17 @@ export default async function ReviewPage() {
               </div>
             </>
           ) : (
-            <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-              <p className="font-semibold text-slate-800">ベロシティデータがありません。</p>
-              <p className="mt-1">
-                {sprint
+            <EmptyState
+              icon={BarChart3}
+              title="ベロシティデータがありません"
+              description={
+                sprint
                   ? "スプリントを完了するとベロシティが記録されます。"
-                  : "スプリントを開始して完了すると自動で記録されます。"}
-              </p>
-              <div className="mt-3 flex gap-2 text-xs">
-                <Link
-                  href="/sprint"
-                  className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                >
-                  {sprint ? "スプリントを確認" : "スプリントを始める"}
-                </Link>
-                <Link
-                  href="/backlog"
-                  className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                >
-                  バックログにタスク追加
-                </Link>
-              </div>
-            </div>
+                  : "スプリントを開始して完了すると自動で記録されます。"
+              }
+              actionLabel={sprint ? "スプリントを確認" : "スプリントを始める"}
+              actionHref="/sprint"
+            />
           )}
         </div>
 
@@ -409,28 +408,17 @@ export default async function ReviewPage() {
               </div>
             </>
           ) : (
-            <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-              <p className="font-semibold text-slate-800">バーンダウンはまだありません。</p>
-              <p className="mt-1">
-                {sprint
+            <EmptyState
+              icon={TrendingDown}
+              title="バーンダウンはまだありません"
+              description={
+                sprint
                   ? "タスクを完了していくとバーンダウンが表示されます。"
-                  : "スプリントを開始し、タスクの進行が蓄積されると表示されます。"}
-              </p>
-              <div className="mt-3 flex gap-2 text-xs">
-                <Link
-                  href="/sprint"
-                  className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                >
-                  {sprint ? "スプリントを確認" : "スプリントを始める"}
-                </Link>
-                <Link
-                  href="/backlog"
-                  className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                >
-                  タスクをコミット
-                </Link>
-              </div>
-            </div>
+                  : "スプリントを開始し、タスクの進行が蓄積されると表示されます。"
+              }
+              actionLabel={sprint ? "スプリントを確認" : "スプリントを始める"}
+              actionHref="/sprint"
+            />
           )}
         </div>
       </section>
@@ -501,18 +489,13 @@ export default async function ReviewPage() {
               ))}
             </div>
           ) : (
-            <div className="mt-4 rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-              <p className="font-semibold text-slate-800">アクティビティはまだありません。</p>
-              <p className="mt-1">タスクを追加すると履歴が表示されます。</p>
-              <div className="mt-3 flex gap-2 text-xs">
-                <Link
-                  href="/backlog"
-                  className="border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 hover:border-[#2323eb]/50 hover:text-[#2323eb]"
-                >
-                  タスクを追加
-                </Link>
-              </div>
-            </div>
+            <EmptyState
+              icon={Activity}
+              title="アクティビティはまだありません"
+              description="タスクを追加すると履歴が表示されます。"
+              actionLabel="タスクを追加"
+              actionHref="/backlog"
+            />
           )}
         </div>
       </section>

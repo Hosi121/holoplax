@@ -3,6 +3,8 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  ChevronDown,
+  CircleHelp,
   Inbox,
   KanbanSquare,
   LayoutDashboard,
@@ -14,7 +16,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { memo, useEffect } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -24,33 +26,46 @@ type NavItem = {
   icon: LucideIcon;
   tooltip: string;
   adminOnly?: boolean;
+  /** Workflow step number shown as a circled digit badge */
+  step?: number;
 };
 
-const navSections: {
+const STORAGE_KEY = "holoplax-sidebar-collapsed";
+const QUICKSTART_KEY = "holoplax-quickstart-dismissed";
+
+/* ── Primary workflow items (always visible) ── */
+const primaryItems: NavItem[] = [
+  {
+    label: "バックログ",
+    href: "/backlog",
+    icon: Inbox,
+    tooltip: "TODOを整理して次に着手する候補を決める",
+    step: 1,
+  },
+  {
+    label: "スプリント",
+    href: "/sprint",
+    icon: KanbanSquare,
+    tooltip: "今週のスプリントと容量管理",
+    step: 2,
+  },
+  {
+    label: "レビュー",
+    href: "/review",
+    icon: LayoutDashboard,
+    tooltip: "ベロシティや完了タスクを振り返る",
+    step: 3,
+  },
+];
+
+/* ── Secondary sections (collapsed by default) ── */
+const secondarySections: {
   heading: string;
   items: NavItem[];
 }[] = [
   {
     heading: "タスク管理",
     items: [
-      {
-        label: "レビュー",
-        href: "/review",
-        icon: LayoutDashboard,
-        tooltip: "ベロシティや完了タスクを振り返る",
-      },
-      {
-        label: "バックログ",
-        href: "/backlog",
-        icon: Inbox,
-        tooltip: "TODOを整理して次に着手する候補を決める",
-      },
-      {
-        label: "スプリント",
-        href: "/sprint",
-        icon: KanbanSquare,
-        tooltip: "今週のスプリントと容量管理",
-      },
       {
         label: "カンバン",
         href: "/kanban",
@@ -90,7 +105,12 @@ const navSections: {
   {
     heading: "設定",
     items: [
-      { label: "設定", href: "/settings", icon: Settings, tooltip: "個人設定や認証状態を確認" },
+      {
+        label: "設定",
+        href: "/settings",
+        icon: Settings,
+        tooltip: "個人設定や認証状態を確認",
+      },
       {
         label: "ユーザー管理",
         href: "/admin/users",
@@ -116,6 +136,125 @@ const navSections: {
   },
 ];
 
+const STEP_LABELS = ["", "\u2460", "\u2461", "\u2462"]; // ①②③
+
+/* ── Nav link component ── */
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const isActive = pathname === item.href;
+  return (
+    <Link
+      href={item.href}
+      title={item.tooltip}
+      className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] ${
+        isActive
+          ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]"
+          : "border-transparent text-[var(--text-secondary)]"
+      }`}
+    >
+      <item.icon size={16} />
+      <span className="flex-1">{item.label}</span>
+      {item.step != null && (
+        <span className="text-[11px] leading-none text-[var(--text-muted)]">
+          {STEP_LABELS[item.step]}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+/* ── Primary workflow section ── */
+const PrimaryNav = memo(function PrimaryNav({ pathname }: { pathname: string }) {
+  return (
+    <div className="space-y-1 border-b border-[var(--border)] pb-3">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+          ワークフロー
+        </div>
+        <span className="text-[10px] text-[var(--text-muted)]">
+          {"\u2460\u2192\u2461\u2192\u2462"}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-col gap-1">
+        {primaryItems.map((item) => (
+          <NavLink key={item.label} item={item} pathname={pathname} />
+        ))}
+      </div>
+    </div>
+  );
+});
+
+/* ── Collapsible secondary sections ── */
+const SecondaryNav = memo(function SecondaryNav({
+  pathname,
+  isAdmin,
+  collapsed,
+  onToggle,
+}: {
+  pathname: string;
+  isAdmin: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  // Measure content height for animation
+  useEffect(() => {
+    if (contentRef.current) {
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setHeight(entry.contentRect.height);
+        }
+      });
+      observer.observe(contentRef.current);
+      return () => observer.disconnect();
+    }
+  }, []);
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-1 py-1 text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)] transition hover:text-[var(--text-secondary)]"
+      >
+        <ChevronDown
+          size={12}
+          className={`transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
+        />
+        <span>その他</span>
+      </button>
+      <div
+        className="overflow-hidden transition-[max-height] duration-200 ease-in-out"
+        style={{ maxHeight: collapsed ? 0 : height != null ? height + 8 : "none" }}
+      >
+        <div ref={contentRef}>
+          {secondarySections.map((section) => {
+            const visibleItems = section.items.filter((item) => !item.adminOnly || isAdmin);
+            if (visibleItems.length === 0) return null;
+            return (
+              <div
+                key={section.heading}
+                className="space-y-1 border-b border-[var(--border)] pb-3 last:border-none last:pb-0"
+              >
+                <div className="text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                  {section.heading}
+                </div>
+                <div className="mt-1 flex flex-col gap-1">
+                  {visibleItems.map((item) => (
+                    <NavLink key={item.label} item={item} pathname={pathname} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+/* ── Navigation Links (primary + secondary) ── */
 const NavigationLinks = memo(function NavigationLinks({
   pathname,
   isAdmin,
@@ -123,37 +262,46 @@ const NavigationLinks = memo(function NavigationLinks({
   pathname: string;
   isAdmin: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Read persisted state on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored !== null) {
+        setCollapsed(stored === "true");
+      }
+    } catch {
+      // localStorage may be unavailable
+    }
+    setHydrated(true);
+  }, []);
+
+  const handleToggle = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  // Avoid hydration mismatch: render secondary collapsed until client hydrates
+  const effectiveCollapsed = hydrated ? collapsed : true;
+
   return (
     <nav className="mt-4 flex flex-col gap-1">
-      {navSections.map((section) => (
-        <div
-          key={section.heading}
-          className="space-y-1 border-b border-[var(--border)] pb-3 last:border-none last:pb-0"
-        >
-          <div className="text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
-            {section.heading}
-          </div>
-          <div className="mt-1 flex flex-col gap-1">
-            {section.items
-              .filter((item) => !item.adminOnly || isAdmin)
-              .map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  title={item.tooltip}
-                  className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] ${
-                    pathname === item.href
-                      ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]"
-                      : "border-transparent text-[var(--text-secondary)]"
-                  }`}
-                >
-                  <item.icon size={16} />
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-          </div>
-        </div>
-      ))}
+      <PrimaryNav pathname={pathname} />
+      <SecondaryNav
+        pathname={pathname}
+        isAdmin={isAdmin}
+        collapsed={effectiveCollapsed}
+        onToggle={handleToggle}
+      />
     </nav>
   );
 });
@@ -223,6 +371,29 @@ const AccountSection = memo(function AccountSection({
     </div>
   );
 });
+
+function HelpButton() {
+  const handleClick = useCallback(() => {
+    try {
+      localStorage.setItem(QUICKSTART_KEY, "false");
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title="クイックスタートガイドを再表示"
+      className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] transition hover:text-[var(--accent)]"
+    >
+      <CircleHelp size={14} />
+      <span>ヘルプ</span>
+    </button>
+  );
+}
 
 function WorkspaceSelector() {
   const router = useRouter();
@@ -311,6 +482,9 @@ export function Sidebar() {
           <NavigationLinks pathname={pathname} isAdmin={session?.user?.role === "ADMIN"} />
         </div>
         <div className="shrink-0">
+          <div className="mb-2 flex items-center justify-end">
+            <HelpButton />
+          </div>
           <AccountSection session={session} status={status} />
         </div>
       </aside>
