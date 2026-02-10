@@ -10,3 +10,4 @@ db_username          = "holoplax"
 db_multi_az          = false
 bucket_name          = "holoplax-staging-avatars-unique"
 public_read          = true
+app_domain           = "holoplax-staging.raim-tech.com"

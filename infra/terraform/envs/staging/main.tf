@@ -66,6 +66,64 @@ module "ecr_metrics" {
   repository_name = "${var.name_prefix}-metrics"
 }
 
+# =============================================================================
+# ACM Certificate + Route53 DNS for HTTPS
+# =============================================================================
+
+resource "aws_acm_certificate" "staging" {
+  domain_name       = var.app_domain
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "${var.name_prefix}-cert"
+  }
+}
+
+data "aws_route53_hosted_zone" "main" {
+  name = "raim-tech.com"
+}
+
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.staging.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  zone_id = data.aws_route53_hosted_zone.main.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  records = [each.value.record]
+  ttl     = 60
+
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "staging" {
+  certificate_arn         = aws_acm_certificate.staging.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+resource "aws_route53_record" "app" {
+  zone_id = data.aws_route53_hosted_zone.main.zone_id
+  name    = var.app_domain
+  type    = "A"
+
+  alias {
+    name                   = module.alb.dns_name
+    zone_id                = module.alb.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# =============================================================================
+
 module "alb" {
   source = "../../modules/alb"
 
@@ -73,8 +131,8 @@ module "alb" {
   vpc_id                = module.network.vpc_id
   public_subnet_ids     = module.network.public_subnet_ids
   app_port              = var.app_port
-  certificate_arn       = var.certificate_arn
-  enable_https_redirect = var.enable_https_redirect
+  certificate_arn       = aws_acm_certificate_validation.staging.certificate_arn
+  enable_https_redirect = true
   target_type           = "ip"
 }
 
@@ -276,7 +334,7 @@ resource "aws_lb_target_group" "mcp" {
 
 # ALB Listener Rule for MCP (route /mcp and /health to MCP service)
 resource "aws_lb_listener_rule" "mcp" {
-  listener_arn = module.alb.https_listener_arn != null ? module.alb.https_listener_arn : module.alb.http_listener_arn
+  listener_arn = module.alb.https_listener_arn
   priority     = 100
 
   action {

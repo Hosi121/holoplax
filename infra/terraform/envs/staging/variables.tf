@@ -59,18 +59,6 @@ variable "app_domain" {
   description = "Custom domain for the application"
 }
 
-variable "certificate_arn" {
-  type        = string
-  default     = ""
-  description = "ACM certificate ARN for HTTPS"
-}
-
-variable "enable_https_redirect" {
-  type        = bool
-  default     = true
-  description = "Redirect HTTP to HTTPS"
-}
-
 variable "ecs_cpu" {
   type        = number
   default     = 256
