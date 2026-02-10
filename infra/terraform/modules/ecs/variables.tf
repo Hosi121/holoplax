@@ -92,3 +92,9 @@ variable "enable_s3_access" {
   default     = false
   description = "Enable S3 access for task role"
 }
+
+variable "health_check_grace_period" {
+  type        = number
+  default     = 120
+  description = "Seconds to wait before ALB health checks start after task launch"
+}

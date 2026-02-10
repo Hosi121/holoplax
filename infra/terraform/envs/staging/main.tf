@@ -371,14 +371,7 @@ resource "aws_ecs_task_definition" "mcp" {
           "awslogs-stream-prefix" = "mcp"
         }
       }
-
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${local.mcp_port}/health || exit 1"]
-        interval    = 30
-        timeout     = 15
-        retries     = 3
-        startPeriod = 90
-      }
+      # Note: Container health check removed - ALB target group health check is sufficient
     }
   ])
 
@@ -394,6 +387,8 @@ resource "aws_ecs_service" "mcp" {
   task_definition = aws_ecs_task_definition.mcp.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+
+  health_check_grace_period_seconds = 120
 
   network_configuration {
     subnets          = module.network.public_subnet_ids

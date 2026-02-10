@@ -159,9 +159,9 @@ jobs:
             --query 'taskDefinition' \
             --output json)
 
-          # Update image in task definition (by container name)
+          # Update image and remove container health check (ALB health check is sufficient)
           NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-app:$IMAGE_TAG" \
-            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE | del(.containerDefinitions[].healthCheck) | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
@@ -199,9 +199,9 @@ jobs:
             --query 'taskDefinition' \
             --output json)
 
-          # Update image in task definition
+          # Update image and remove container health check (ALB health check is sufficient)
           NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-mcp:$IMAGE_TAG" \
-            '(.containerDefinitions[] | select(.name == "mcp")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+            '(.containerDefinitions[] | select(.name == "mcp")).image = $IMAGE | del(.containerDefinitions[].healthCheck) | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
@@ -306,9 +306,9 @@ jobs:
             --query 'taskDefinition' \
             --output json)
 
-          # Update image in task definition (by container name)
+          # Update image and remove container health check (ALB health check is sufficient)
           NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-app:$IMAGE_TAG" \
-            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+            '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE | del(.containerDefinitions[].healthCheck) | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
@@ -346,9 +346,9 @@ jobs:
             --query 'taskDefinition' \
             --output json)
 
-          # Update image in task definition
+          # Update image and remove container health check (ALB health check is sufficient)
           NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-mcp:$IMAGE_TAG" \
-            '(.containerDefinitions[] | select(.name == "mcp")).image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+            '(.containerDefinitions[] | select(.name == "mcp")).image = $IMAGE | del(.containerDefinitions[].healthCheck) | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \

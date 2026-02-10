@@ -156,6 +156,8 @@ resource "aws_ecs_service" "app" {
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
+  health_check_grace_period_seconds = var.health_check_grace_period
+
   network_configuration {
     subnets          = var.subnet_ids
     security_groups  = [aws_security_group.ecs.id]
