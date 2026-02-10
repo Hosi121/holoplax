@@ -1,6 +1,6 @@
 # Holoplax AWS Terraform (Osaka)
 
-This Terraform set provisions a simple AWS stack for dev/staging/prod in `ap-northeast-3`.
+This Terraform set provisions a simple AWS stack for staging/prod in `ap-northeast-3`.
 
 ## What it creates
 - VPC with public + private subnets (no NAT to keep costs low)
@@ -11,11 +11,11 @@ This Terraform set provisions a simple AWS stack for dev/staging/prod in `ap-nor
 - Secrets Manager entry for OpenAI API key (empty by default)
 
 ## Environments
-Each environment lives under `envs/{dev,staging,prod}`.
+Each environment lives under `envs/{staging,prod}`.
 
 ## Quick start
 ```bash
-cd infra/terraform/envs/dev
+cd infra/terraform/envs/staging
 terraform init
 terraform plan
 terraform apply
