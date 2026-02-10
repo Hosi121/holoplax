@@ -276,9 +276,7 @@ resource "aws_lb_target_group" "mcp" {
 
 # ALB Listener Rule for MCP (route /mcp and /health to MCP service)
 resource "aws_lb_listener_rule" "mcp" {
-  count = module.alb.https_listener_arn != null ? 1 : 0
-
-  listener_arn = module.alb.https_listener_arn
+  listener_arn = module.alb.https_listener_arn != null ? module.alb.https_listener_arn : module.alb.http_listener_arn
   priority     = 100
 
   action {
