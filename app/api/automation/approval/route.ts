@@ -85,7 +85,6 @@ export async function POST(request: Request) {
         domain: "AUTOMATION",
         requireWorkspace: true,
       });
-      if (!workspaceId) return errors.unauthorized("workspaceId not found");
 
       const body = await parseBody(request, AutomationApprovalSchema, {
         code: "AUTOMATION_VALIDATION",
@@ -145,25 +144,22 @@ export async function POST(request: Request) {
           data: { automationState: AUTOMATION_STATE.SPLIT_PARENT },
         });
 
-        await Promise.all(
-          suggestions.map((item: SplitItem) =>
-            tx.task.create({
-              data: {
-                title: item.title,
-                description: item.detail ?? "",
-                points: Number(item.points) || 1,
-                urgency: item.urgency ?? SEVERITY.MEDIUM,
-                risk: item.risk ?? SEVERITY.MEDIUM,
-                status: TASK_STATUS.BACKLOG,
-                automationState: AUTOMATION_STATE.SPLIT_CHILD,
-                type: TASK_TYPE.TASK,
-                parentId: task.id,
-                workspaceId,
-                userId,
-              },
-            }),
-          ),
-        );
+        await tx.task.createMany({
+          data: suggestions.map((item: SplitItem) => ({
+            title: item.title,
+            description: item.detail ?? "",
+            // item.points is already a valid Fibonacci number after sanitizeSplitSuggestion
+            points: item.points,
+            urgency: item.urgency ?? SEVERITY.MEDIUM,
+            risk: item.risk ?? SEVERITY.MEDIUM,
+            status: TASK_STATUS.BACKLOG,
+            automationState: AUTOMATION_STATE.SPLIT_CHILD,
+            type: TASK_TYPE.TASK,
+            parentId: task.id,
+            workspaceId,
+            userId,
+          })),
+        });
       });
 
       await maybeRaiseStage(userId, workspaceId);

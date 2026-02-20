@@ -31,6 +31,7 @@ export async function PATCH(
       const updated = await prisma.workspaceMember.update({
         where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
         data: { role },
+        select: { userId: true, workspaceId: true, role: true },
       });
       await logAudit({
         actorId: userId,

@@ -28,6 +28,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         where: { workspaceId: id },
         include: { user: { select: { id: true, name: true, email: true } } },
         orderBy: { createdAt: "asc" },
+        take: 500,
       });
       return ok({
         members: members.map((m) => ({
@@ -71,6 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         where: { workspaceId_userId: { workspaceId: id, userId: user.id } },
         update: { role },
         create: { workspaceId: id, userId: user.id, role },
+        select: { userId: true, workspaceId: true, role: true, createdAt: true },
       });
 
       await logAudit({

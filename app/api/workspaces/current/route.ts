@@ -30,6 +30,7 @@ export async function GET() {
           workspace: { select: { id: true, name: true, ownerId: true } },
         },
         orderBy: { createdAt: "asc" },
+        take: 100,
       });
       const workspaces = memberships.map((m) => ({
         id: m.workspace.id,

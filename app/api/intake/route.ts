@@ -20,11 +20,13 @@ export async function GET() {
         prisma.intakeItem.findMany({
           where: { userId, workspaceId: null, status: "PENDING" },
           orderBy: { createdAt: "desc" },
+          take: 100,
         }),
         workspaceId
           ? prisma.intakeItem.findMany({
               where: { workspaceId, status: "PENDING" },
               orderBy: { createdAt: "desc" },
+              take: 100,
             })
           : Promise.resolve([]),
       ]);

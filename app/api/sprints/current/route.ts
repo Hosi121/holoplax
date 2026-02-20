@@ -61,7 +61,6 @@ export async function POST(request: Request) {
         domain: "SPRINT",
         requireWorkspace: true,
       });
-      if (!workspaceId) return errors.unauthorized("userID is required");
       const body = await parseBody(request, SprintStartSchema, {
         code: "SPRINT_VALIDATION",
         allowEmpty: true,
@@ -129,7 +128,6 @@ export async function PATCH() {
         domain: "SPRINT",
         requireWorkspace: true,
       });
-      if (!workspaceId) return errors.unauthorized();
       const sprint = await prisma.sprint.findFirst({
         where: { workspaceId, status: "ACTIVE" },
         orderBy: { startedAt: "desc" },
@@ -155,6 +153,7 @@ export async function PATCH() {
         const doneTasks = await tx.task.findMany({
           where: { sprintId: sprint.id, status: "DONE" },
           select: { points: true },
+          take: 1000,
         });
         const completedPoints = doneTasks.reduce((sum, task) => sum + task.points, 0);
         const rangeMin = Math.max(0, completedPoints - 2);
@@ -171,6 +170,7 @@ export async function PATCH() {
         const sprintTasks = await tx.task.findMany({
           where: { workspaceId, status: "SPRINT" },
           select: { id: true },
+          take: 1000,
         });
         await tx.task.updateMany({
           where: { workspaceId, status: "SPRINT" },

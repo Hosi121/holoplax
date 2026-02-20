@@ -3,11 +3,8 @@ import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
 import { VelocityCreateSchema } from "../../../lib/contracts/velocity";
-import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
-
-const errors = createDomainErrors("VELOCITY");
 
 export async function GET() {
   return withApiHandler(
@@ -24,16 +21,18 @@ export async function GET() {
       if (!workspaceId) {
         return ok({ velocity: [] });
       }
+      // Fetch the most recent 20 entries. This is enough for the chart and
+      // far more than the 7 used for stats; it avoids a full-table scan on
+      // workspaces that have accumulated hundreds of velocity records.
       const velocity = await prisma.velocityEntry.findMany({
         where: { workspaceId },
         orderBy: { createdAt: "desc" },
+        take: 20,
       });
-      // 7件未満の場合は全データを、7件以上の場合は直近7件を使用
+      // Use the last 7 entries for summary stats (velocity is most meaningful
+      // over a short recent window).
       const targetCount = 7;
-      const recent =
-        velocity.length < targetCount
-          ? velocity.map((entry) => entry.points)
-          : velocity.slice(0, targetCount).map((entry) => entry.points);
+      const recent = velocity.slice(0, targetCount).map((entry) => entry.points);
       const avg =
         recent.length > 0 ? recent.reduce((sum, value) => sum + value, 0) / recent.length : 0;
       const variance =
@@ -100,7 +99,6 @@ export async function POST(request: Request) {
         domain: "VELOCITY",
         requireWorkspace: true,
       });
-      if (!workspaceId) return errors.unauthorized("workspaceId is required");
       const body = await parseBody(request, VelocityCreateSchema, {
         code: "VELOCITY_VALIDATION",
       });

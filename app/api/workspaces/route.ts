@@ -20,8 +20,12 @@ export async function GET() {
       const { userId } = await requireAuth();
       const memberships = await prisma.workspaceMember.findMany({
         where: { userId },
-        include: { workspace: true },
+        select: {
+          role: true,
+          workspace: { select: { id: true, name: true, ownerId: true } },
+        },
         orderBy: { createdAt: "desc" },
+        take: 100,
       });
       return ok({
         workspaces: memberships.map((m) => ({
@@ -59,6 +63,7 @@ export async function POST(request: Request) {
             create: { userId, role: "owner" },
           },
         },
+        select: { id: true, name: true, ownerId: true, createdAt: true },
       });
       await logAudit({
         actorId: userId,

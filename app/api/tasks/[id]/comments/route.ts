@@ -1,6 +1,7 @@
 import { requireWorkspaceAuth } from "../../../../../lib/api-guards";
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
+import { logAudit } from "../../../../../lib/audit";
 import { CommentCreateSchema } from "../../../../../lib/contracts/comment";
 import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
@@ -36,6 +37,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       const comments = await prisma.taskComment.findMany({
         where: { taskId, workspaceId },
         orderBy: { createdAt: "asc" },
+        take: 200,
         include: {
           author: {
             select: { id: true, name: true, email: true, image: true },
@@ -64,9 +66,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         domain: "COMMENT",
         requireWorkspace: true,
       });
-      if (!workspaceId) {
-        return errors.unauthorized("workspace not selected");
-      }
 
       const body = await parseBody(request, CommentCreateSchema, {
         code: "COMMENT_VALIDATION",
@@ -94,6 +93,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "TASK_COMMENT_CREATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { commentId: comment.id, taskId },
+      });
       return ok({ comment });
     },
   );

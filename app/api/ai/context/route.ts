@@ -73,6 +73,7 @@ export async function GET() {
       ];
       const acceptRateTypes = await prisma.memoryType.findMany({
         where: { key: { in: acceptRateKeys }, scope: "USER" },
+        take: acceptRateKeys.length,
       });
       const typeIdToKey = new Map(acceptRateTypes.map((t) => [t.id, t.key]));
 
@@ -83,6 +84,7 @@ export async function GET() {
           typeId: { in: acceptRateTypes.map((t) => t.id) },
         },
         orderBy: { updatedAt: "desc" },
+        take: acceptRateKeys.length,
       });
 
       const acceptRates: AiContextResponse["acceptRates"] = {

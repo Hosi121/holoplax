@@ -19,6 +19,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       const tasks = await prisma.task.findMany({
         where: { userId: id },
         orderBy: { updatedAt: "desc" },
+        take: 500,
         select: {
           id: true,
           title: true,

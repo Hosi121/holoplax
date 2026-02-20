@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../../../lib/api-guards";
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
+import { logAudit } from "../../../../../lib/audit";
 import { MemoryQuestionActionSchema } from "../../../../../lib/contracts/memory";
 import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
@@ -58,7 +59,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       const question = await prisma.memoryQuestion.findFirst({
         where: { id: questionId },
-        include: { type: true },
+        include: { type: { select: { scope: true } } },
       });
       if (!question) {
         return errors.badRequest("invalid question");
@@ -117,6 +118,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         });
       });
 
+      await logAudit({
+        actorId: userId,
+        action: `MEMORY_QUESTION_${nextStatus}`,
+        targetWorkspaceId: workspaceId ?? undefined,
+        metadata: { questionId, typeId: question.typeId },
+      });
       return ok({ question: updated });
     },
   );

@@ -11,7 +11,7 @@ import prisma from "../../../../lib/prisma";
 
 const errors = createDomainErrors("ADMIN");
 
-export async function GET() {
+export async function GET(request: Request) {
   return withApiHandler(
     {
       logLabel: "GET /api/admin/users",
@@ -23,8 +23,17 @@ export async function GET() {
     },
     async () => {
       await requireAdmin("ADMIN");
+      const { searchParams } = new URL(request.url);
+      // Cursor-based pagination. Default page size 100, max 500.
+      // Pass ?cursor=<lastUserId> to fetch the next page.
+      const cursor = searchParams.get("cursor") ?? undefined;
+      const rawLimit = Number.parseInt(searchParams.get("limit") ?? "100", 10);
+      const limit = Number.isNaN(rawLimit) || rawLimit <= 0 ? 100 : Math.min(rawLimit, 500);
+
       const users = await prisma.user.findMany({
         orderBy: { createdAt: "desc" },
+        take: limit + 1, // fetch one extra to know if there's a next page
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         select: {
           id: true,
           name: true,
@@ -42,7 +51,11 @@ export async function GET() {
           },
         },
       });
-      return ok({ users });
+
+      const hasMore = users.length > limit;
+      const page = hasMore ? users.slice(0, limit) : users;
+      const nextCursor = hasMore ? page[page.length - 1].id : null;
+      return ok({ users: page, nextCursor });
     },
   );
 }

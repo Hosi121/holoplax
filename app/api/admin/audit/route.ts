@@ -280,9 +280,13 @@ export async function GET(request: Request) {
             }
           : rangeWhere;
         if (format === "csv") {
+          // CSV export capped at 10 000 rows each to prevent unbounded
+          // memory allocation for wide custom date ranges.
+          const CSV_EXPORT_LIMIT = 10_000;
           const usageLogs = await prisma.aiUsage.findMany({
             where: rangeWhere,
             orderBy: { createdAt: "desc" },
+            take: CSV_EXPORT_LIMIT,
             select: {
               action: true,
               provider: true,
@@ -303,6 +307,7 @@ export async function GET(request: Request) {
               ...legacyRangeWhere,
             },
             orderBy: { createdAt: "desc" },
+            take: CSV_EXPORT_LIMIT,
             select: {
               action: true,
               metadata: true,
@@ -368,9 +373,11 @@ export async function GET(request: Request) {
               ],
             });
           }
-          csvRows
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-            .forEach((item) => rows.push(item.row));
+          rows.push(
+            ...csvRows
+              .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+              .map((item) => item.row),
+          );
           const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
           return new Response(csv, {
             status: 200,
@@ -608,6 +615,7 @@ export async function GET(request: Request) {
       }
 
       const logs = await prisma.auditLog.findMany({
+        where: rangeWhere,
         orderBy: { createdAt: "desc" },
         take: limit,
         include: {

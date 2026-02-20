@@ -35,7 +35,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         domain: "AI",
         requireWorkspace: true,
       });
-      if (!workspaceId) return errors.unauthorized("userID is required");
       const { id: prepId } = await params;
       const body = await parseBody(request, AiPrepActionSchema, {
         code: "AI_VALIDATION",
@@ -47,7 +46,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       const existing = await prisma.aiPrepOutput.findFirst({
         where: { id: prepId, workspaceId },
-        include: { task: true },
+        include: { task: { select: { id: true, description: true } } },
       });
       if (!existing) {
         return errors.badRequest("invalid prep output");

@@ -21,9 +21,20 @@ export async function GET() {
         return ok({ items: [], computedAt: null });
       }
 
+      // Load candidate tasks. We cap at 200 rows to prevent full-table scans
+      // on large workspaces. Tasks are ordered by points (desc) so that
+      // high-value items are never missed when the cap is hit; due-date urgency
+      // is then re-ranked in memory using the composite priority score.
       const tasks = await prisma.task.findMany({
         where: { workspaceId, status: { not: "DONE" } },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ points: "desc" }, { dueDate: "asc" }],
+        take: 200,
+        select: {
+          id: true,
+          title: true,
+          points: true,
+          dueDate: true,
+        },
       });
       const now = new Date();
       const scored = tasks
@@ -49,14 +60,6 @@ export async function GET() {
         })
         .sort((a, b) => b.priorityScore - a.priorityScore)
         .slice(0, 3);
-
-      const _itemsPayload = scored.map((item) => ({
-        taskId: item.taskId,
-        title: item.title,
-        priorityScore: item.priorityScore,
-        dueScore: item.dueScore,
-        reason: item.reason,
-      }));
 
       return ok({
         items: scored,

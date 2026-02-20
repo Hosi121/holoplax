@@ -3,6 +3,7 @@ import { requestAiChat } from "../../../../lib/ai-provider";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { AiPrepSchema } from "../../../../lib/contracts/ai";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -66,6 +67,7 @@ export async function GET(request: Request) {
       const outputs = await prisma.aiPrepOutput.findMany({
         where: { taskId, workspaceId },
         orderBy: { createdAt: "desc" },
+        take: 20,
         select: {
           id: true,
           type: true,
@@ -141,7 +143,12 @@ export async function POST(request: Request) {
           workspaceId,
         },
       });
-
+      await logAudit({
+        actorId: userId,
+        action: "AI_PREP_GENERATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { taskId, type },
+      });
       return ok({ output: saved });
     },
   );

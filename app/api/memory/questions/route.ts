@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { MemoryQuestionCreateSchema } from "../../../../lib/contracts/memory";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -38,6 +39,7 @@ export async function GET() {
           OR: [{ userId }, ...(workspaceId ? [{ workspaceId }] : [])],
         },
         orderBy: { createdAt: "asc" },
+        take: 50,
         select: {
           id: true,
           typeId: true,
@@ -115,6 +117,12 @@ export async function POST(request: Request) {
         },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "MEMORY_QUESTION_CREATE",
+        targetWorkspaceId: workspaceId ?? undefined,
+        metadata: { questionId: question.id, typeId, scope: type.scope },
+      });
       return ok({ question });
     },
   );

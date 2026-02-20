@@ -3,9 +3,9 @@ import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { TaskPointsSchema } from "../../../../lib/contracts/task";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import { badPoints } from "../../../../lib/points";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS } from "../../../../lib/types";
 
@@ -15,7 +15,9 @@ const BulkActionSchema = z.object({
   action: z.enum(["status", "delete", "points"]),
   taskIds: z.array(z.string()).min(1).max(100),
   status: z.enum(["BACKLOG", "SPRINT", "DONE"]).optional(),
-  points: z.number().optional(),
+  // TaskPointsSchema enforces the Fibonacci allowlist at parse time,
+  // replacing the runtime badPoints() check.
+  points: TaskPointsSchema.optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,9 +35,6 @@ export async function POST(request: Request) {
         domain: "TASK",
         requireWorkspace: true,
       });
-      if (!workspaceId) {
-        return errors.unauthorized("workspace not selected");
-      }
 
       const body = await parseBody(request, BulkActionSchema, {
         code: "TASK_VALIDATION",
@@ -104,16 +103,16 @@ export async function POST(request: Request) {
                     data: { status, sprintId: activeSprint.id },
                   });
 
-                  for (const task of tasksToMove) {
-                    await tx.taskStatusEvent.create({
-                      data: {
+                  if (tasksToMove.length > 0) {
+                    await tx.taskStatusEvent.createMany({
+                      data: tasksToMove.map((task) => ({
                         taskId: task.id,
                         fromStatus: task.status,
                         toStatus: status,
                         actorId: userId,
                         source: "bulk",
                         workspaceId,
-                      },
+                      })),
                     });
                   }
                 },
@@ -139,19 +138,18 @@ export async function POST(request: Request) {
                 },
               });
 
-              for (const task of existingTasks) {
-                if (task.status !== status) {
-                  await tx.taskStatusEvent.create({
-                    data: {
-                      taskId: task.id,
-                      fromStatus: task.status,
-                      toStatus: status,
-                      actorId: userId,
-                      source: "bulk",
-                      workspaceId,
-                    },
-                  });
-                }
+              const tasksChangingStatus = existingTasks.filter((t) => t.status !== status);
+              if (tasksChangingStatus.length > 0) {
+                await tx.taskStatusEvent.createMany({
+                  data: tasksChangingStatus.map((task) => ({
+                    taskId: task.id,
+                    fromStatus: task.status,
+                    toStatus: status,
+                    actorId: userId,
+                    source: "bulk",
+                    workspaceId,
+                  })),
+                });
               }
             });
           }
@@ -203,9 +201,6 @@ export async function POST(request: Request) {
         case "points": {
           if (points === undefined || points === null) {
             return errors.badRequest("points is required for points action");
-          }
-          if (badPoints(points)) {
-            return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
           }
 
           // For sprint tasks, the capacity check and the point update must be
