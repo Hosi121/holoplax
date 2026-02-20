@@ -1,6 +1,7 @@
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
+import { logAudit } from "../../../lib/audit";
 import { AutomationUpdateSchema } from "../../../lib/contracts/automation";
 import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
@@ -60,30 +61,27 @@ export async function POST(request: Request) {
       const body = await parseBody(request, AutomationUpdateSchema, {
         code: "AUTOMATION_VALIDATION",
       });
-      const low = Number(body.low);
-      const high = Number(body.high);
-      const stage = body.stage !== undefined ? Number(body.stage) : undefined;
-      if (!Number.isFinite(low) || !Number.isFinite(high)) {
-        return errors.badRequest("low/high are required");
-      }
+      // Schema guarantees low/high are finite numbers with 0 ≤ low < high ≤ 200.
+      // stage is intentionally not accepted from the client — it is server-managed.
+      const { low, high } = body;
       const existing = await prisma.userAutomationSetting.findFirst({
         where: { userId, workspaceId },
       });
       const saved = existing
         ? await prisma.userAutomationSetting.update({
             where: { id: existing.id },
-            data: { low, high, ...(Number.isFinite(stage) ? { stage } : {}) },
+            data: { low, high },
           })
         : await prisma.userAutomationSetting.create({
-            data: {
-              low,
-              high,
-              stage: Number.isFinite(stage) ? stage : 0,
-              userId,
-              workspaceId,
-            },
+            data: { low, high, stage: 0, userId, workspaceId },
           });
       const nextStage = saved.stage ?? 0;
+      await logAudit({
+        actorId: userId,
+        action: "AUTOMATION_SETTINGS_UPDATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { low, high, stage: nextStage },
+      });
       return ok({
         low: saved.low,
         high: saved.high,

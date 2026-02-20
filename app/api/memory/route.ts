@@ -8,6 +8,7 @@ import {
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
+import { logAudit } from "../../../lib/audit";
 import { MemoryClaimCreateSchema, MemoryClaimDeleteSchema } from "../../../lib/contracts/memory";
 import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
@@ -190,12 +191,14 @@ export async function GET() {
       const types = await prisma.memoryType.findMany({
         where: { scope: { in: scopes } },
         orderBy: { key: "asc" },
+        take: 100,
       });
 
       const userClaims = await prisma.memoryClaim.findMany({
         where: { userId, status: "ACTIVE" },
         orderBy: { updatedAt: "desc" },
         distinct: ["typeId"],
+        take: 100,
       });
 
       const workspaceClaims = workspaceId
@@ -203,6 +206,7 @@ export async function GET() {
             where: { workspaceId, status: "ACTIVE" },
             orderBy: { updatedAt: "desc" },
             distinct: ["typeId"],
+            take: 100,
           })
         : [];
 
@@ -287,6 +291,12 @@ export async function POST(request: Request) {
         });
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "MEMORY_CLAIM_CREATE",
+        targetWorkspaceId: workspaceId ?? undefined,
+        metadata: { claimId: claim.id, typeId, scope: type.scope },
+      });
       return ok({ claim });
     },
   );
@@ -327,6 +337,12 @@ export async function DELETE(request: Request) {
         data: { status: "STALE", validTo: new Date() },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "MEMORY_CLAIM_DELETE",
+        targetWorkspaceId: workspaceId ?? undefined,
+        metadata: { claimId, typeId: claim.typeId },
+      });
       return ok({ claim: updated });
     },
   );

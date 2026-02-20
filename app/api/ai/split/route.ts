@@ -2,6 +2,7 @@ import { generateSplitSuggestions } from "../../../../lib/ai-suggestions";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { AiSplitSchema } from "../../../../lib/contracts/ai";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -63,6 +64,12 @@ export async function POST(request: Request) {
         },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "AI_SPLIT_GENERATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { suggestionId: saved.id, taskId, splitCount: result.suggestions?.length },
+      });
       return ok({ suggestions: result.suggestions, suggestionId: saved.id });
     },
   );

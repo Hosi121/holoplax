@@ -1,6 +1,7 @@
 import { requireWorkspaceAuth } from "../../../../../../lib/api-guards";
 import { withApiHandler } from "../../../../../../lib/api-handler";
 import { ok } from "../../../../../../lib/api-response";
+import { logAudit } from "../../../../../../lib/audit";
 import { CommentUpdateSchema } from "../../../../../../lib/contracts/comment";
 import { createDomainErrors } from "../../../../../../lib/http/errors";
 import { parseBody } from "../../../../../../lib/http/validation";
@@ -27,9 +28,6 @@ export async function PATCH(
         domain: "COMMENT",
         requireWorkspace: true,
       });
-      if (!workspaceId) {
-        return errors.unauthorized("workspace not selected");
-      }
 
       const body = await parseBody(request, CommentUpdateSchema, {
         code: "COMMENT_VALIDATION",
@@ -58,7 +56,12 @@ export async function PATCH(
           },
         },
       });
-
+      await logAudit({
+        actorId: userId,
+        action: "TASK_COMMENT_UPDATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { commentId, taskId },
+      });
       return ok({ comment: updated });
     },
   );
@@ -83,9 +86,6 @@ export async function DELETE(
         domain: "COMMENT",
         requireWorkspace: true,
       });
-      if (!workspaceId) {
-        return errors.unauthorized("workspace not selected");
-      }
 
       const comment = await prisma.taskComment.findFirst({
         where: { id: commentId, taskId, workspaceId },
@@ -99,7 +99,12 @@ export async function DELETE(
       }
 
       await prisma.taskComment.delete({ where: { id: commentId } });
-
+      await logAudit({
+        actorId: userId,
+        action: "TASK_COMMENT_DELETE",
+        targetWorkspaceId: workspaceId,
+        metadata: { commentId, taskId },
+      });
       return ok({ ok: true });
     },
   );

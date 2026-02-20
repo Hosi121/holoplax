@@ -2,6 +2,7 @@ import { Prisma, type SuggestionReaction, type TaskType } from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { AiReactionSchema } from "../../../../lib/contracts/ai";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -64,6 +65,13 @@ export async function POST(request: Request) {
           userId,
           workspaceId: suggestion.workspaceId,
         },
+      });
+
+      await logAudit({
+        actorId: userId,
+        action: "AI_SUGGESTION_REACTION",
+        targetWorkspaceId: suggestion.workspaceId ?? undefined,
+        metadata: { suggestionId, reaction, suggestionType: suggestion.type },
       });
 
       // VIEWED以外の反応は即座にEMA更新（オプショナル、将来の拡張用）

@@ -214,7 +214,6 @@ export async function POST(request: Request) {
         domain: "TASK",
         requireWorkspace: true,
       });
-      if (!workspaceId) return errors.unauthorized("userID is required");
       const body = await parseBody(request, TaskCreateSchema, {
         code: "TASK_VALIDATION",
       });

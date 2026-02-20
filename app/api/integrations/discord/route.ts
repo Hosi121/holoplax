@@ -1,5 +1,6 @@
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { DiscordIntakeSchema } from "../../../../lib/contracts/integrations";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -58,6 +59,11 @@ export async function POST(request: Request) {
         },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "INTEGRATION_DISCORD_INTAKE_CREATE",
+        metadata: { itemId: item.id, title: item.title, author, channel },
+      });
       return ok({ itemId: item.id });
     },
   );

@@ -2,6 +2,8 @@ import { hash } from "bcryptjs";
 import { randomBytes } from "crypto";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
+import { getBaseUrl } from "../../../../lib/base-url";
 import { AuthRegisterSchema } from "../../../../lib/contracts/auth";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
       }
 
       const hashed = await hash(password, 10);
-      const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+      const baseUrl = getBaseUrl();
       const isLocal = baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1");
       // ローカル（localhost）ではメール認証を自動スキップ。強制したい場合は EMAIL_VERIFY_ALWAYS=true を設定。
       const forceVerify = process.env.EMAIL_VERIFY_ALWAYS === "true";
@@ -59,7 +61,6 @@ export async function POST(request: Request) {
               expiresAt: new Date(Date.now() + 1000 * 60 * 60),
             },
           });
-          const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
           const verifyUrl = `${baseUrl}/auth/verify?token=${token}`;
           await sendEmail({
             to: user.email ?? email,
@@ -71,6 +72,11 @@ export async function POST(request: Request) {
         }
       }
 
+      await logAudit({
+        actorId: user.id,
+        action: "AUTH_REGISTER",
+        metadata: { requiresEmailVerification: shouldVerify },
+      });
       return ok({ id: user.id, email: user.email });
     },
   );

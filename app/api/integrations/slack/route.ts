@@ -1,5 +1,6 @@
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { applyAutomationForTask } from "../../../../lib/automation";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { verifySlackSignature } from "../../../../lib/integrations/auth";
@@ -94,6 +95,12 @@ export async function POST(request: Request) {
       });
 
       if (userEnv) {
+        await logAudit({
+          actorId: userEnv,
+          action: "INTEGRATION_SLACK_TASK_CREATE",
+          targetWorkspaceId: workspaceId,
+          metadata: { taskId: task.id, title: task.title, points: task.points },
+        });
         await applyAutomationForTask({
           userId: userEnv,
           workspaceId,

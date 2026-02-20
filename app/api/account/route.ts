@@ -1,6 +1,7 @@
 import { requireAuth } from "../../../lib/api-auth";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
+import { logAudit } from "../../../lib/audit";
 import { AccountUpdateSchema } from "../../../lib/contracts/auth";
 import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
@@ -79,6 +80,16 @@ export async function PATCH(request: Request) {
           image: image || null,
         },
         select: { id: true, name: true, email: true, image: true },
+      });
+      await logAudit({
+        actorId: userId,
+        action: "ACCOUNT_UPDATE",
+        targetUserId: userId,
+        metadata: {
+          nameChanged: !!name,
+          emailChanged: !!email,
+          imageChanged: !!image,
+        },
       });
       return ok({ user: updated });
     },

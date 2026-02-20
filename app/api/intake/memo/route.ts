@@ -1,11 +1,13 @@
 import { requireAuth } from "../../../../lib/api-auth";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { IntakeMemoSchema } from "../../../../lib/contracts/intake";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { deriveIntakeTitle, findDuplicateTasks } from "../../../../lib/intake-helpers";
 import prisma from "../../../../lib/prisma";
+import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const errors = createDomainErrors("INTAKE");
 
@@ -56,9 +58,13 @@ export async function POST(request: Request) {
 
       const duplicates = workspaceId ? await findDuplicateTasks({ workspaceId, title }) : [];
 
+      await logAudit({
+        actorId: userId,
+        action: "INTAKE_MEMO_CREATE",
+        targetWorkspaceId: workspaceId ?? undefined,
+        metadata: { itemId: item.id },
+      });
       return ok({ item, duplicates });
     },
   );
 }
-
-import { resolveWorkspaceId } from "../../../../lib/workspace-context";

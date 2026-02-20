@@ -1,5 +1,6 @@
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
+import { logAudit } from "../../../../../lib/audit";
 import { applyAutomationForTask } from "../../../../../lib/automation";
 import { DiscordCreateTaskSchema } from "../../../../../lib/contracts/integrations";
 import { createDomainErrors } from "../../../../../lib/http/errors";
@@ -108,6 +109,13 @@ export async function POST(request: Request) {
           workspace: { connect: { id: workspaceId } },
           user: { connect: { id: userEnv } },
         },
+      });
+
+      await logAudit({
+        actorId: userEnv,
+        action: "INTEGRATION_DISCORD_TASK_CREATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { taskId: task.id, title: task.title, points: task.points, author, channel },
       });
 
       // 4. Apply automation rules

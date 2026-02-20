@@ -2,6 +2,7 @@ import { requestAiChat } from "../../../../lib/ai-provider";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
+import { logAudit } from "../../../../lib/audit";
 import { AiSuggestSchema } from "../../../../lib/contracts/ai";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
@@ -99,6 +100,12 @@ export async function POST(request: Request) {
               workspaceId,
             },
           });
+          await logAudit({
+            actorId: userId,
+            action: "AI_TIP_GENERATE",
+            targetWorkspaceId: workspaceId,
+            metadata: { suggestionId: saved.id, taskId, source: "ai" },
+          });
           return ok({ suggestion: result.content, suggestionId: saved.id });
         }
       } catch {
@@ -116,6 +123,12 @@ export async function POST(request: Request) {
           userId,
           workspaceId,
         },
+      });
+      await logAudit({
+        actorId: userId,
+        action: "AI_TIP_GENERATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { suggestionId: saved.id, taskId, source: "canned" },
       });
       return ok({ suggestion: `${title} のAI提案: ${pick}`, suggestionId: saved.id });
     },
