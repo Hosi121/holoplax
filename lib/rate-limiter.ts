@@ -148,6 +148,11 @@ export function getRateLimitConfig(pathname: string): RateLimitConfig {
     return RATE_LIMIT_CONFIGS.auth;
   }
 
+  // Password-change endpoint — treat like auth reset (brute-force target)
+  if (pathname.startsWith("/api/account/password")) {
+    return RATE_LIMIT_CONFIGS.authReset;
+  }
+
   // AI endpoints
   if (pathname.startsWith("/api/ai")) {
     return RATE_LIMIT_CONFIGS.ai;
