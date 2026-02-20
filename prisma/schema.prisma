@@ -66,6 +66,12 @@ enum UserRole {
   USER
 }
 
+enum WorkspaceRole {
+  owner
+  admin
+  member
+}
+
 enum SprintStatus {
   ACTIVE
   CLOSED
@@ -268,28 +274,28 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   workspaceId String
   userId      String
-  role        String    @default("member")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
+  role        WorkspaceRole @default(member)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
 
   @@unique([workspaceId, userId])
   @@index([userId])
 }
 
 model WorkspaceInvite {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   workspaceId String
   email       String
-  role        String    @default("member")
-  token       String    @unique
+  role        WorkspaceRole @default(member)
+  token       String        @unique
   expiresAt   DateTime
   acceptedAt  DateTime?
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
 }
 
 model AuditLog {

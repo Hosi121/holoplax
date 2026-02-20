@@ -12,7 +12,14 @@ import { AuthRegisterSchema } from "../contracts/auth";
 import { SprintStartSchema } from "../contracts/sprint";
 import { ALLOWED_AVATAR_MIME_TYPES, AvatarUploadSchema } from "../contracts/storage";
 import { TaskCreateSchema, TaskPointsSchema, TaskUpdateSchema } from "../contracts/task";
-import { WorkspaceCreateSchema } from "../contracts/workspace";
+import {
+  WorkspaceCreateSchema,
+  WorkspaceInviteAcceptSchema,
+  WorkspaceInviteCreateSchema,
+  WorkspaceMemberAddSchema,
+  WorkspaceMemberRoleUpdateSchema,
+  WorkspaceRoleSchema,
+} from "../contracts/workspace";
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -219,5 +226,50 @@ describe("AuthRegisterSchema", () => {
       password: "secret123",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WorkspaceRoleSchema — mirrors the DB-level WorkspaceRole enum
+// ---------------------------------------------------------------------------
+
+describe("WorkspaceRoleSchema", () => {
+  it("accepts all valid role values", () => {
+    for (const role of ["owner", "admin", "member"] as const) {
+      expect(WorkspaceRoleSchema.safeParse(role).success, `should accept "${role}"`).toBe(true);
+    }
+  });
+
+  it("rejects invalid role strings", () => {
+    for (const bad of ["superadmin", "OWNER", "Owner", "", "user", "god"]) {
+      expect(WorkspaceRoleSchema.safeParse(bad).success, `should reject "${bad}"`).toBe(false);
+    }
+  });
+
+  it("WorkspaceMemberRoleUpdateSchema normalises and validates role", () => {
+    // lowercase input accepted
+    expect(WorkspaceMemberRoleUpdateSchema.safeParse({ role: "admin" }).success).toBe(true);
+    // UPPERCASE input is normalised to lowercase
+    const upper = WorkspaceMemberRoleUpdateSchema.safeParse({ role: "ADMIN" });
+    expect(upper.success).toBe(true);
+    expect(upper.data?.role).toBe("admin");
+    // completely invalid value rejected
+    expect(WorkspaceMemberRoleUpdateSchema.safeParse({ role: "superadmin" }).success).toBe(false);
+  });
+
+  it("WorkspaceInviteCreateSchema defaults role to member when omitted", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({ email: "bob@example.com" });
+    expect(result.success).toBe(true);
+    // role is optional; absence is fine
+    expect(result.data).not.toHaveProperty("role");
+  });
+
+  it("WorkspaceInviteCreateSchema accepts a specific role", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({
+      email: "charlie@example.com",
+      role: "admin",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.role).toBe("admin");
   });
 });

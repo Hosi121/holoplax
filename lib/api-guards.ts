@@ -1,3 +1,4 @@
+import type { WorkspaceRole } from "@prisma/client";
 import { requireAuth } from "./api-auth";
 import { AppError } from "./http/errors";
 import prisma from "./prisma";
@@ -21,8 +22,6 @@ type AuthResult = Awaited<ReturnType<typeof requireAuth>>;
 
 type WorkspaceAuthResultRequired = AuthResult & { workspaceId: string };
 type WorkspaceAuthResultOptional = AuthResult & { workspaceId: string | null };
-
-type WorkspaceRole = "owner" | "admin" | "member";
 
 const forbid = (domain: string, message = "forbidden") => {
   throw new AppError(`${domain}_FORBIDDEN`, message, 403);
@@ -64,7 +63,7 @@ const requireWorkspaceRole = async (
     where: { workspaceId_userId: { workspaceId, userId } },
     select: { role: true },
   });
-  if (!membership || !roles.includes(membership.role as WorkspaceRole)) {
+  if (!membership || !roles.includes(membership.role)) {
     forbid(domain);
   }
   return membership;

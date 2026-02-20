@@ -1,3 +1,4 @@
+import type { WorkspaceRole } from "@prisma/client";
 import { requireAuth } from "../../../../../lib/api-auth";
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
       // Validate and consume the invite inside a serializable transaction.
       // This prevents two concurrent requests with the same token from both
       // succeeding (TOCTOU / double-acceptance attack).
-      let invite: { workspaceId: string; email: string; role: string } | null = null;
+      let invite: { workspaceId: string; email: string; role: WorkspaceRole } | null = null;
 
       try {
         invite = await prisma.$transaction(
