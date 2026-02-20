@@ -65,27 +65,35 @@ export async function POST(request: Request) {
         if (!targetTaskId) {
           return errors.badRequest("targetTaskId is required");
         }
+        // Fetch the target task for its current description before the transaction.
+        // If the task is deleted between here and the tx.task.update, Prisma will
+        // throw P2025 and the transaction will roll back (intakeItem stays PENDING).
         const targetTask = await prisma.task.findFirst({
           where: { id: targetTaskId, workspaceId },
+          select: { description: true },
         });
         if (!targetTask) {
           return errors.badRequest("invalid targetTaskId");
         }
         const appendix = `\n\n---\nInbox取り込み:\n${intakeItem.body}`;
-        await prisma.task.update({
-          where: { id: targetTaskId },
-          data: {
-            description: `${targetTask.description ?? ""}${appendix}`,
-          },
+        // Atomic: claim PENDING→CONVERTED and apply the merge in one transaction.
+        // The updateMany guard (status:"PENDING") ensures a concurrent duplicate
+        // request sees count=0 and aborts before touching the task description.
+        const claimed = await prisma.$transaction(async (tx) => {
+          const guard = await tx.intakeItem.updateMany({
+            where: { id: intakeId, status: "PENDING" },
+            data: { status: "CONVERTED", workspaceId, taskId: targetTaskId },
+          });
+          if (!guard.count) return false;
+          await tx.task.update({
+            where: { id: targetTaskId },
+            data: { description: `${targetTask.description ?? ""}${appendix}` },
+          });
+          return true;
         });
-        await prisma.intakeItem.update({
-          where: { id: intakeId },
-          data: {
-            status: "CONVERTED",
-            workspaceId,
-            taskId: targetTaskId,
-          },
-        });
+        if (!claimed) {
+          return errors.badRequest("intake item already converted or dismissed");
+        }
         await logAudit({
           actorId: userId,
           action: "INTAKE_MERGE",
@@ -99,27 +107,37 @@ export async function POST(request: Request) {
         const typeValue = Object.values(TASK_TYPE).includes(taskType as TaskType)
           ? (taskType as TaskType)
           : TASK_TYPE.PBI;
-        const task = await prisma.task.create({
-          data: {
-            title: intakeItem.title,
-            description: intakeItem.body,
-            points: 3,
-            urgency: SEVERITY.MEDIUM,
-            risk: SEVERITY.MEDIUM,
-            status: TASK_STATUS.BACKLOG,
-            type: typeValue,
-            user: { connect: { id: userId } },
-            workspace: { connect: { id: workspaceId } },
-          },
+        // Atomic: claim PENDING→CONVERTED and create the task in one transaction.
+        // The updateMany guard ensures at most one task is ever created per intake
+        // item, even under concurrent or duplicate-submit requests.
+        const task = await prisma.$transaction(async (tx) => {
+          const guard = await tx.intakeItem.updateMany({
+            where: { id: intakeId, status: "PENDING" },
+            data: { status: "CONVERTED", workspaceId },
+          });
+          if (!guard.count) return null;
+          const newTask = await tx.task.create({
+            data: {
+              title: intakeItem.title,
+              description: intakeItem.body,
+              points: 3,
+              urgency: SEVERITY.MEDIUM,
+              risk: SEVERITY.MEDIUM,
+              status: TASK_STATUS.BACKLOG,
+              type: typeValue,
+              user: { connect: { id: userId } },
+              workspace: { connect: { id: workspaceId } },
+            },
+          });
+          await tx.intakeItem.update({
+            where: { id: intakeId },
+            data: { taskId: newTask.id },
+          });
+          return newTask;
         });
-        await prisma.intakeItem.update({
-          where: { id: intakeId },
-          data: {
-            status: "CONVERTED",
-            workspaceId,
-            taskId: task.id,
-          },
-        });
+        if (!task) {
+          return errors.badRequest("intake item already converted or dismissed");
+        }
         await logAudit({
           actorId: userId,
           action: "INTAKE_CREATE",

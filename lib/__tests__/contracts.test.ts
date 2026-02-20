@@ -27,6 +27,8 @@ import {
   MAX_AVATAR_BYTES,
 } from "../contracts/storage";
 import {
+  TaskChecklistItemSchema,
+  TaskChecklistSchema,
   TaskCreateSchema,
   TaskPointsSchema,
   TaskStatusSchema,
@@ -968,6 +970,38 @@ describe("IntakeMemoSchema", () => {
     const result = IntakeMemoSchema.safeParse({ text: "idea", admin: true });
     expect(result.success).toBe(true);
     expect(result.data).not.toHaveProperty("admin");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TaskChecklistItemSchema / TaskChecklistSchema — length caps
+// ---------------------------------------------------------------------------
+
+describe("TaskChecklistItemSchema", () => {
+  it("accepts text up to 2000 characters", () => {
+    expect(TaskChecklistItemSchema.safeParse({ text: "x".repeat(2_000) }).success).toBe(true);
+  });
+
+  it("rejects text exceeding 2000 characters", () => {
+    expect(TaskChecklistItemSchema.safeParse({ text: "x".repeat(2_001) }).success).toBe(false);
+  });
+
+  it("strips unknown fields", () => {
+    const result = TaskChecklistItemSchema.safeParse({ text: "do it", extra: true });
+    expect(result.success).toBe(true);
+    expect(result.data).not.toHaveProperty("extra");
+  });
+});
+
+describe("TaskChecklistSchema", () => {
+  it("accepts up to 200 items", () => {
+    const items = Array.from({ length: 200 }, (_, i) => ({ text: `item ${i}` }));
+    expect(TaskChecklistSchema.safeParse(items).success).toBe(true);
+  });
+
+  it("rejects more than 200 items", () => {
+    const items = Array.from({ length: 201 }, (_, i) => ({ text: `item ${i}` }));
+    expect(TaskChecklistSchema.safeParse(items).success).toBe(false);
   });
 });
 

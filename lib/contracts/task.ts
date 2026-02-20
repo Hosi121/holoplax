@@ -32,12 +32,14 @@ export const TaskPointsSchema = z.coerce
 export const TaskChecklistItemSchema = z
   .object({
     id: z.string().optional(),
-    text: z.string().optional(),
+    // Cap text at 2000 chars — typical checklist items are short one-liners.
+    text: z.string().max(2_000).optional(),
     done: z.boolean().optional(),
   })
   .strip();
 
-export const TaskChecklistSchema = z.array(TaskChecklistItemSchema);
+// Cap at 200 items to prevent DoS via oversized checklist payloads.
+export const TaskChecklistSchema = z.array(TaskChecklistItemSchema).max(200);
 
 export const TaskCreateSchema = z
   .object({
