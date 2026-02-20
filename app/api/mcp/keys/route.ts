@@ -2,7 +2,10 @@ import { createHash, randomBytes } from "crypto";
 import { requireWorkspaceAuth } from "@/lib/api-guards";
 import { withApiHandler } from "@/lib/api-handler";
 import { ok } from "@/lib/api-response";
+import { logAudit } from "@/lib/audit";
+import { McpKeyCreateSchema } from "@/lib/contracts/mcp";
 import { AppError } from "@/lib/http/errors";
+import { parseBody } from "@/lib/http/validation";
 import prisma from "@/lib/prisma";
 
 // Generate a secure API key
@@ -30,10 +33,13 @@ export async function GET() {
     async () => {
       const { userId } = await requireWorkspaceAuth({ requireWorkspace: true });
 
+      const now = new Date();
       const keys = await prisma.mcpApiKey.findMany({
         where: {
           userId,
           revokedAt: null,
+          // Exclude keys that have an explicit expiry in the past.
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         },
         select: {
           id: true,
@@ -52,6 +58,7 @@ export async function GET() {
         orderBy: {
           createdAt: "desc",
         },
+        take: 50,
       });
 
       return ok({ keys });
@@ -73,16 +80,9 @@ export async function POST(request: Request) {
     async () => {
       const { userId } = await requireWorkspaceAuth({ requireWorkspace: true });
 
-      const body = await request.json();
-      const { name, workspaceId, expiresInDays } = body;
-
-      if (!name || typeof name !== "string") {
-        throw new AppError("MCP_KEYS_BAD_REQUEST", "Name is required", 400);
-      }
-
-      if (!workspaceId || typeof workspaceId !== "string") {
-        throw new AppError("MCP_KEYS_BAD_REQUEST", "Workspace ID is required", 400);
-      }
+      const { name, workspaceId, expiresInDays } = await parseBody(request, McpKeyCreateSchema, {
+        code: "MCP_KEYS_BAD_REQUEST",
+      });
 
       // Verify user has access to the workspace
       const membership = await prisma.workspaceMember.findFirst({
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
 
       // Calculate expiration
       let expiresAt: Date | null = null;
-      if (expiresInDays && typeof expiresInDays === "number" && expiresInDays > 0) {
+      if (expiresInDays) {
         expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + expiresInDays);
       }
@@ -128,6 +128,12 @@ export async function POST(request: Request) {
         },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "MCP_KEY_CREATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { keyId: keyRecord.id, keyPrefix, expiresAt: expiresAt?.toISOString() ?? null },
+      });
       // Return the full key only once (it cannot be retrieved later)
       return ok({
         key: apiKey,
@@ -152,7 +158,7 @@ export async function DELETE(request: Request) {
       const { userId } = await requireWorkspaceAuth({ requireWorkspace: true });
 
       const { searchParams } = new URL(request.url);
-      const keyId = searchParams.get("id");
+      const keyId = searchParams.get("id")?.trim();
 
       if (!keyId) {
         throw new AppError("MCP_KEYS_BAD_REQUEST", "Key ID is required", 400);
@@ -176,6 +182,11 @@ export async function DELETE(request: Request) {
         data: { revokedAt: new Date() },
       });
 
+      await logAudit({
+        actorId: userId,
+        action: "MCP_KEY_REVOKE",
+        metadata: { keyId, keyPrefix: key.keyPrefix },
+      });
       return ok({ success: true });
     },
   );

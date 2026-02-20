@@ -12,7 +12,7 @@ const WorkspaceRoleInputSchema = z
 
 export const WorkspaceCreateSchema = z
   .object({
-    name: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "name is required")),
+    name: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "name is required").max(100)),
   })
   .strip();
 

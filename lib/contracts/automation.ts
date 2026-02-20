@@ -4,11 +4,19 @@ const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value))
 
 export const AutomationUpdateSchema = z
   .object({
-    low: z.coerce.number(),
-    high: z.coerce.number(),
-    stage: z.coerce.number().optional(),
+    // Points thresholds for automation triggers. Capped at 200 to prevent
+    // nonsensical values; negative thresholds make no sense for story points.
+    low: z.coerce.number().min(0).max(200),
+    high: z.coerce.number().min(0).max(200),
+    // NOTE: `stage` is intentionally absent.  It is a server-managed field
+    // advanced by the approval flow (maybeRaiseStage) with a 7-day cooldown.
+    // Accepting it here would let users bypass the progression system.
   })
-  .strip();
+  .strip()
+  .refine((data) => data.low < data.high, {
+    message: "low must be less than high",
+    path: ["low"],
+  });
 
 export const AutomationApprovalSchema = z
   .object({

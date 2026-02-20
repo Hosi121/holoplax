@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TaskPointsSchema } from "./task";
 
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
 const nonEmptyString = (message: string) =>
@@ -11,9 +12,6 @@ const nullableId = z
     return text.length ? text : null;
   }, z.string().trim().min(1).nullable())
   .optional();
-
-const positiveNumber = (message: string) =>
-  z.coerce.number().refine((value) => Number.isFinite(value) && value > 0, { message });
 
 export const AiSuggestSchema = z
   .object({
@@ -35,7 +33,7 @@ export const AiSplitSchema = z
   .object({
     title: nonEmptyString("title is required"),
     description: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
-    points: positiveNumber("points must be greater than 0"),
+    points: TaskPointsSchema,
     taskId: nullableId,
   })
   .strip();

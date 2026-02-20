@@ -25,13 +25,12 @@ export async function POST(request: Request) {
       const body = await parseBody(request, AvatarUploadSchema, {
         code: "STORAGE_VALIDATION",
       });
-      const filename = body.filename;
-      const contentType = body.contentType;
+      const { filename, contentType, size } = body;
 
       await ensureAvatarBucket();
       const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
       const key = `avatars/${userId}/${randomUUID()}-${safeName}`;
-      const uploadUrl = await createAvatarUploadUrl({ key, contentType });
+      const uploadUrl = await createAvatarUploadUrl({ key, contentType, contentLength: size });
       const publicUrl = getPublicObjectUrl(key);
       return ok({ uploadUrl, publicUrl, key });
     },

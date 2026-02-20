@@ -9,6 +9,11 @@ export const TaskStatusSchema = z.enum(taskStatusValues);
 export const TaskTypeSchema = z.enum(taskTypeValues);
 
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
+// Converts null/undefined/"" to undefined so optional enum fields treat
+// empty/absent input as "not provided" rather than a parse failure.
+const toEnumInput = (value: unknown) =>
+  value == null || String(value).trim() === "" ? undefined : String(value).trim();
+
 const nullableId = z
   .preprocess((value) => {
     if (value == null) return null;
@@ -36,20 +41,20 @@ export const TaskChecklistSchema = z.array(TaskChecklistItemSchema);
 
 export const TaskCreateSchema = z
   .object({
-    title: z.string().min(1),
-    description: z.string().optional(),
-    definitionOfDone: z.string().optional(),
+    title: z.string().min(1).max(500),
+    description: z.string().max(100_000).optional(),
+    definitionOfDone: z.string().max(50_000).optional(),
     checklist: TaskChecklistSchema.optional().nullable(),
     points: TaskPointsSchema,
     urgency: z.enum(severityValues).optional(),
     risk: z.enum(severityValues).optional(),
-    status: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
-    type: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
+    status: z.preprocess(toEnumInput, TaskStatusSchema.optional()),
+    type: z.preprocess(toEnumInput, TaskTypeSchema.optional()),
     parentId: nullableId,
     dueDate: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     assigneeId: nullableId,
-    tags: z.array(z.any()).optional(),
-    dependencyIds: z.array(z.any()).optional(),
+    tags: z.array(z.string().max(100)).max(50).optional(),
+    dependencyIds: z.array(z.string()).max(100).optional(),
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     routineNextAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
   })
@@ -57,15 +62,15 @@ export const TaskCreateSchema = z
 
 export const TaskUpdateSchema = z
   .object({
-    title: z.string().min(1).optional(),
-    description: z.string().optional(),
-    definitionOfDone: z.string().optional(),
+    title: z.string().min(1).max(500).optional(),
+    description: z.string().max(100_000).optional(),
+    definitionOfDone: z.string().max(50_000).optional(),
     checklist: TaskChecklistSchema.optional().nullable(),
     points: TaskPointsSchema.optional(),
     urgency: z.enum(severityValues).optional(),
     risk: z.enum(severityValues).optional(),
-    status: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
-    type: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
+    status: z.preprocess(toEnumInput, TaskStatusSchema.optional()),
+    type: z.preprocess(toEnumInput, TaskTypeSchema.optional()),
     // NOTE: automationState is intentionally absent here. It is an internal
     // field managed exclusively by the server-side automation engine. Allowing
     // users to set SPLIT_PARENT / SPLIT_CHILD / DELEGATED etc. directly would
@@ -73,8 +78,8 @@ export const TaskUpdateSchema = z
     parentId: nullableId,
     dueDate: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     assigneeId: nullableId,
-    tags: z.array(z.any()).optional(),
-    dependencyIds: z.array(z.any()).optional(),
+    tags: z.array(z.string().max(100)).max(50).optional(),
+    dependencyIds: z.array(z.string()).max(100).optional(),
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     routineNextAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
   })

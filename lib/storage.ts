@@ -61,12 +61,20 @@ export async function ensureAvatarBucket() {
   }
 }
 
-export async function createAvatarUploadUrl(params: { key: string; contentType: string }) {
+export async function createAvatarUploadUrl(params: {
+  key: string;
+  contentType: string;
+  contentLength: number;
+}) {
   const client = getClient();
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: params.key,
     ContentType: params.contentType,
+    // Signing the Content-Length prevents uploading a file of a different
+    // size than the one the client declared — S3/MinIO will reject the PUT
+    // if the actual body length doesn't match.
+    ContentLength: params.contentLength,
   });
   const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 5 });
   return uploadUrl;

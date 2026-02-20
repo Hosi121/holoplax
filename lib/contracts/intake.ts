@@ -14,7 +14,7 @@ const nullableId = z
 
 export const IntakeMemoSchema = z
   .object({
-    text: nonEmptyString("text is required"),
+    text: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "text is required").max(50_000)),
     workspaceId: nullableId,
     assignToCurrentWorkspace: z.boolean().optional(),
   })
