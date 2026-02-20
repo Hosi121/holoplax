@@ -61,55 +61,74 @@ export async function POST(request: Request) {
             return errors.badRequest("status is required for status action");
           }
 
-          // Check sprint capacity if moving to sprint
           if (status === TASK_STATUS.SPRINT) {
-            const activeSprint = await prisma.sprint.findFirst({
-              where: { workspaceId, status: "ACTIVE" },
-              orderBy: { startedAt: "desc" },
-              select: { id: true, capacityPoints: true },
-            });
+            // The sprint capacity check and the task updates must happen inside a
+            // single serializable transaction.  Without this, two concurrent
+            // requests can both pass the capacity check and then both write,
+            // causing the sprint to be over-committed (TOCTOU race condition).
+            let capacityExceeded = false;
 
-            if (!activeSprint) {
-              return errors.badRequest("active sprint not found");
-            }
+            await prisma
+              .$transaction(
+                async (tx) => {
+                  const activeSprint = await tx.sprint.findFirst({
+                    where: { workspaceId, status: "ACTIVE" },
+                    orderBy: { startedAt: "desc" },
+                    select: { id: true, capacityPoints: true },
+                  });
 
-            const currentSprintPoints = await prisma.task.aggregate({
-              where: {
-                workspaceId,
-                status: TASK_STATUS.SPRINT,
-                id: { notIn: validTaskIds },
-              },
-              _sum: { points: true },
-            });
+                  if (!activeSprint) {
+                    throw new Error("NO_ACTIVE_SPRINT");
+                  }
 
-            const tasksToMove = existingTasks.filter((t) => t.status !== TASK_STATUS.SPRINT);
-            const additionalPoints = tasksToMove.reduce((sum, t) => sum + t.points, 0);
-            const nextTotal = (currentSprintPoints._sum.points ?? 0) + additionalPoints;
+                  const currentSprintPoints = await tx.task.aggregate({
+                    where: {
+                      workspaceId,
+                      status: TASK_STATUS.SPRINT,
+                      id: { notIn: validTaskIds },
+                    },
+                    _sum: { points: true },
+                  });
 
-            if (nextTotal > activeSprint.capacityPoints) {
-              return errors.badRequest("sprint capacity exceeded");
-            }
+                  const tasksToMove = existingTasks.filter((t) => t.status !== TASK_STATUS.SPRINT);
+                  const additionalPoints = tasksToMove.reduce((sum, t) => sum + t.points, 0);
+                  const nextTotal = (currentSprintPoints._sum.points ?? 0) + additionalPoints;
 
-            await prisma.$transaction(async (tx) => {
-              await tx.task.updateMany({
-                where: { id: { in: validTaskIds }, workspaceId },
-                data: { status, sprintId: activeSprint.id },
+                  if (nextTotal > activeSprint.capacityPoints) {
+                    capacityExceeded = true;
+                    return; // abort writes; transaction still commits cleanly
+                  }
+
+                  await tx.task.updateMany({
+                    where: { id: { in: validTaskIds }, workspaceId },
+                    data: { status, sprintId: activeSprint.id },
+                  });
+
+                  for (const task of tasksToMove) {
+                    await tx.taskStatusEvent.create({
+                      data: {
+                        taskId: task.id,
+                        fromStatus: task.status,
+                        toStatus: status,
+                        actorId: userId,
+                        source: "bulk",
+                        workspaceId,
+                      },
+                    });
+                  }
+                },
+                { isolationLevel: "Serializable" },
+              )
+              .catch((err: unknown) => {
+                if (err instanceof Error && err.message === "NO_ACTIVE_SPRINT") {
+                  throw err; // re-throw to be caught below
+                }
+                throw err;
               });
 
-              // Create status events
-              for (const task of tasksToMove) {
-                await tx.taskStatusEvent.create({
-                  data: {
-                    taskId: task.id,
-                    fromStatus: task.status,
-                    toStatus: status,
-                    actorId: userId,
-                    source: "bulk",
-                    workspaceId,
-                  },
-                });
-              }
-            });
+            if (capacityExceeded) {
+              return errors.badRequest("sprint capacity exceeded");
+            }
           } else {
             await prisma.$transaction(async (tx) => {
               await tx.task.updateMany({
@@ -120,7 +139,6 @@ export async function POST(request: Request) {
                 },
               });
 
-              // Create status events
               for (const task of existingTasks) {
                 if (task.status !== status) {
                   await tx.taskStatusEvent.create({
@@ -190,38 +208,53 @@ export async function POST(request: Request) {
             return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
           }
 
-          // Check sprint capacity if tasks are in sprint
+          // For sprint tasks, the capacity check and the point update must be
+          // atomic.  The "points" action was previously unguarded (no transaction
+          // at all), making it vulnerable to concurrent over-commit.
           const sprintTasks = existingTasks.filter((t) => t.status === TASK_STATUS.SPRINT);
-          if (sprintTasks.length > 0) {
-            const activeSprint = await prisma.sprint.findFirst({
-              where: { workspaceId, status: "ACTIVE" },
-              orderBy: { startedAt: "desc" },
-              select: { id: true, capacityPoints: true },
-            });
 
-            if (activeSprint) {
-              const currentSprintPoints = await prisma.task.aggregate({
-                where: {
-                  workspaceId,
-                  status: TASK_STATUS.SPRINT,
-                  id: { notIn: validTaskIds },
-                },
-                _sum: { points: true },
-              });
+          let pointsCapacityExceeded = false;
 
-              const nextTotal =
-                (currentSprintPoints._sum.points ?? 0) + sprintTasks.length * points;
+          await prisma.$transaction(
+            async (tx) => {
+              if (sprintTasks.length > 0) {
+                const activeSprint = await tx.sprint.findFirst({
+                  where: { workspaceId, status: "ACTIVE" },
+                  orderBy: { startedAt: "desc" },
+                  select: { id: true, capacityPoints: true },
+                });
 
-              if (nextTotal > activeSprint.capacityPoints) {
-                return errors.badRequest("sprint capacity exceeded");
+                if (activeSprint) {
+                  const currentSprintPoints = await tx.task.aggregate({
+                    where: {
+                      workspaceId,
+                      status: TASK_STATUS.SPRINT,
+                      id: { notIn: validTaskIds },
+                    },
+                    _sum: { points: true },
+                  });
+
+                  const nextTotal =
+                    (currentSprintPoints._sum.points ?? 0) + sprintTasks.length * points;
+
+                  if (nextTotal > activeSprint.capacityPoints) {
+                    pointsCapacityExceeded = true;
+                    return; // abort writes; transaction still commits cleanly
+                  }
+                }
               }
-            }
-          }
 
-          await prisma.task.updateMany({
-            where: { id: { in: validTaskIds }, workspaceId },
-            data: { points },
-          });
+              await tx.task.updateMany({
+                where: { id: { in: validTaskIds }, workspaceId },
+                data: { points },
+              });
+            },
+            { isolationLevel: "Serializable" },
+          );
+
+          if (pointsCapacityExceeded) {
+            return errors.badRequest("sprint capacity exceeded");
+          }
 
           await logAudit({
             actorId: userId,

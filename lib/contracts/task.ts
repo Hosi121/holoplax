@@ -1,9 +1,8 @@
 import { z } from "zod";
-import { AUTOMATION_STATE, SEVERITY, TASK_STATUS, TASK_TYPE } from "../types";
+import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../types";
 
 const taskStatusValues = Object.values(TASK_STATUS) as [string, ...string[]];
 const taskTypeValues = Object.values(TASK_TYPE) as [string, ...string[]];
-const automationStateValues = Object.values(AUTOMATION_STATE) as [string, ...string[]];
 const severityValues = Object.values(SEVERITY) as [string, ...string[]];
 
 export const TaskStatusSchema = z.enum(taskStatusValues);
@@ -67,7 +66,10 @@ export const TaskUpdateSchema = z
     risk: z.enum(severityValues).optional(),
     status: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     type: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
-    automationState: z.enum(automationStateValues).optional(),
+    // NOTE: automationState is intentionally absent here. It is an internal
+    // field managed exclusively by the server-side automation engine. Allowing
+    // users to set SPLIT_PARENT / SPLIT_CHILD / DELEGATED etc. directly would
+    // break automation invariants.
     parentId: nullableId,
     dueDate: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     assigneeId: nullableId,

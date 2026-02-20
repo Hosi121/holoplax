@@ -11,15 +11,7 @@ import { parseBody } from "../../../../lib/http/validation";
 import { logger } from "../../../../lib/logger";
 import { badPoints } from "../../../../lib/points";
 import prisma from "../../../../lib/prisma";
-import {
-  AUTOMATION_STATE,
-  type AutomationState,
-  TASK_STATUS,
-  TASK_TYPE,
-} from "../../../../lib/types";
-
-const isAutomationState = (value: unknown): value is AutomationState =>
-  Object.values(AUTOMATION_STATE).includes(value as AutomationState);
+import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 
 const isTaskStatus = (value: unknown): value is TaskStatus =>
   Object.values(TASK_STATUS).includes(value as TaskStatus);
@@ -125,11 +117,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (body.type !== undefined) {
         data.type = isTaskType(body.type) ? body.type : TASK_TYPE.PBI;
       }
-      if (body.automationState !== undefined) {
-        if (isAutomationState(body.automationState)) {
-          data.automationState = body.automationState;
-        }
-      }
+      // automationState is intentionally not writable by users.
+      // It is managed exclusively by the server-side automation engine.
       if (body.dueDate !== undefined) {
         data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
       }
