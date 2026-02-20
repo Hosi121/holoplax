@@ -230,46 +230,157 @@ describe("AuthRegisterSchema", () => {
 });
 
 // ---------------------------------------------------------------------------
-// WorkspaceRoleSchema — mirrors the DB-level WorkspaceRole enum
+// WorkspaceRole — enum validation and case normalization
+//
+// These tests pin the exact set of valid role strings so that any accidental
+// widening (e.g. adding "superadmin") or narrowing is caught immediately.
+// The DB enum created in migration 20260301010000 accepts exactly these three
+// values, so the Zod layer and DB layer must stay in sync.
 // ---------------------------------------------------------------------------
 
 describe("WorkspaceRoleSchema", () => {
-  it("accepts all valid role values", () => {
+  it("accepts all three valid roles", () => {
     for (const role of ["owner", "admin", "member"] as const) {
       expect(WorkspaceRoleSchema.safeParse(role).success, `should accept "${role}"`).toBe(true);
     }
   });
 
   it("rejects invalid role strings", () => {
-    for (const bad of ["superadmin", "OWNER", "Owner", "", "user", "god"]) {
-      expect(WorkspaceRoleSchema.safeParse(bad).success, `should reject "${bad}"`).toBe(false);
+    const invalid = ["superadmin", "moderator", "viewer", "OWNER", "ADMIN", "MEMBER", "", " "];
+    for (const role of invalid) {
+      expect(WorkspaceRoleSchema.safeParse(role).success, `should reject "${role}"`).toBe(false);
     }
   });
 
-  it("WorkspaceMemberRoleUpdateSchema normalises and validates role", () => {
-    // lowercase input accepted
-    expect(WorkspaceMemberRoleUpdateSchema.safeParse({ role: "admin" }).success).toBe(true);
-    // UPPERCASE input is normalised to lowercase
-    const upper = WorkspaceMemberRoleUpdateSchema.safeParse({ role: "ADMIN" });
-    expect(upper.success).toBe(true);
-    expect(upper.data?.role).toBe("admin");
-    // completely invalid value rejected
-    expect(WorkspaceMemberRoleUpdateSchema.safeParse({ role: "superadmin" }).success).toBe(false);
+  it("returns the exact role string as output", () => {
+    expect(WorkspaceRoleSchema.parse("owner")).toBe("owner");
+    expect(WorkspaceRoleSchema.parse("admin")).toBe("admin");
+    expect(WorkspaceRoleSchema.parse("member")).toBe("member");
   });
+});
 
-  it("WorkspaceInviteCreateSchema defaults role to member when omitted", () => {
-    const result = WorkspaceInviteCreateSchema.safeParse({ email: "bob@example.com" });
-    expect(result.success).toBe(true);
-    // role is optional; absence is fine
-    expect(result.data).not.toHaveProperty("role");
-  });
+describe("WorkspaceInviteCreateSchema — role input", () => {
+  const base = { email: "alice@example.com" };
 
-  it("WorkspaceInviteCreateSchema accepts a specific role", () => {
-    const result = WorkspaceInviteCreateSchema.safeParse({
-      email: "charlie@example.com",
-      role: "admin",
-    });
+  it("accepts a valid role", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({ ...base, role: "admin" });
     expect(result.success).toBe(true);
     expect(result.data?.role).toBe("admin");
+  });
+
+  it("normalises uppercase role to lowercase (OWNER → owner)", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({ ...base, role: "OWNER" });
+    expect(result.success).toBe(true);
+    expect(result.data?.role).toBe("owner");
+  });
+
+  it("normalises mixed-case role (Admin → admin)", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({ ...base, role: "Admin" });
+    expect(result.success).toBe(true);
+    expect(result.data?.role).toBe("admin");
+  });
+
+  it("rejects an invalid role", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({ ...base, role: "superadmin" });
+    expect(result.success).toBe(false);
+  });
+
+  it("omitting role is allowed (role is optional)", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse(base);
+    expect(result.success).toBe(true);
+    expect(result.data?.role).toBeUndefined();
+  });
+
+  it("requires a valid email", () => {
+    expect(WorkspaceInviteCreateSchema.safeParse({ email: "not-an-email" }).success).toBe(false);
+    expect(WorkspaceInviteCreateSchema.safeParse({ role: "member" }).success).toBe(false);
+  });
+
+  it("strips unknown fields", () => {
+    const result = WorkspaceInviteCreateSchema.safeParse({
+      ...base,
+      role: "member",
+      secret: "injected",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).not.toHaveProperty("secret");
+  });
+});
+
+describe("WorkspaceMemberAddSchema — role input", () => {
+  const base = { email: "bob@example.com" };
+
+  it("accepts member (default role) without explicit role field", () => {
+    const result = WorkspaceMemberAddSchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts all valid roles", () => {
+    for (const role of ["owner", "admin", "member"]) {
+      const r = WorkspaceMemberAddSchema.safeParse({ ...base, role });
+      expect(r.success, `should accept role "${role}"`).toBe(true);
+    }
+  });
+
+  it("rejects unknown role values", () => {
+    const result = WorkspaceMemberAddSchema.safeParse({ ...base, role: "guest" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("WorkspaceMemberRoleUpdateSchema", () => {
+  it("requires role", () => {
+    expect(WorkspaceMemberRoleUpdateSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts valid roles", () => {
+    for (const role of ["owner", "admin", "member"]) {
+      const r = WorkspaceMemberRoleUpdateSchema.safeParse({ role });
+      expect(r.success, `should accept "${role}"`).toBe(true);
+      expect(r.data?.role).toBe(role);
+    }
+  });
+
+  it("normalises ADMIN → admin", () => {
+    const r = WorkspaceMemberRoleUpdateSchema.safeParse({ role: "ADMIN" });
+    expect(r.success).toBe(true);
+    expect(r.data?.role).toBe("admin");
+  });
+
+  it("rejects invalid roles", () => {
+    expect(WorkspaceMemberRoleUpdateSchema.safeParse({ role: "superadmin" }).success).toBe(false);
+    expect(WorkspaceMemberRoleUpdateSchema.safeParse({ role: "" }).success).toBe(false);
+  });
+
+  it("strips unknown fields", () => {
+    const r = WorkspaceMemberRoleUpdateSchema.safeParse({ role: "member", extra: "bad" });
+    expect(r.success).toBe(true);
+    expect(r.data).not.toHaveProperty("extra");
+  });
+});
+
+describe("WorkspaceInviteAcceptSchema", () => {
+  it("requires a non-empty token", () => {
+    expect(WorkspaceInviteAcceptSchema.safeParse({}).success).toBe(false);
+    expect(WorkspaceInviteAcceptSchema.safeParse({ token: "" }).success).toBe(false);
+    expect(WorkspaceInviteAcceptSchema.safeParse({ token: "   " }).success).toBe(false);
+  });
+
+  it("accepts a valid token", () => {
+    const r = WorkspaceInviteAcceptSchema.safeParse({ token: "abc123" });
+    expect(r.success).toBe(true);
+    expect(r.data?.token).toBe("abc123");
+  });
+
+  it("trims whitespace from token", () => {
+    const r = WorkspaceInviteAcceptSchema.safeParse({ token: "  tok  " });
+    expect(r.success).toBe(true);
+    expect(r.data?.token).toBe("tok");
+  });
+
+  it("strips unknown fields", () => {
+    const r = WorkspaceInviteAcceptSchema.safeParse({ token: "tok", extra: "bad" });
+    expect(r.success).toBe(true);
+    expect(r.data).not.toHaveProperty("extra");
   });
 });
