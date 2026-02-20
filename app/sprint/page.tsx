@@ -3,6 +3,7 @@
 import { Inbox } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import { SEVERITY, SEVERITY_LABELS, type Severity, TASK_STATUS } from "../../lib/types";
 import { EmptyState } from "../components/empty-state";
 import { HelpTooltip } from "../components/help-tooltip";
@@ -85,7 +86,7 @@ export default function SprintPage() {
       setMembers([]);
       return;
     }
-    const res = await fetch(`/api/workspaces/${workspaceId}/members`);
+    const res = await apiFetch(`/api/workspaces/${workspaceId}/members`);
     if (!res.ok) return;
     const data = await res.json();
     setMembers(data.members ?? []);

@@ -2,6 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import type { CommentDTO } from "../../lib/contracts/comment";
 import { LoadingButton } from "./loading-button";
 
@@ -22,7 +23,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
   const fetchComments = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/comments`);
+      const res = await apiFetch(`/api/tasks/${taskId}/comments`);
       if (res.ok) {
         const data = await res.json();
         setComments(data.comments ?? []);
@@ -40,7 +41,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
     if (!newComment.trim()) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/comments`, {
+      const res = await apiFetch(`/api/tasks/${taskId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: newComment.trim() }),
@@ -59,7 +60,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
     if (!editContent.trim()) return;
     setEditSubmitting(true);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/comments/${commentId}`, {
+      const res = await apiFetch(`/api/tasks/${taskId}/comments/${commentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editContent.trim() }),
@@ -77,7 +78,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
 
   const handleDelete = async (commentId: string) => {
     if (!window.confirm("このコメントを削除しますか？")) return;
-    const res = await fetch(`/api/tasks/${taskId}/comments/${commentId}`, {
+    const res = await apiFetch(`/api/tasks/${taskId}/comments/${commentId}`, {
       method: "DELETE",
     });
     if (res.ok) {

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import type { TaskStatus } from "../../../lib/types";
 
 type BulkAction = "status" | "delete" | "points";
@@ -43,7 +44,7 @@ export function useBulkOperations(onSuccess?: () => void) {
 
       setLoading(true);
       try {
-        const res = await fetch("/api/tasks/bulk", {
+        const res = await apiFetch("/api/tasks/bulk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

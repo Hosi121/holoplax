@@ -25,7 +25,8 @@ export default function SettingsPage() {
 }
 
 function SettingsContent() {
-  const { update } = useSession();
+  const { data: session, update } = useSession();
+  const isAdmin = session?.user?.role === "ADMIN";
   const router = useRouter();
   const searchParams = useSearchParams();
   const { workspaceId, ready } = useWorkspaceId();
@@ -458,32 +459,40 @@ function SettingsContent() {
           </div>
         </div>
 
-        <div className="border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">通知</h3>
-          <p className="text-sm text-slate-600">MVPでは通知オフ。後で Slack/メールを追加。</p>
-          <div className="mt-3 flex items-center gap-2 text-sm">
-            <button
-              onClick={() => setNotifications((v) => !v)}
-              className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-            >
-              通知を{notifications ? "無効化" : "有効化"}
-            </button>
-            <span className="text-xs text-slate-600">現在: {notifications ? "オン" : "オフ"}</span>
+        {isAdmin && (
+          <div className="border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">通知</h3>
+            <p className="text-sm text-slate-600">MVPでは通知オフ。後で Slack/メールを追加。</p>
+            <div className="mt-3 flex items-center gap-2 text-sm">
+              <button
+                onClick={() => setNotifications((v) => !v)}
+                className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+              >
+                通知を{notifications ? "無効化" : "有効化"}
+              </button>
+              <span className="text-xs text-slate-600">
+                現在: {notifications ? "オン" : "オフ"}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">ストレージ</h3>
-          <p className="text-sm text-slate-600">MinIO (S3互換) を利用中。後で AWS S3 に切替可。</p>
-          <div className="mt-3 flex items-center gap-2 text-sm">
-            <button className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
-              バケットを確認
-            </button>
-            <button className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
-              接続情報を更新
-            </button>
+        {isAdmin && (
+          <div className="border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">ストレージ</h3>
+            <p className="text-sm text-slate-600">
+              MinIO (S3互換) を利用中。後で AWS S3 に切替可。
+            </p>
+            <div className="mt-3 flex items-center gap-2 text-sm">
+              <button className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
+                バケットを確認
+              </button>
+              <button className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
+                接続情報を更新
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       {activeQuestion ? (

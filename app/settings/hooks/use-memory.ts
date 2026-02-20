@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 export type MemoryTypeRow = {
   id: string;
@@ -71,7 +72,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     try {
       // workspaceId is used to trigger refetch when workspace changes
       void workspaceId;
-      const res = await fetch("/api/memory");
+      const res = await apiFetch("/api/memory");
       if (!res.ok) return;
       const data = await res.json();
       const types: MemoryTypeRow[] = data.types ?? [];
@@ -116,7 +117,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     }
     setMemorySavingId(type.id);
     try {
-      const res = await fetch("/api/memory", {
+      const res = await apiFetch("/api/memory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ typeId: type.id, value }),
@@ -140,7 +141,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     if (!claim) return;
     setMemoryRemovingId(claim.id);
     try {
-      const res = await fetch("/api/memory", {
+      const res = await apiFetch("/api/memory", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ claimId: claim.id }),

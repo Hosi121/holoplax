@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import { SEVERITY, type Severity, TASK_STATUS, TASK_TYPE, type TaskDTO } from "../../../lib/types";
 
 const checklistFromText = (text: string) =>
@@ -80,7 +81,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
       setItems([]);
       return;
     }
-    const res = await fetch("/api/tasks?status=SPRINT&limit=200");
+    const res = await apiFetch("/api/tasks?status=SPRINT&limit=200");
     const data = await res.json();
     setItems(data.tasks ?? []);
   }, [ready, workspaceId]);
@@ -110,7 +111,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
   const addItem = async (remaining: number) => {
     if (!newItem.title.trim() || newItem.points <= 0) return;
     if (newItem.points > remaining) return;
-    await fetch("/api/tasks", {
+    await apiFetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -145,7 +146,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
       onWarning?.("チェックリストが未完了です。完了にする前に確認してください。");
       return;
     }
-    await fetch(`/api/tasks/${id}`, {
+    await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: TASK_STATUS.DONE }),
@@ -155,7 +156,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
 
   const deleteItem = async (id: string) => {
     if (!window.confirm("このタスクを削除しますか？")) return;
-    await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
     fetchTasks();
   };
 
@@ -179,7 +180,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
 
   const saveEdit = async () => {
     if (!editItem) return;
-    await fetch(`/api/tasks/${editItem.id}`, {
+    await apiFetch(`/api/tasks/${editItem.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -211,7 +212,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
     setItems((prev) =>
       prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
-    await fetch(`/api/tasks/${taskId}`, {
+    await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checklist: nextChecklist }),

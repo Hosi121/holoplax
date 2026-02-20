@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 export type AccountForm = {
   name: string;
@@ -22,7 +23,7 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
   const [unlinking, setUnlinking] = useState<string | null>(null);
 
   const fetchAccount = useCallback(async () => {
-    const res = await fetch("/api/account");
+    const res = await apiFetch("/api/account");
     if (!res.ok) return;
     const data = await res.json();
     setAccount({
@@ -40,7 +41,7 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
   };
 
   const saveAccount = async () => {
-    const res = await fetch("/api/account", {
+    const res = await apiFetch("/api/account", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(account),
@@ -57,7 +58,7 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
   };
 
   const uploadAvatar = async (file: File) => {
-    const res = await fetch("/api/storage/avatar", {
+    const res = await apiFetch("/api/storage/avatar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -79,7 +80,7 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
   const unlinkProvider = async (provider: string) => {
     setUnlinking(provider);
     try {
-      const res = await fetch("/api/account/providers", {
+      const res = await apiFetch("/api/account/providers", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider }),

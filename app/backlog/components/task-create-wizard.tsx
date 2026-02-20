@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import {
   SEVERITY,
   SEVERITY_LABELS,
@@ -123,7 +124,7 @@ export function TaskCreateWizard({
     setAiLoading(true);
     setAiError(null);
     try {
-      const scoreRes = await fetch("/api/ai/score", {
+      const scoreRes = await apiFetch("/api/ai/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,7 +144,7 @@ export function TaskCreateWizard({
         risk: scoreData.risk ?? prev.risk,
       }));
       setScoreHint(scoreData.reason ?? `AI推定スコア: ${scoreData.score ?? ""}`);
-      const suggestionRes = await fetch("/api/ai/suggest", {
+      const suggestionRes = await apiFetch("/api/ai/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

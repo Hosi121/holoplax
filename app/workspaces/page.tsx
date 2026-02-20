@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 
 type WorkspaceRow = {
@@ -27,7 +28,7 @@ export default function WorkspacesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchWorkspaces = useCallback(async () => {
-    const res = await fetch("/api/workspaces");
+    const res = await apiFetch("/api/workspaces");
     if (!res.ok) return;
     const data = await res.json();
     setWorkspaces(data.workspaces ?? []);
@@ -37,7 +38,7 @@ export default function WorkspacesPage() {
   }, [selectedId]);
 
   const fetchMembers = useCallback(async (workspaceId: string) => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/members`);
+    const res = await apiFetch(`/api/workspaces/${workspaceId}/members`);
     if (!res.ok) return;
     const data = await res.json();
     setMembers(data.members ?? []);
@@ -107,7 +108,7 @@ export default function WorkspacesPage() {
               <button
                 onClick={async () => {
                   if (!newName.trim()) return;
-                  const res = await fetch("/api/workspaces", {
+                  const res = await apiFetch("/api/workspaces", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ name: newName }),
@@ -157,7 +158,7 @@ export default function WorkspacesPage() {
                       value={member.role}
                       onChange={async (event) => {
                         if (!selectedId) return;
-                        await fetch(`/api/workspaces/${selectedId}/members/${member.id}`, {
+                        await apiFetch(`/api/workspaces/${selectedId}/members/${member.id}`, {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ role: event.target.value }),
@@ -173,7 +174,7 @@ export default function WorkspacesPage() {
                     <button
                       onClick={async () => {
                         if (!selectedId) return;
-                        await fetch(`/api/workspaces/${selectedId}/members/${member.id}`, {
+                        await apiFetch(`/api/workspaces/${selectedId}/members/${member.id}`, {
                           method: "DELETE",
                         });
                         fetchMembers(selectedId);
@@ -199,7 +200,7 @@ export default function WorkspacesPage() {
                     onClick={async () => {
                       if (!selectedId || !inviteEmail.trim()) return;
                       setError(null);
-                      const res = await fetch(`/api/workspaces/${selectedId}/invites`, {
+                      const res = await apiFetch(`/api/workspaces/${selectedId}/invites`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ email: inviteEmail }),

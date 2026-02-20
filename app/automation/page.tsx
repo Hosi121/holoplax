@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import type { AutomationSettingDTO } from "../../lib/types";
 import { useWorkspaceId } from "../components/use-workspace-id";
 
@@ -27,7 +28,7 @@ export default function AutomationPage() {
       setDirty(false);
       return;
     }
-    const res = await fetch("/api/automation");
+    const res = await apiFetch("/api/automation");
     const data = await res.json();
     setThresholds({
       low: data.low ?? 35,
@@ -45,7 +46,7 @@ export default function AutomationPage() {
   }, [fetchThresholds]);
 
   const saveThresholds = async () => {
-    await fetch("/api/automation", {
+    await apiFetch("/api/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(thresholds),
@@ -54,7 +55,7 @@ export default function AutomationPage() {
   };
 
   const resetStage = async () => {
-    const res = await fetch("/api/automation", {
+    const res = await apiFetch("/api/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ low: thresholds.low, high: thresholds.high, stage: 0 }),

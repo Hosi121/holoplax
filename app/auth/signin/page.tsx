@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Suspense, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type Providers = Record<string, { id: string; name: string }>;
 
@@ -48,7 +49,7 @@ function SignInContent() {
 
   useEffect(() => {
     const loadProviders = async () => {
-      const res = await fetch("/api/auth/providers");
+      const res = await apiFetch("/api/auth/providers");
       if (res.ok) {
         const data = await res.json();
         setProviders(data ?? {});
@@ -137,7 +138,7 @@ function SignInContent() {
                     setError(null);
                     setLoading(true);
                     if (mode === "signup") {
-                      const res = await fetch("/api/auth/register", {
+                      const res = await apiFetch("/api/auth/register", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ email, password, name }),

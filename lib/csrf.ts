@@ -72,9 +72,14 @@ export function validateCsrfToken(
 
 /**
  * Create Set-Cookie header for CSRF token
+ *
+ * NOTE: This cookie must NOT be HttpOnly so that client-side JavaScript
+ * can read it and include it in the x-csrf-token request header.
+ * The double-submit cookie pattern relies on JS being able to read this value.
+ * XSS protection is handled by the CSP header and SameSite=Strict attribute.
  */
 export function createCsrfCookieHeader(token: string, secure: boolean): string {
-  const parts = [`${CSRF_COOKIE_NAME}=${token}`, "Path=/", "SameSite=Strict", "HttpOnly"];
+  const parts = [`${CSRF_COOKIE_NAME}=${token}`, "Path=/", "SameSite=Strict"];
 
   if (secure) {
     parts.push("Secure");

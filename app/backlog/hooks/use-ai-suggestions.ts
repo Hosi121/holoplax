@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import {
   trackSuggestionAccepted,
   trackSuggestionRejected,
@@ -59,7 +60,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
     setSuggestLoadingId(taskId ?? title);
     try {
       if (taskId) {
-        const cached = await fetch(`/api/ai/suggest?taskId=${encodeURIComponent(taskId)}`);
+        const cached = await apiFetch(`/api/ai/suggest?taskId=${encodeURIComponent(taskId)}`);
         if (cached.ok) {
           const data = await cached.json();
           if (data.suggestion !== null && data.suggestion !== undefined) {
@@ -79,7 +80,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
           }
         }
       }
-      const res = await fetch("/api/ai/suggest", {
+      const res = await apiFetch("/api/ai/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description, taskId }),
@@ -108,7 +109,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
   const estimateScoreForTask = async (item: TaskDTO) => {
     setScoreLoadingId(item.id);
     try {
-      const res = await fetch("/api/ai/score", {
+      const res = await apiFetch("/api/ai/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -149,7 +150,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
     if (!suggestion) return;
     // Track ACCEPTED
     trackSuggestionAccepted(suggestion.suggestionId, viewedAtMap.current[`tip_${itemId}`]);
-    await fetch("/api/ai/apply", {
+    await apiFetch("/api/ai/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -167,7 +168,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
     if (!score) return;
     // Track ACCEPTED
     trackSuggestionAccepted(score.suggestionId, viewedAtMap.current[`score_${itemId}`]);
-    await fetch("/api/ai/apply", {
+    await apiFetch("/api/ai/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -187,7 +188,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
   const requestSplit = async (item: TaskDTO) => {
     setSplitLoadingId(item.id);
     try {
-      const res = await fetch("/api/ai/split", {
+      const res = await apiFetch("/api/ai/split", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -245,7 +246,7 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
     const statusValue = view === "sprint" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG;
     await Promise.all(
       suggestions.map((split) =>
-        fetch("/api/tasks", {
+        apiFetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -261,12 +262,12 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
         }),
       ),
     );
-    await fetch(`/api/tasks/${item.id}`, {
+    await apiFetch(`/api/tasks/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ automationState: AUTOMATION_STATE.SPLIT_PARENT }),
     });
-    await fetch("/api/ai/apply", {
+    await apiFetch("/api/ai/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

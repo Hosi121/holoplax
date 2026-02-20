@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Inbox, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import { AUTOMATION_STATE, TASK_STATUS, type TaskDTO, type TaskStatus } from "../../lib/types";
 import { EmptyState } from "../components/empty-state";
 import { TaskCard } from "../components/task-card";
@@ -58,7 +59,7 @@ export default function KanbanPage() {
       setItems([]);
       return;
     }
-    const res = await fetch("/api/tasks?status=BACKLOG&status=SPRINT&status=DONE&limit=400");
+    const res = await apiFetch("/api/tasks?status=BACKLOG&status=SPRINT&status=DONE&limit=400");
     const data = await res.json();
     setItems(data.tasks ?? []);
   }, [ready, workspaceId]);
@@ -68,7 +69,7 @@ export default function KanbanPage() {
       setMembers([]);
       return;
     }
-    const res = await fetch(`/api/workspaces/${workspaceId}/members`);
+    const res = await apiFetch(`/api/workspaces/${workspaceId}/members`);
     if (!res.ok) return;
     const data = await res.json();
     setMembers(data.members ?? []);
@@ -79,7 +80,7 @@ export default function KanbanPage() {
       setSprint(null);
       return;
     }
-    const res = await fetch(`/api/sprints?status=ACTIVE`);
+    const res = await apiFetch(`/api/sprints?status=ACTIVE`);
     if (!res.ok) {
       setSprint(null);
       return;
@@ -129,7 +130,7 @@ export default function KanbanPage() {
     const originalItems = [...items];
     setItems((prev) => prev.map((item) => (item.id === draggingId ? { ...item, status } : item)));
     setDraggingId(null);
-    const res = await fetch(`/api/tasks/${draggingId}`, {
+    const res = await apiFetch(`/api/tasks/${draggingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),

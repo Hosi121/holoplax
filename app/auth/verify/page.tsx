@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 function VerifyContent() {
   const params = useSearchParams();
@@ -15,7 +16,7 @@ function VerifyContent() {
         setStatus("error");
         return;
       }
-      const res = await fetch("/api/auth/verify", {
+      const res = await apiFetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),

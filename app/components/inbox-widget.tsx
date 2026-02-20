@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 import { TASK_TYPE } from "../../lib/types";
 import { LoadingButton } from "./loading-button";
@@ -48,7 +49,7 @@ export function InboxWidget() {
     if (!ready) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/intake");
+      const res = await apiFetch("/api/intake");
       if (!res.ok) return;
       const data = await res.json();
       setGlobalItems(data.globalItems ?? []);
@@ -82,7 +83,7 @@ export function InboxWidget() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/intake/memo", {
+      const res = await apiFetch("/api/intake/memo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,7 +116,7 @@ export function InboxWidget() {
     if (!selectedWorkspaceId) return;
     setAnalysisLoadingId(itemId);
     try {
-      const res = await fetch("/api/intake/analyze", {
+      const res = await apiFetch("/api/intake/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intakeId: itemId, workspaceId: selectedWorkspaceId }),
@@ -135,7 +136,7 @@ export function InboxWidget() {
     taskType?: string;
     targetTaskId?: string;
   }) => {
-    const res = await fetch("/api/intake/resolve", {
+    const res = await apiFetch("/api/intake/resolve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),

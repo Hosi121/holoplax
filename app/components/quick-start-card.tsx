@@ -61,11 +61,9 @@ export function QuickStartCard() {
       </button>
 
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-          Holoplax\u3078\u3088\u3046\u3053\u305D
-        </h2>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Holoplaxへようこそ</h2>
         <p className="text-sm text-[var(--text-secondary)]">
-          3\u30B9\u30C6\u30C3\u30D7\u3067\u30B9\u30D7\u30EA\u30F3\u30C8\u7BA1\u7406\u3092\u59CB\u3081\u307E\u3057\u3087\u3046\u3002
+          3ステップでスプリント管理を始めましょう。
         </p>
       </div>
 
@@ -95,7 +93,7 @@ export function QuickStartCard() {
           onClick={handleDismiss}
           className="text-xs text-[var(--text-muted)] transition hover:text-[var(--accent)]"
         >
-          \u9589\u3058\u308B
+          閉じる
         </button>
       </div>
     </div>

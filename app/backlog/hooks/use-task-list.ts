@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import {
   TASK_STATUS,
   TASK_TYPE,
@@ -25,7 +26,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
 
   const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[]) => {
     const params = statuses.map((status) => `status=${encodeURIComponent(status)}`).join("&");
-    const res = await fetch(`/api/tasks?${params}&limit=200`);
+    const res = await apiFetch(`/api/tasks?${params}&limit=200`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.tasks ?? [];
@@ -53,7 +54,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
       setMembers([]);
       return;
     }
-    const res = await fetch(`/api/workspaces/${workspaceId}/members`);
+    const res = await apiFetch(`/api/workspaces/${workspaceId}/members`);
     if (!res.ok) return;
     const data = await res.json();
     setMembers(data.members ?? []);
@@ -98,7 +99,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: TASK_STATUS.SPRINT } : item)),
     );
-    const res = await fetch(`/api/tasks/${id}`, {
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: TASK_STATUS.SPRINT }),
@@ -114,7 +115,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: TASK_STATUS.BACKLOG } : item)),
     );
-    const res = await fetch(`/api/tasks/${id}`, {
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: TASK_STATUS.BACKLOG }),
@@ -128,7 +129,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
 
   const deleteItem = async (id: string) => {
     if (!window.confirm("このタスクを削除しますか？")) return;
-    await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
     await fetchTasks();
   };
 
@@ -141,7 +142,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
     setItems((prev) =>
       prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
-    await fetch(`/api/tasks/${taskId}`, {
+    await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checklist: nextChecklist }),
@@ -149,7 +150,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
   };
 
   const approveAutomation = async (id: string) => {
-    await fetch("/api/automation/approval", {
+    await apiFetch("/api/automation/approval", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ taskId: id, action: "approve" }),
@@ -158,7 +159,7 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
   };
 
   const rejectAutomation = async (id: string) => {
-    await fetch("/api/automation/approval", {
+    await apiFetch("/api/automation/approval", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ taskId: id, action: "reject" }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type UsageSummary = {
   provider: string | null;
@@ -147,7 +148,7 @@ export default function AdminAuditPage() {
     setError(null);
     setLoading(true);
     const url = query ? `/api/admin/audit?${query}` : "/api/admin/audit";
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) {
       setError(res.status === 403 ? "権限がありません。" : "取得に失敗しました。");
       setLoading(false);

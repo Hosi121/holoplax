@@ -350,7 +350,7 @@ export default async function ReviewPage() {
             </>
           ) : (
             <EmptyState
-              icon={BarChart3}
+              icon="BarChart3"
               title="ベロシティデータがありません"
               description={
                 sprint
@@ -409,7 +409,7 @@ export default async function ReviewPage() {
             </>
           ) : (
             <EmptyState
-              icon={TrendingDown}
+              icon="TrendingDown"
               title="バーンダウンはまだありません"
               description={
                 sprint
@@ -490,7 +490,7 @@ export default async function ReviewPage() {
             </div>
           ) : (
             <EmptyState
-              icon={Activity}
+              icon="Activity"
               title="アクティビティはまだありません"
               description="タスクを追加すると履歴が表示されます。"
               actionLabel="タスクを追加"

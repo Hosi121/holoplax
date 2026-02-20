@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 export type UseThresholdsOptions = {
   ready: boolean;
@@ -18,7 +19,7 @@ export function useThresholds({ ready, workspaceId }: UseThresholdsOptions) {
       setDirty(false);
       return;
     }
-    const res = await fetch("/api/automation");
+    const res = await apiFetch("/api/automation");
     const data = await res.json();
     setLow(data.low ?? 35);
     setHigh(data.high ?? 70);
@@ -36,7 +37,7 @@ export function useThresholds({ ready, workspaceId }: UseThresholdsOptions) {
   };
 
   const saveThresholds = async () => {
-    await fetch("/api/automation", {
+    await apiFetch("/api/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ low, high }),

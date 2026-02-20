@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type AiSetting = {
   model: string;
@@ -31,7 +32,7 @@ export default function AdminAiSettingsPage() {
 
   const fetchSetting = useCallback(async () => {
     setError(null);
-    const res = await fetch("/api/admin/ai");
+    const res = await apiFetch("/api/admin/ai");
     if (!res.ok) {
       setError(res.status === 403 ? "権限がありません。" : "取得に失敗しました。");
       return;
@@ -50,7 +51,7 @@ export default function AdminAiSettingsPage() {
     if (!setting) return;
     setStatus("saving");
     setError(null);
-    const res = await fetch("/api/admin/ai", {
+    const res = await apiFetch("/api/admin/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

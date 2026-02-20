@@ -3,6 +3,7 @@
 import { CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import {
   AUTOMATION_STATE,
   SEVERITY,
@@ -151,7 +152,7 @@ export default function BacklogPage() {
   const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[], searchParams?: string) => {
     const params = statuses.map((status) => `status=${encodeURIComponent(status)}`).join("&");
     const searchQuery = searchParams ? `&${searchParams}` : "";
-    const res = await fetch(`/api/tasks?${params}&limit=200${searchQuery}`);
+    const res = await apiFetch(`/api/tasks?${params}&limit=200${searchQuery}`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.tasks ?? [];
@@ -285,7 +286,7 @@ export default function BacklogPage() {
     setAiLoading(true);
     setAiError(null);
     try {
-      const scoreRes = await fetch("/api/ai/score", {
+      const scoreRes = await apiFetch("/api/ai/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -305,7 +306,7 @@ export default function BacklogPage() {
         risk: scoreData.risk ?? prev.risk,
       }));
       setScoreHint(scoreData.reason ?? `AI推定スコア: ${scoreData.score ?? ""}`);
-      const suggestionRes = await fetch("/api/ai/suggest", {
+      const suggestionRes = await apiFetch("/api/ai/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -335,7 +336,7 @@ export default function BacklogPage() {
       setMembers([]);
       return;
     }
-    const res = await fetch(`/api/workspaces/${workspaceId}/members`);
+    const res = await apiFetch(`/api/workspaces/${workspaceId}/members`);
     if (!res.ok) return;
     const data = await res.json();
     setMembers(data.members ?? []);
@@ -448,7 +449,7 @@ export default function BacklogPage() {
       : baseDescription;
     setAddLoading(true);
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await apiFetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -493,7 +494,7 @@ export default function BacklogPage() {
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: TASK_STATUS.SPRINT } : item)),
     );
-    const res = await fetch(`/api/tasks/${id}`, {
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: TASK_STATUS.SPRINT }),
@@ -511,7 +512,7 @@ export default function BacklogPage() {
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, status: TASK_STATUS.BACKLOG } : item)),
     );
-    const res = await fetch(`/api/tasks/${id}`, {
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: TASK_STATUS.BACKLOG }),
@@ -532,7 +533,7 @@ export default function BacklogPage() {
     setItems((prev) =>
       prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
-    await fetch(`/api/tasks/${taskId}`, {
+    await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checklist: nextChecklist }),
@@ -542,7 +543,7 @@ export default function BacklogPage() {
   const loadPrepOutputs = useCallback(async (taskId: string) => {
     setPrepFetchLoading(true);
     try {
-      const res = await fetch(`/api/ai/prep?taskId=${taskId}`);
+      const res = await apiFetch(`/api/ai/prep?taskId=${taskId}`);
       if (!res.ok) return;
       const data = await res.json();
       setPrepOutputs(data.outputs ?? []);
@@ -568,7 +569,7 @@ export default function BacklogPage() {
     if (!prepTask) return;
     setPrepLoading(true);
     try {
-      const res = await fetch("/api/ai/prep", {
+      const res = await apiFetch("/api/ai/prep", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: prepTask.id, type: prepType }),
@@ -586,7 +587,7 @@ export default function BacklogPage() {
   const updatePrepOutput = async (output: AiPrepOutput, action: string) => {
     setPrepActionLoadingId(`${output.id}-${action}`);
     try {
-      const res = await fetch(`/api/ai/prep/${output.id}`, {
+      const res = await apiFetch(`/api/ai/prep/${output.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
@@ -608,7 +609,7 @@ export default function BacklogPage() {
 
   const deleteItem = async (id: string) => {
     if (!window.confirm("このタスクを削除しますか？")) return;
-    await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
     await fetchTasks();
   };
 
@@ -634,7 +635,7 @@ export default function BacklogPage() {
 
   const saveEdit = async () => {
     if (!editItem) return;
-    await fetch(`/api/tasks/${editItem.id}`, {
+    await apiFetch(`/api/tasks/${editItem.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -664,7 +665,7 @@ export default function BacklogPage() {
   const approveAutomation = async (id: string) => {
     setApprovalLoadingId(id);
     try {
-      await fetch("/api/automation/approval", {
+      await apiFetch("/api/automation/approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: id, action: "approve" }),
@@ -678,7 +679,7 @@ export default function BacklogPage() {
   const rejectAutomation = async (id: string) => {
     setApprovalLoadingId(id);
     try {
-      await fetch("/api/automation/approval", {
+      await apiFetch("/api/automation/approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: id, action: "reject" }),

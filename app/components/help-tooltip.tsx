@@ -29,7 +29,7 @@ export function HelpTooltip({ text, className }: { text: string; className?: str
         <HelpCircle size={16} />
       </button>
       {open && (
-        <div className="absolute left-1/2 top-full z-50 mt-2 max-w-xs -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--text-secondary)] shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--text-secondary)] shadow-lg">
           {text}
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 export type MemoryQuestionRow = {
   id: string;
@@ -59,7 +60,7 @@ export function useMemoryQuestions({ ready, onAccept }: UseMemoryQuestionsOption
     if (!ready) return;
     setMemoryQuestionLoading(true);
     try {
-      const res = await fetch("/api/memory/questions");
+      const res = await apiFetch("/api/memory/questions");
       if (!res.ok) return;
       const data = await res.json();
       setMemoryQuestions(data.questions ?? []);
@@ -76,7 +77,7 @@ export function useMemoryQuestions({ ready, onAccept }: UseMemoryQuestionsOption
   ) => {
     setMemoryQuestionActionId(question.id);
     try {
-      const res = await fetch(`/api/memory/questions/${question.id}`, {
+      const res = await apiFetch(`/api/memory/questions/${question.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import {
   calculateTaskScore,
   getOptimizationSummary,
@@ -33,7 +34,7 @@ export function useSprintOptimizer({
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/tasks?status=BACKLOG&limit=200");
+      const res = await apiFetch("/api/tasks?status=BACKLOG&limit=200");
       if (!res.ok) return;
       const data = await res.json();
       setBacklogTasks(data.tasks ?? []);
@@ -48,7 +49,7 @@ export function useSprintOptimizer({
     setLoading(true);
     try {
       // 最新のバックログを取得
-      const res = await fetch("/api/tasks?status=BACKLOG&limit=200");
+      const res = await apiFetch("/api/tasks?status=BACKLOG&limit=200");
       if (!res.ok) return;
       const data = await res.json();
       const tasks: TaskDTO[] = data.tasks ?? [];
@@ -70,7 +71,7 @@ export function useSprintOptimizer({
     try {
       // 選択されたタスクを順番にスプリントに追加
       for (const task of optimizationResult.selectedTasks) {
-        await fetch(`/api/tasks/${task.id}`, {
+        await apiFetch(`/api/tasks/${task.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "SPRINT" }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import {
   type DailyFocusResult,
   type FocusTask,
@@ -34,7 +35,7 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
       const statuses = includeBacklog
         ? `status=${TASK_STATUS.SPRINT}&status=${TASK_STATUS.BACKLOG}`
         : `status=${TASK_STATUS.SPRINT}`;
-      const res = await fetch(`/api/tasks?${statuses}&limit=100`);
+      const res = await apiFetch(`/api/tasks?${statuses}&limit=100`);
       if (!res.ok) {
         setTasks([]);
         return;
@@ -67,7 +68,7 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
 
   const markDone = useCallback(
     async (taskId: string) => {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await apiFetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: TASK_STATUS.DONE }),

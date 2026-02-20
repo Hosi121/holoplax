@@ -20,12 +20,18 @@ const envVars: EnvVar[] = [
   { key: "ENCRYPTION_KEY", required: true, description: "AES-256 encryption key (64 hex chars)" },
   { key: "GOOGLE_CLIENT_ID", required: false, description: "Google OAuth client ID" },
   { key: "GOOGLE_CLIENT_SECRET", required: false, description: "Google OAuth client secret" },
-  { key: "GITHUB_CLIENT_ID", required: false, description: "GitHub OAuth client ID" },
-  { key: "GITHUB_CLIENT_SECRET", required: false, description: "GitHub OAuth client secret" },
-  { key: "S3_ENDPOINT", required: false, description: "S3-compatible storage endpoint" },
-  { key: "S3_ACCESS_KEY", required: false, description: "S3 access key" },
-  { key: "S3_SECRET_KEY", required: false, description: "S3 secret key" },
-  { key: "S3_BUCKET", required: false, description: "S3 bucket name" },
+  // NOTE: NextAuth GitHub provider reads GITHUB_ID / GITHUB_SECRET (not GITHUB_CLIENT_*)
+  { key: "GITHUB_ID", required: false, description: "GitHub OAuth client ID" },
+  { key: "GITHUB_SECRET", required: false, description: "GitHub OAuth client secret" },
+  // Storage uses MinIO-compatible env vars (also compatible with AWS S3 via MINIO_* naming)
+  { key: "MINIO_ENDPOINT", required: false, description: "S3-compatible storage endpoint" },
+  { key: "MINIO_ROOT_USER", required: false, description: "S3/MinIO access key" },
+  { key: "MINIO_ROOT_PASSWORD", required: false, description: "S3/MinIO secret key" },
+  {
+    key: "MINIO_BUCKET_AVATARS",
+    required: false,
+    description: "S3/MinIO bucket name for avatars",
+  },
 ];
 
 type ValidationResult = {

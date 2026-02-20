@@ -97,7 +97,8 @@ describe("csrf", () => {
     it("should create secure cookie header for HTTPS", () => {
       const header = createCsrfCookieHeader("mytoken", true);
       expect(header).toContain("csrf_token=mytoken");
-      expect(header).toContain("HttpOnly");
+      // Must NOT be HttpOnly: the double-submit pattern requires JS to read this cookie
+      expect(header).not.toContain("HttpOnly");
       expect(header).toContain("SameSite=Strict");
       expect(header).toContain("Secure");
       expect(header).toContain("Path=/");
@@ -106,7 +107,8 @@ describe("csrf", () => {
     it("should create non-secure cookie header for HTTP", () => {
       const header = createCsrfCookieHeader("mytoken", false);
       expect(header).toContain("csrf_token=mytoken");
-      expect(header).toContain("HttpOnly");
+      // Must NOT be HttpOnly: the double-submit pattern requires JS to read this cookie
+      expect(header).not.toContain("HttpOnly");
       expect(header).not.toContain("Secure");
     });
   });

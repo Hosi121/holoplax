@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type UserRow = {
   id: string;
@@ -40,7 +41,7 @@ export default function AdminUsersPage() {
 
   const fetchUsers = useCallback(async () => {
     setError(null);
-    const res = await fetch("/api/admin/users");
+    const res = await apiFetch("/api/admin/users");
     if (!res.ok) {
       setError(res.status === 403 ? "権限がありません。" : "取得に失敗しました。");
       return;
@@ -90,7 +91,7 @@ export default function AdminUsersPage() {
             setCreateError(null);
             setCreating(true);
             try {
-              const res = await fetch("/api/admin/users", {
+              const res = await apiFetch("/api/admin/users", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -202,7 +203,7 @@ export default function AdminUsersPage() {
                         value={user.role}
                         onChange={async (event) => {
                           const next = event.target.value;
-                          await fetch(`/api/admin/users/${user.id}`, {
+                          await apiFetch(`/api/admin/users/${user.id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ role: next }),
@@ -218,7 +219,7 @@ export default function AdminUsersPage() {
                     <div className="text-xs">
                       <button
                         onClick={async () => {
-                          await fetch(`/api/admin/users/${user.id}`, {
+                          await apiFetch(`/api/admin/users/${user.id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ disabled: !user.disabledAt }),
@@ -269,7 +270,7 @@ export default function AdminUsersPage() {
                         setTaskError(null);
                         setTaskLoadingId(user.id);
                         try {
-                          const res = await fetch(`/api/admin/users/${user.id}/tasks`);
+                          const res = await apiFetch(`/api/admin/users/${user.id}/tasks`);
                           if (!res.ok) {
                             setTaskError("タスク取得に失敗しました。");
                             return;

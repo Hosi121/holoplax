@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type IntentOption = {
   id: string;
@@ -58,7 +59,7 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/onboarding", {
+      const res = await apiFetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

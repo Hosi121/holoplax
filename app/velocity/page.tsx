@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import type { VelocityEntryDTO } from "../../lib/types";
 import { useWorkspaceId } from "../components/use-workspace-id";
 
@@ -28,7 +29,7 @@ export default function VelocityPage() {
       setHistory([]);
       return;
     }
-    const res = await fetch("/api/velocity");
+    const res = await apiFetch("/api/velocity");
     const data = await res.json();
     setHistory(data.velocity ?? []);
     setSummary(data.summary ?? null);
@@ -44,7 +45,7 @@ export default function VelocityPage() {
 
   const addEntry = async () => {
     if (!form.name.trim()) return;
-    await fetch("/api/velocity", {
+    await apiFetch("/api/velocity", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, points: Number(form.points) }),

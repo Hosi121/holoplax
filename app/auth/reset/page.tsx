@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 function ResetPasswordForm() {
   const params = useSearchParams();
@@ -17,7 +18,7 @@ function ResetPasswordForm() {
       <form
         onSubmit={async (event) => {
           event.preventDefault();
-          const res = await fetch("/api/auth/reset", {
+          const res = await apiFetch("/api/auth/reset", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ token, password }),

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type FocusItem = {
   taskId: string;
@@ -24,7 +25,7 @@ export function FocusQueue() {
     let active = true;
     const fetchItems = async () => {
       try {
-        const res = await fetch("/api/focus-queue");
+        const res = await apiFetch("/api/focus-queue");
         if (!res.ok) return;
         const data = await res.json();
         if (!active) return;

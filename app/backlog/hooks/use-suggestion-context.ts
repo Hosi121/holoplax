@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 type SuggestionType = "TIP" | "SCORE" | "SPLIT";
 
@@ -29,7 +30,7 @@ export function useSuggestionContext() {
 
   const fetchContext = useCallback(async () => {
     try {
-      const res = await fetch("/api/ai/context");
+      const res = await apiFetch("/api/ai/context");
       if (res.ok) {
         const data = await res.json();
         setContext(data);

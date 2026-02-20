@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import type { SprintDTO } from "../../../lib/types";
 
 export type SprintForm = {
@@ -42,7 +43,7 @@ export function useSprintManagement({
       setSprint(null);
       return;
     }
-    const res = await fetch("/api/sprints/current");
+    const res = await apiFetch("/api/sprints/current");
     if (!res.ok) return;
     const data = await res.json();
     const s = data.sprint ?? null;
@@ -62,7 +63,7 @@ export function useSprintManagement({
       setSprintHistory([]);
       return;
     }
-    const res = await fetch("/api/sprints");
+    const res = await apiFetch("/api/sprints");
     if (!res.ok) return;
     const data = await res.json();
     setSprintHistory(data.sprints ?? []);
@@ -71,7 +72,7 @@ export function useSprintManagement({
   const startSprint = async () => {
     setSprintLoading(true);
     try {
-      const res = await fetch("/api/sprints/current", {
+      const res = await apiFetch("/api/sprints/current", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -94,7 +95,7 @@ export function useSprintManagement({
   const endSprint = async () => {
     setSprintLoading(true);
     try {
-      const res = await fetch("/api/sprints/current", { method: "PATCH" });
+      const res = await apiFetch("/api/sprints/current", { method: "PATCH" });
       if (res.ok) {
         await fetchSprint();
       }
@@ -109,7 +110,7 @@ export function useSprintManagement({
     if (!sprint) return;
     setSprintLoading(true);
     try {
-      const res = await fetch(`/api/sprints/${sprint.id}`, {
+      const res = await apiFetch(`/api/sprints/${sprint.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

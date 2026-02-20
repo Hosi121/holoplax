@@ -4,7 +4,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   ChevronDown,
-  CircleHelp,
   Inbox,
   KanbanSquare,
   LayoutDashboard,
@@ -31,7 +30,6 @@ type NavItem = {
 };
 
 const STORAGE_KEY = "holoplax-sidebar-collapsed";
-const QUICKSTART_KEY = "holoplax-quickstart-dismissed";
 
 /* ── Primary workflow items (always visible) ── */
 const primaryItems: NavItem[] = [
@@ -372,29 +370,6 @@ const AccountSection = memo(function AccountSection({
   );
 });
 
-function HelpButton() {
-  const handleClick = useCallback(() => {
-    try {
-      localStorage.setItem(QUICKSTART_KEY, "false");
-    } catch {
-      // ignore
-    }
-    window.location.reload();
-  }, []);
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      title="クイックスタートガイドを再表示"
-      className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] transition hover:text-[var(--accent)]"
-    >
-      <CircleHelp size={14} />
-      <span>ヘルプ</span>
-    </button>
-  );
-}
-
 function WorkspaceSelector() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -482,9 +457,6 @@ export function Sidebar() {
           <NavigationLinks pathname={pathname} isAdmin={session?.user?.role === "ADMIN"} />
         </div>
         <div className="shrink-0">
-          <div className="mb-2 flex items-center justify-end">
-            <HelpButton />
-          </div>
           <AccountSection session={session} status={status} />
         </div>
       </aside>
