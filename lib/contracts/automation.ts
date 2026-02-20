@@ -8,7 +8,7 @@ export const AutomationUpdateSchema = z
     high: z.coerce.number(),
     stage: z.coerce.number().optional(),
   })
-  .passthrough();
+  .strip();
 
 export const AutomationApprovalSchema = z
   .object({
@@ -20,4 +20,4 @@ export const AutomationApprovalSchema = z
         message: "action must be approve or reject",
       }),
   })
-  .passthrough();
+  .strip();

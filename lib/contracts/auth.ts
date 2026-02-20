@@ -28,26 +28,26 @@ export const AuthRegisterSchema = z
     password: PasswordSchema,
     name: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
   })
-  .passthrough();
+  .strip();
 
 export const AuthRequestResetSchema = z
   .object({
     email: EmailSchema,
   })
-  .passthrough();
+  .strip();
 
 export const AuthResetSchema = z
   .object({
     token: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "token is required")),
     password: PasswordSchema,
   })
-  .passthrough();
+  .strip();
 
 export const AuthVerifySchema = z
   .object({
     token: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "token is required")),
   })
-  .passthrough();
+  .strip();
 
 export const AccountUpdateSchema = z
   .object({
@@ -55,4 +55,4 @@ export const AccountUpdateSchema = z
     email: OptionalEmailSchema.optional(),
     image: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
   })
-  .passthrough();
+  .strip();

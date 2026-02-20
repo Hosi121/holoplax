@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import type { ExecutionContext } from "../context.js";
-
-const prisma = new PrismaClient();
+import prisma from "../prisma.js";
 
 // Type definitions matching Prisma schema
 type TaskStatus = "BACKLOG" | "SPRINT" | "DONE";

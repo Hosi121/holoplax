@@ -8,7 +8,7 @@ export const SprintStartSchema = z
     capacityPoints: z.coerce.number().optional(),
     plannedEndAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
   })
-  .passthrough();
+  .strip();
 
 export const SprintUpdateSchema = z
   .object({
@@ -17,4 +17,4 @@ export const SprintUpdateSchema = z
     startedAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     plannedEndAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
   })
-  .passthrough();
+  .strip();

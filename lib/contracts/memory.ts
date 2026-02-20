@@ -9,13 +9,13 @@ export const MemoryClaimCreateSchema = z
     typeId: nonEmptyString("typeId is required"),
     value: z.unknown(),
   })
-  .passthrough();
+  .strip();
 
 export const MemoryClaimDeleteSchema = z
   .object({
     claimId: nonEmptyString("claimId is required"),
   })
-  .passthrough();
+  .strip();
 
 export const MemoryQuestionCreateSchema = z
   .object({
@@ -36,10 +36,10 @@ export const MemoryQuestionCreateSchema = z
     valueBool: z.boolean().optional().nullable(),
     valueJson: z.unknown().optional().nullable(),
   })
-  .passthrough();
+  .strip();
 
 export const MemoryQuestionActionSchema = z
   .object({
     action: nonEmptyString("action is required"),
   })
-  .passthrough();
+  .strip();

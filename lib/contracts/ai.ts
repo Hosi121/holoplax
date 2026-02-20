@@ -21,7 +21,7 @@ export const AiSuggestSchema = z
     description: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     taskId: nullableId,
   })
-  .passthrough();
+  .strip();
 
 export const AiScoreSchema = z
   .object({
@@ -29,7 +29,7 @@ export const AiScoreSchema = z
     description: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     taskId: nullableId,
   })
-  .passthrough();
+  .strip();
 
 export const AiSplitSchema = z
   .object({
@@ -38,7 +38,7 @@ export const AiSplitSchema = z
     points: positiveNumber("points must be greater than 0"),
     taskId: nullableId,
   })
-  .passthrough();
+  .strip();
 
 export const AiApplySchema = z
   .object({
@@ -47,20 +47,20 @@ export const AiApplySchema = z
     suggestionId: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     payload: z.record(z.string(), z.any()).optional().nullable(),
   })
-  .passthrough();
+  .strip();
 
 export const AiPrepSchema = z
   .object({
     taskId: nonEmptyString("taskId is required"),
     type: nonEmptyString("type is required"),
   })
-  .passthrough();
+  .strip();
 
 export const AiPrepActionSchema = z
   .object({
     action: nonEmptyString("action is required"),
   })
-  .passthrough();
+  .strip();
 
 export const AiReactionSchema = z
   .object({
@@ -83,4 +83,4 @@ export const AiReactionSchema = z
     viewedAt: z.string().datetime().optional(),
     reactedAt: z.string().datetime().optional(),
   })
-  .passthrough();
+  .strip();

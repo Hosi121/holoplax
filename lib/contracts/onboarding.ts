@@ -16,4 +16,4 @@ export const OnboardingSchema = z
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     focusTasks: z.array(z.preprocess(toStringOrEmpty, z.string().trim())).optional(),
   })
-  .passthrough();
+  .strip();

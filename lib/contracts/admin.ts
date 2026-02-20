@@ -16,7 +16,7 @@ export const AdminAiUpdateSchema = z
     enabled: optionalBoolean,
     apiKey: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
   })
-  .passthrough();
+  .strip();
 
 export const AdminUserCreateSchema = z
   .object({
@@ -25,11 +25,11 @@ export const AdminUserCreateSchema = z
     name: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     role: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
   })
-  .passthrough();
+  .strip();
 
 export const AdminUserUpdateSchema = z
   .object({
     role: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     disabled: optionalBoolean,
   })
-  .passthrough();
+  .strip();

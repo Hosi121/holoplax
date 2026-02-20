@@ -34,7 +34,7 @@ export const DiscordIntakeSchema = z
     threadUrl: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     messageUrl: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
   })
-  .passthrough();
+  .strip();
 
 // Schema for direct task creation via slash command
 export const DiscordCreateTaskSchema = z
@@ -58,4 +58,4 @@ export const DiscordCreateTaskSchema = z
     threadId: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     messageId: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
   })
-  .passthrough();
+  .strip();

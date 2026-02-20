@@ -12,4 +12,4 @@ export const VelocityCreateSchema = z
     }),
     range: nonEmptyString("range is required"),
   })
-  .passthrough();
+  .strip();

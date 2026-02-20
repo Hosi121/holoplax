@@ -3,11 +3,9 @@
  * Supports both API keys (mcp_*) and NextAuth.js JWT tokens
  */
 
-import { PrismaClient } from "@prisma/client";
 import { createHash } from "crypto";
 import { jwtDecrypt } from "jose";
-
-const prisma = new PrismaClient();
+import prisma from "./prisma.js";
 
 // NextAuth.js uses HKDF to derive encryption key
 async function getDerivedEncryptionKey(secret: string): Promise<Uint8Array> {

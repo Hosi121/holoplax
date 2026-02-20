@@ -18,14 +18,14 @@ export const IntakeMemoSchema = z
     workspaceId: nullableId,
     assignToCurrentWorkspace: z.boolean().optional(),
   })
-  .passthrough();
+  .strip();
 
 export const IntakeAnalyzeSchema = z
   .object({
     intakeId: nonEmptyString("intakeId is required"),
     workspaceId: nonEmptyString("workspaceId is required"),
   })
-  .passthrough();
+  .strip();
 
 export const IntakeResolveSchema = z
   .object({
@@ -35,4 +35,4 @@ export const IntakeResolveSchema = z
     taskType: nullableId,
     targetTaskId: nullableId,
   })
-  .passthrough();
+  .strip();

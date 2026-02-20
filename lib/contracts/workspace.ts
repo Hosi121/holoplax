@@ -14,36 +14,36 @@ export const WorkspaceCreateSchema = z
   .object({
     name: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "name is required")),
   })
-  .passthrough();
+  .strip();
 
 export const WorkspaceCurrentSchema = z
   .object({
     workspaceId: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "workspaceId is required")),
   })
-  .passthrough();
+  .strip();
 
 export const WorkspaceInviteCreateSchema = z
   .object({
     email: EmailSchema,
     role: WorkspaceRoleInputSchema.optional(),
   })
-  .passthrough();
+  .strip();
 
 export const WorkspaceInviteAcceptSchema = z
   .object({
     token: z.preprocess(toStringOrEmpty, z.string().trim().min(1, "token is required")),
   })
-  .passthrough();
+  .strip();
 
 export const WorkspaceMemberAddSchema = z
   .object({
     email: EmailSchema,
     role: WorkspaceRoleInputSchema.optional(),
   })
-  .passthrough();
+  .strip();
 
 export const WorkspaceMemberRoleUpdateSchema = z
   .object({
     role: WorkspaceRoleInputSchema,
   })
-  .passthrough();
+  .strip();

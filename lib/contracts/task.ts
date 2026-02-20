@@ -30,7 +30,7 @@ export const TaskChecklistItemSchema = z
     text: z.string().optional(),
     done: z.boolean().optional(),
   })
-  .passthrough();
+  .strip();
 
 export const TaskChecklistSchema = z.array(TaskChecklistItemSchema);
 
@@ -53,7 +53,7 @@ export const TaskCreateSchema = z
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     routineNextAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
   })
-  .passthrough();
+  .strip();
 
 export const TaskUpdateSchema = z
   .object({
@@ -78,4 +78,4 @@ export const TaskUpdateSchema = z
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
     routineNextAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
   })
-  .passthrough();
+  .strip();
