@@ -44,7 +44,9 @@ function getClientIp(request: NextRequest): string {
 }
 
 /**
- * Create a rate limit exceeded response
+ * Create a rate limit exceeded response.
+ * Shape matches ErrorEnvelope from lib/http/errors.ts so clients have a
+ * uniform error object regardless of where the rejection originates.
  */
 function rateLimitExceededResponse(
   headers: Record<string, string>,
@@ -57,7 +59,9 @@ function rateLimitExceededResponse(
       error: {
         code: "RATE_LIMIT_EXCEEDED",
         message: "Too many requests. Please try again later.",
-        retryAfter,
+        details: { retryAfter },
+        timestamp: new Date().toISOString(),
+        requestId,
       },
     }),
     {
@@ -73,7 +77,8 @@ function rateLimitExceededResponse(
 }
 
 /**
- * Create a CSRF validation failed response
+ * Create a CSRF validation failed response.
+ * Shape matches ErrorEnvelope from lib/http/errors.ts.
  */
 function csrfFailedResponse(reason: string, requestId: string): NextResponse {
   return new NextResponse(
@@ -81,6 +86,8 @@ function csrfFailedResponse(reason: string, requestId: string): NextResponse {
       error: {
         code: "CSRF_VALIDATION_FAILED",
         message: reason,
+        timestamp: new Date().toISOString(),
+        requestId,
       },
     }),
     {

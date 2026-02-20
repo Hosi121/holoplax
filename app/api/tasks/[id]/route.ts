@@ -1,4 +1,4 @@
-import { Prisma, type TaskStatus, type TaskType } from "@prisma/client";
+import { Prisma, type TaskStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
@@ -9,15 +9,8 @@ import { TaskUpdateSchema } from "../../../../lib/contracts/task";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { logger } from "../../../../lib/logger";
-import { badPoints } from "../../../../lib/points";
 import prisma from "../../../../lib/prisma";
 import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
-
-const isTaskStatus = (value: unknown): value is TaskStatus =>
-  Object.values(TASK_STATUS).includes(value as TaskStatus);
-
-const isTaskType = (value: unknown): value is TaskType =>
-  Object.values(TASK_TYPE).includes(value as TaskType);
 
 const toNullableJsonInput = (
   value: unknown | null | undefined,
@@ -106,16 +99,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (checklistValue !== undefined) {
         data.checklist = checklistValue;
       }
+      // points is already a valid Fibonacci number (TaskPointsSchema validated at parse time)
       if (body.points !== undefined && body.points !== null) {
-        if (badPoints(body.points)) {
-          return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
-        }
-        data.points = Number(body.points);
+        data.points = body.points;
       }
       if (body.urgency) data.urgency = body.urgency;
       if (body.risk) data.risk = body.risk;
+      // type is already a valid TaskType (TaskTypeSchema validated at parse time)
       if (body.type !== undefined) {
-        data.type = isTaskType(body.type) ? body.type : TASK_TYPE.PBI;
+        data.type = body.type;
       }
       // automationState is intentionally not writable by users.
       // It is managed exclusively by the server-side automation engine.
@@ -125,7 +117,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (body.tags !== undefined) {
         data.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
       }
-      const statusValue = body.status && isTaskStatus(body.status) ? body.status : null;
+      // status is already a valid TaskStatus (TaskStatusSchema validated at parse time).
+      // The cast bridges z.preprocess() output which Zod types as string rather than the
+      // narrower TaskStatus union — the enum constraint is enforced at runtime by the schema.
+      const statusValue = (body.status as TaskStatus | undefined) ?? null;
       logger.debug("TASK_UPDATE narrowed", {
         statusValue,
         typeValue: data.type ?? null,
@@ -265,7 +260,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
         const updatedTask = await tx.task.findFirst({
           where: { id, workspaceId },
-          include: { routineRule: true },
+          include: { routineRule: { select: { nextAt: true, cadence: true } } },
         });
 
         // Update dependencies
