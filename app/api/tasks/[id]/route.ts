@@ -1,4 +1,4 @@
-import { Prisma, type TaskStatus } from "@prisma/client";
+import type { TaskStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
@@ -11,15 +11,12 @@ import { parseBody } from "../../../../lib/http/validation";
 import { logger } from "../../../../lib/logger";
 import prisma from "../../../../lib/prisma";
 import { checkSprintCapacity } from "../../../../lib/tasks/sprint-capacity";
+import {
+  createNextRoutineOccurrence,
+  syncRoutineRule,
+  syncTaskDependencies,
+} from "../../../../lib/tasks/task-write";
 import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
-
-const toNullableJsonInput = (
-  value: unknown | null | undefined,
-): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
-  if (value === undefined) return undefined;
-  if (value === null) return Prisma.DbNull;
-  return value as Prisma.InputJsonValue;
-};
 
 const toChecklist = (value: unknown) => {
   if (value === null) return null;
@@ -33,38 +30,6 @@ const toChecklist = (value: unknown) => {
     .filter((item) => item.text.length > 0);
 };
 
-const normalizeChecklistForReset = (value: unknown) => {
-  if (!Array.isArray(value)) return null;
-  return value
-    .map((item) => {
-      if (item && typeof item === "object") {
-        const obj = item as Record<string, unknown>;
-        const text = typeof obj.text === "string" ? obj.text : String(obj.text ?? "");
-        return {
-          id: typeof obj.id === "string" ? obj.id : randomUUID(),
-          text: text.trim(),
-          done: false,
-        };
-      }
-      const fallback = String(item ?? "").trim();
-      return {
-        id: randomUUID(),
-        text: fallback,
-        done: false,
-      };
-    })
-    .filter((item) => item.text.length > 0);
-};
-
-const nextRoutineAt = (cadence: "DAILY" | "WEEKLY", base: Date) => {
-  const next = new Date(base);
-  if (cadence === "DAILY") {
-    next.setDate(next.getDate() + 1);
-  } else {
-    next.setDate(next.getDate() + 7);
-  }
-  return next;
-};
 const errors = createDomainErrors("TASK");
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -253,51 +218,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
         // Update dependencies
         if (Array.isArray(body.dependencyIds)) {
-          const dependencyIds = body.dependencyIds.map((depId: string) => String(depId));
-          const allowed = dependencyIds.length
-            ? await tx.task.findMany({
-                where: { id: { in: dependencyIds }, workspaceId },
-                select: { id: true },
-              })
-            : [];
-          await tx.taskDependency.deleteMany({ where: { taskId: id } });
-          if (allowed.length > 0) {
-            await tx.taskDependency.createMany({
-              data: allowed
-                .map((dep) => dep.id)
-                .filter((depId) => depId && depId !== id)
-                .map((depId) => ({ taskId: id, dependsOnId: depId })),
-              skipDuplicates: true,
-            });
-          }
+          await syncTaskDependencies(tx, {
+            taskId: id,
+            workspaceId,
+            dependencyIds: body.dependencyIds.map((depId: string) => String(depId)),
+          });
         }
 
         // Update routine rules
         if (updatedTask) {
-          const finalType = (updatedTask.type ?? TASK_TYPE.PBI) as string;
-          if (finalType !== TASK_TYPE.ROUTINE && updatedTask.routineRule) {
-            await tx.routineRule.delete({ where: { taskId: updatedTask.id } });
-          } else if (finalType === TASK_TYPE.ROUTINE) {
-            if (cadenceValue) {
-              const baseDate = updatedTask.dueDate ? new Date(updatedTask.dueDate) : new Date();
-              const nextAt =
-                routineNextAt ??
-                updatedTask.routineRule?.nextAt ??
-                nextRoutineAt(cadenceValue, baseDate);
-              await tx.routineRule.upsert({
-                where: { taskId: updatedTask.id },
-                update: { cadence: cadenceValue, nextAt },
-                create: { taskId: updatedTask.id, cadence: cadenceValue, nextAt },
-              });
-            } else if (routineNextAt && updatedTask.routineRule) {
-              await tx.routineRule.update({
-                where: { taskId: updatedTask.id },
-                data: { nextAt: routineNextAt },
-              });
-            } else if (shouldClearRoutine && updatedTask.routineRule) {
-              await tx.routineRule.delete({ where: { taskId: updatedTask.id } });
-            }
-          }
+          await syncRoutineRule(tx, {
+            task: updatedTask,
+            cadenceValue,
+            routineNextAt,
+            shouldClearRoutine,
+          });
         }
 
         // Create audit log
@@ -325,55 +260,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         }
 
         // Handle routine task completion - create next occurrence
-        let newRoutineTask = null;
-        if (
+        const newRoutineTask =
           updatedTask &&
           statusValue === TASK_STATUS.DONE &&
           currentTask.status !== TASK_STATUS.DONE &&
           updatedTask.type === TASK_TYPE.ROUTINE
-        ) {
-          const rule = updatedTask.routineRule
-            ? updatedTask.routineRule
-            : await tx.routineRule.findUnique({ where: { taskId: updatedTask.id } });
-          if (rule) {
-            const now = new Date();
-            const dueAt = rule.nextAt && rule.nextAt > now ? rule.nextAt : now;
-            const nextAt = nextRoutineAt(rule.cadence as "DAILY" | "WEEKLY", dueAt);
-            const resetChecklist = normalizeChecklistForReset(updatedTask.checklist);
-            newRoutineTask = await tx.task.create({
-              data: {
-                title: updatedTask.title,
-                description: updatedTask.description ?? "",
-                definitionOfDone: updatedTask.definitionOfDone ?? "",
-                checklist: toNullableJsonInput(resetChecklist),
-                points: updatedTask.points,
-                urgency: updatedTask.urgency,
-                risk: updatedTask.risk,
-                status: TASK_STATUS.BACKLOG,
-                type: TASK_TYPE.ROUTINE,
-                dueDate: dueAt,
-                tags: updatedTask.tags ?? [],
-                assigneeId: updatedTask.assigneeId ?? null,
-                userId: updatedTask.userId ?? userId,
-                workspaceId,
-              },
-            });
-            await tx.routineRule.update({
-              where: { taskId: updatedTask.id },
-              data: { taskId: newRoutineTask.id, nextAt },
-            });
-            await tx.taskStatusEvent.create({
-              data: {
-                taskId: newRoutineTask.id,
-                fromStatus: null,
-                toStatus: TASK_STATUS.BACKLOG,
-                actorId: userId,
-                source: "routine",
-                workspaceId,
-              },
-            });
-          }
-        }
+            ? await createNextRoutineOccurrence(tx, { task: updatedTask, userId, workspaceId })
+            : null;
 
         return { task: updatedTask, createdRoutineTask: newRoutineTask };
       });

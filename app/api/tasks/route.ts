@@ -1,4 +1,4 @@
-import { Prisma, type TaskStatus, type TaskType } from "@prisma/client";
+import type { Prisma, TaskStatus, TaskType } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { normalizeSeverity } from "../../../lib/ai-normalization";
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
@@ -14,6 +14,7 @@ import { mapTaskWithDependencies } from "../../../lib/mappers/task";
 import { badPoints } from "../../../lib/points";
 import prisma from "../../../lib/prisma";
 import { checkSprintCapacity, findActiveSprint } from "../../../lib/tasks/sprint-capacity";
+import { nextRoutineAt, toNullableJsonInput } from "../../../lib/tasks/task-write";
 import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 
 const isTaskStatus = (value: unknown): value is TaskStatus =>
@@ -24,14 +25,6 @@ const isTaskType = (value: unknown): value is TaskType =>
 
 const isSeverity = (value: unknown): value is "LOW" | "MEDIUM" | "HIGH" =>
   ["LOW", "MEDIUM", "HIGH"].includes(value as string);
-
-const toNullableJsonInput = (
-  value: unknown | null | undefined,
-): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
-  if (value === undefined) return undefined;
-  if (value === null) return Prisma.DbNull;
-  return value as Prisma.InputJsonValue;
-};
 
 const toChecklist = (value: unknown) => {
   if (!Array.isArray(value)) return null;
@@ -44,15 +37,6 @@ const toChecklist = (value: unknown) => {
     .filter((item) => item.text.length > 0);
 };
 
-const nextRoutineAt = (cadence: "DAILY" | "WEEKLY", base: Date) => {
-  const next = new Date(base);
-  if (cadence === "DAILY") {
-    next.setDate(next.getDate() + 1);
-  } else {
-    next.setDate(next.getDate() + 7);
-  }
-  return next;
-};
 const errors = createDomainErrors("TASK");
 
 export async function GET(request: Request) {
