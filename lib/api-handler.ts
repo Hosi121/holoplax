@@ -1,5 +1,5 @@
 import { handleAuthError } from "./api-response";
-import { errorResponse } from "./http/errors";
+import { AppError, errorResponse } from "./http/errors";
 import { logger } from "./logger";
 
 type ErrorFallback = {
@@ -23,14 +23,20 @@ export const withApiHandler = async (
   } catch (error) {
     const authError = handleAuthError(error);
     if (authError) return authError;
-    logger.error(
-      `${options.logLabel} failed`,
-      {
-        requestId: options.requestId,
-        code: options.errorFallback.code,
-      },
-      error,
-    );
+    // Thrown 4xx domain errors are expected client outcomes (mirroring the
+    // createDomainErrors paths that return them without logging) — only log
+    // genuine server failures at error level.
+    const isExpectedClientError = error instanceof AppError && error.status < 500;
+    if (!isExpectedClientError) {
+      logger.error(
+        `${options.logLabel} failed`,
+        {
+          requestId: options.requestId,
+          code: options.errorFallback.code,
+        },
+        error,
+      );
+    }
     return errorResponse(error, options.errorFallback);
   }
 };

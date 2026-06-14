@@ -1,43 +1,12 @@
-import type { Prisma, TaskStatus, TaskType } from "@prisma/client";
-import { randomUUID } from "crypto";
-import { normalizeSeverity } from "../../../lib/ai-normalization";
+import type { Prisma } from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import { logAudit } from "../../../lib/audit";
-import { applyAutomationForTask } from "../../../lib/automation";
 import { TaskCreateSchema } from "../../../lib/contracts/task";
-import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
-import { logger } from "../../../lib/logger";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
-import { badPoints } from "../../../lib/points";
 import prisma from "../../../lib/prisma";
-import { checkSprintCapacity, findActiveSprint } from "../../../lib/tasks/sprint-capacity";
-import { nextRoutineAt, toNullableJsonInput } from "../../../lib/tasks/task-write";
-import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
-
-const isTaskStatus = (value: unknown): value is TaskStatus =>
-  Object.values(TASK_STATUS).includes(value as TaskStatus);
-
-const isTaskType = (value: unknown): value is TaskType =>
-  Object.values(TASK_TYPE).includes(value as TaskType);
-
-const isSeverity = (value: unknown): value is "LOW" | "MEDIUM" | "HIGH" =>
-  ["LOW", "MEDIUM", "HIGH"].includes(value as string);
-
-const toChecklist = (value: unknown) => {
-  if (!Array.isArray(value)) return null;
-  return value
-    .map((item) => ({
-      id: typeof item?.id === "string" ? item.id : randomUUID(),
-      text: String(item?.text ?? "").trim(),
-      done: Boolean(item?.done),
-    }))
-    .filter((item) => item.text.length > 0);
-};
-
-const errors = createDomainErrors("TASK");
+import { createTask, isSeverity, isTaskStatus, isTaskType } from "../../../lib/tasks/task-service";
 
 export async function GET(request: Request) {
   return withApiHandler(
@@ -206,160 +175,8 @@ export async function POST(request: Request) {
         domain: "TASK",
         requireWorkspace: true,
       });
-      const body = await parseBody(request, TaskCreateSchema, {
-        code: "TASK_VALIDATION",
-      });
-      logger.debug("TASK_CREATE input", {
-        status: body.status,
-        type: body.type,
-        checklistType: Array.isArray(body.checklist) ? "array" : typeof body.checklist,
-        checklistNull: body.checklist === null,
-      });
-      const {
-        title,
-        description,
-        definitionOfDone,
-        checklist,
-        points,
-        urgency,
-        risk,
-        status,
-        type,
-        parentId,
-        dueDate,
-        assigneeId,
-        tags,
-        dependencyIds,
-        routineCadence,
-        routineNextAt,
-      } = body;
-      if (badPoints(points)) {
-        return errors.badRequest("points must be one of 1,2,3,5,8,13,21,34");
-      }
-      let safeAssigneeId: string | null = assigneeId ?? null;
-      if (safeAssigneeId) {
-        const member = await prisma.workspaceMember.findUnique({
-          where: { workspaceId_userId: { workspaceId, userId: safeAssigneeId } },
-          select: { userId: true },
-        });
-        if (!member) {
-          safeAssigneeId = null;
-        }
-      }
-      const dependencyList = Array.isArray(dependencyIds)
-        ? dependencyIds.map((id: string) => String(id))
-        : [];
-      const allowedDependencies = dependencyList.length
-        ? await prisma.task.findMany({
-            where: { id: { in: dependencyList }, workspaceId },
-            select: { id: true, title: true, status: true },
-          })
-        : [];
-      const statusValue = isTaskStatus(status) ? status : TASK_STATUS.BACKLOG;
-      const typeValue = isTaskType(type) ? type : TASK_TYPE.PBI;
-      logger.debug("TASK_CREATE narrowed", {
-        statusValue,
-        typeValue,
-      });
-      const parentCandidate = parentId ? String(parentId) : null;
-      const parent = parentCandidate
-        ? await prisma.task.findFirst({
-            where: { id: parentCandidate, workspaceId },
-            select: { id: true },
-          })
-        : null;
-      if (
-        statusValue !== TASK_STATUS.BACKLOG &&
-        allowedDependencies.some((dep) => dep.status !== TASK_STATUS.DONE)
-      ) {
-        return errors.badRequest("dependencies must be done before moving to sprint");
-      }
-      const activeSprint =
-        statusValue === TASK_STATUS.SPRINT ? await findActiveSprint(prisma, workspaceId) : null;
-      if (activeSprint) {
-        const { exceeded } = await checkSprintCapacity(prisma, {
-          workspaceId,
-          additionalPoints: Number(points),
-          activeSprint,
-        });
-        if (exceeded) {
-          return errors.badRequest("sprint capacity exceeded");
-        }
-      }
-      const task = await prisma.task.create({
-        data: {
-          title,
-          description: description ?? "",
-          definitionOfDone: typeof definitionOfDone === "string" ? definitionOfDone : "",
-          checklist: toNullableJsonInput(toChecklist(checklist)),
-          points: Number(points),
-          urgency: normalizeSeverity(urgency),
-          risk: normalizeSeverity(risk),
-          status: statusValue,
-          dueDate: dueDate ? new Date(dueDate) : null,
-          tags: Array.isArray(tags) ? tags.map((tag: string) => String(tag)) : [],
-          type: typeValue,
-          sprint: activeSprint ? { connect: { id: activeSprint.id } } : undefined,
-          parent: parent ? { connect: { id: parent.id } } : undefined,
-          assignee: safeAssigneeId ? { connect: { id: safeAssigneeId } } : undefined,
-          user: { connect: { id: userId } },
-          workspace: { connect: { id: workspaceId } },
-        },
-      });
-      const cadenceValue =
-        routineCadence === "DAILY" || routineCadence === "WEEKLY" ? routineCadence : null;
-      if (typeValue === TASK_TYPE.ROUTINE && cadenceValue) {
-        const baseDate = dueDate ? new Date(dueDate) : new Date();
-        const nextAt = routineNextAt
-          ? new Date(routineNextAt)
-          : nextRoutineAt(cadenceValue, baseDate);
-        await prisma.routineRule.create({
-          data: {
-            taskId: task.id,
-            cadence: cadenceValue,
-            nextAt,
-          },
-        });
-      }
-      if (allowedDependencies.length > 0) {
-        await prisma.taskDependency.createMany({
-          data: dependencyList
-            .filter((id: string) => id && id !== task.id)
-            .filter((id: string) => allowedDependencies.some((allowed) => allowed.id === id))
-            .map((id: string) => ({
-              taskId: task.id,
-              dependsOnId: id,
-            })),
-          skipDuplicates: true,
-        });
-      }
-      await prisma.taskStatusEvent.create({
-        data: {
-          taskId: task.id,
-          fromStatus: null,
-          toStatus: task.status,
-          actorId: userId,
-          source: "api",
-          workspaceId,
-        },
-      });
-      await logAudit({
-        actorId: userId,
-        action: "TASK_CREATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { taskId: task.id, status: task.status },
-      });
-      await applyAutomationForTask({
-        userId,
-        workspaceId,
-        task: {
-          id: task.id,
-          title: task.title,
-          description: task.description ?? "",
-          points: task.points,
-          status: task.status,
-        },
-      });
+      const input = await parseBody(request, TaskCreateSchema, { code: "TASK_VALIDATION" });
+      const task = await createTask({ userId, workspaceId, input });
       return ok({ task });
     },
   );
