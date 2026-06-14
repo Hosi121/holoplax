@@ -48,6 +48,13 @@ next-env.d.ts
 # terraform
 **/.terraform/
 *.tfstate
+*.tfstate*
 *.tfstate.backup
 *.tfplan
+# plan files have no extension by convention; ignore the bare name too
+tfplan
+**/tfplan
 .terraform.lock.hcl
+
+# local tooling artifacts
+.tornado/
