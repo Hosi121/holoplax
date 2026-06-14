@@ -38,7 +38,9 @@ export function calculateTaskScore(task: TaskDTO): number {
   const urgencyW = URGENCY_WEIGHT[task.urgency] ?? 2;
   const riskW = RISK_WEIGHT[task.risk] ?? 1;
   // ポイントあたりの価値を計算（小さいタスクほど効率が良い）
-  return (urgencyW * riskW) / task.points;
+  // Guard against a 0 / non-finite points value producing Infinity/NaN.
+  const points = task.points > 0 ? task.points : 1;
+  return (urgencyW * riskW) / points;
 }
 
 /**
@@ -215,6 +217,7 @@ export function optimizeSprint(backlogTasks: TaskDTO[], capacity: number): Optim
  * 最適化結果のサマリーを生成
  */
 export function getOptimizationSummary(result: OptimizationResult, capacity: number): string {
-  const utilization = Math.round((result.totalPoints / capacity) * 100);
+  // Avoid NaN/Infinity utilization when capacity is 0 or invalid.
+  const utilization = capacity > 0 ? Math.round((result.totalPoints / capacity) * 100) : 0;
   return `${result.selectedTasks.length}件選択 (${result.totalPoints}/${capacity}pt, 利用率${utilization}%)`;
 }

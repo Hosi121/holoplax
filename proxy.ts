@@ -32,10 +32,28 @@ const PUBLIC_PATHS = [
   "/favicon.ico",
 ];
 
+/**
+ * Number of trusted reverse proxies in front of the app (e.g. 1 for a single
+ * ALB, 2 for CloudFront → ALB). The client IP is read as the Nth entry from the
+ * RIGHT of X-Forwarded-For, since each trusted proxy appends the address it saw.
+ * Reading the right side (rather than the spoofable left-most value the client
+ * can set) prevents attackers from forging a fresh rate-limit bucket per request.
+ */
+const TRUSTED_PROXY_COUNT = Math.max(1, Number(process.env.TRUSTED_PROXY_COUNT ?? "1") || 1);
+
 function getClientIp(request: NextRequest): string {
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
-    return forwardedFor.split(",")[0].trim();
+    const hops = forwardedFor
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (hops.length > 0) {
+      // Index from the right: with N trusted proxies the real client is at
+      // position length - TRUSTED_PROXY_COUNT (clamped to the first hop).
+      const index = Math.max(0, hops.length - TRUSTED_PROXY_COUNT);
+      return hops[index];
+    }
   }
   const realIp = request.headers.get("x-real-ip");
   if (realIp) {
@@ -160,7 +178,13 @@ export default async function proxy(request: NextRequest) {
   }
 
   // ── Static assets / Next internals: pass through ──────────────────────
-  const isStaticAsset = pathname.includes(".") || pathname.startsWith("/public");
+  // Match a known static-file extension at the end of the path rather than any
+  // path that merely contains a "." (which would let a dotted page/route segment
+  // bypass the auth redirect).
+  const isStaticAsset =
+    /\.(?:ico|png|jpg|jpeg|gif|webp|svg|css|js|map|woff2?|ttf|eot|txt|xml|json|webmanifest)$/i.test(
+      pathname,
+    ) || pathname.startsWith("/public");
   if (pathname.startsWith("/_next") || pathname.startsWith("/public") || isStaticAsset) {
     return NextResponse.next();
   }

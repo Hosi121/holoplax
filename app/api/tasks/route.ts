@@ -84,8 +84,15 @@ export async function GET(request: Request) {
       const riskParam = searchParams.get("risk");
       const tagsParam = searchParams.get("tags")?.split(",").filter(Boolean) ?? [];
       const assigneeId = searchParams.get("assigneeId");
-      const dueBefore = searchParams.get("dueBefore");
-      const dueAfter = searchParams.get("dueAfter");
+      // Parse to a valid Date or undefined — an invalid string would otherwise
+      // produce `Invalid Date`, which Prisma rejects with a 500 instead of a 400.
+      const parseValidDate = (value: string | null): Date | undefined => {
+        if (!value) return undefined;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? undefined : date;
+      };
+      const dueBefore = parseValidDate(searchParams.get("dueBefore"));
+      const dueAfter = parseValidDate(searchParams.get("dueAfter"));
       const minPoints = Number(searchParams.get("minPoints"));
       const maxPoints = Number(searchParams.get("maxPoints"));
 
@@ -108,8 +115,8 @@ export async function GET(request: Request) {
         ...(dueBefore || dueAfter
           ? {
               dueDate: {
-                ...(dueBefore ? { lte: new Date(dueBefore) } : {}),
-                ...(dueAfter ? { gte: new Date(dueAfter) } : {}),
+                ...(dueBefore ? { lte: dueBefore } : {}),
+                ...(dueAfter ? { gte: dueAfter } : {}),
               },
             }
           : {}),

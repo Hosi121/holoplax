@@ -121,24 +121,29 @@ export async function applyAutomationForTask(params: {
     if (!(await shouldDelegate(current, { userId, workspaceId }))) {
       return;
     }
-    await prisma.task.update({
-      where: { id: current.id },
-      data: {
-        automationState: AUTOMATION_STATE.DELEGATED,
-      },
-    });
-    await prisma.aiSuggestion.create({
-      data: {
-        type: "TIP",
-        taskId: current.id,
-        inputTitle: current.title,
-        inputDescription: current.description,
-        output: requireApproval
-          ? "低スコア: AI委任候補（承認待ち）。AI委任キューに移動しました。"
-          : "低スコア: AI委任候補。AI委任キューに移動しました。",
-        userId,
-        workspaceId,
-      },
+    // Flip state and record the suggestion atomically — otherwise a failure
+    // after the task.update leaves the task DELEGATED with no suggestion, a
+    // state the engine never revisits (it only acts when state === NONE).
+    await prisma.$transaction(async (tx) => {
+      await tx.task.update({
+        where: { id: current.id },
+        data: {
+          automationState: AUTOMATION_STATE.DELEGATED,
+        },
+      });
+      await tx.aiSuggestion.create({
+        data: {
+          type: "TIP",
+          taskId: current.id,
+          inputTitle: current.title,
+          inputDescription: current.description,
+          output: requireApproval
+            ? "低スコア: AI委任候補（承認待ち）。AI委任キューに移動しました。"
+            : "低スコア: AI委任候補。AI委任キューに移動しました。",
+          userId,
+          workspaceId,
+        },
+      });
     });
     return;
   }
@@ -180,22 +185,25 @@ export async function applyAutomationForTask(params: {
 
   // High score: auto-split (with approval if required)
   if (requireApproval) {
-    await prisma.task.update({
-      where: { id: current.id },
-      data: {
-        automationState: AUTOMATION_STATE.PENDING_SPLIT,
-      },
-    });
-    await prisma.aiSuggestion.create({
-      data: {
-        type: "SPLIT",
-        taskId: current.id,
-        inputTitle: current.title,
-        inputDescription: current.description,
-        output: JSON.stringify({ note: `${prefix}（承認待ち）`, suggestions }),
-        userId,
-        workspaceId,
-      },
+    // Atomic state-flip + suggestion-create (see DELEGATED branch above).
+    await prisma.$transaction(async (tx) => {
+      await tx.task.update({
+        where: { id: current.id },
+        data: {
+          automationState: AUTOMATION_STATE.PENDING_SPLIT,
+        },
+      });
+      await tx.aiSuggestion.create({
+        data: {
+          type: "SPLIT",
+          taskId: current.id,
+          inputTitle: current.title,
+          inputDescription: current.description,
+          output: JSON.stringify({ note: `${prefix}（承認待ち）`, suggestions }),
+          userId,
+          workspaceId,
+        },
+      });
     });
     return;
   }

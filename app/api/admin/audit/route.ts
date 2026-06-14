@@ -436,6 +436,9 @@ export async function GET(request: Request) {
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
           .slice(0, limit);
 
+        // Cap aggregation scans so a wide custom range can't load an unbounded
+        // number of rows into memory on a busy instance.
+        const STATS_ROW_CAP = 50_000;
         const usageRows = await prisma.aiUsage.findMany({
           where: rangeWhere,
           select: {
@@ -450,6 +453,8 @@ export async function GET(request: Request) {
             user: { select: { id: true, name: true, email: true } },
             workspace: { select: { id: true, name: true } },
           },
+          orderBy: { createdAt: "desc" },
+          take: STATS_ROW_CAP,
         });
         const legacyUsageLogs = await prisma.auditLog.findMany({
           where: {
@@ -462,6 +467,8 @@ export async function GET(request: Request) {
             actor: { select: { id: true, name: true, email: true } },
             targetWorkspace: { select: { id: true, name: true } },
           },
+          orderBy: { createdAt: "desc" },
+          take: STATS_ROW_CAP,
         });
 
         const totals = createBucket();
