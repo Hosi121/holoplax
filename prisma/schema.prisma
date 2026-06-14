@@ -130,13 +130,23 @@ enum MemoryQuestionStatus {
   HOLD
 }
 
-enum AutomationState {
+// Per-task automation lifecycle. Distinct from the per-workspace threshold
+// escalation "stage" (UserAutomationSetting.stage / AutomationStageHistory).
+enum TaskAutomationState {
   NONE
   DELEGATED
   PENDING_SPLIT
   SPLIT_PARENT
   SPLIT_CHILD
   SPLIT_REJECTED
+}
+
+// Origin of a TaskStatusEvent (write-only audit trail).
+enum TaskStatusEventSource {
+  API
+  BULK
+  ROUTINE
+  SPRINT_END
 }
 
 model User {
@@ -343,7 +353,7 @@ model Task {
   risk             Severity          @default(MEDIUM)
   status           TaskStatus        @default(BACKLOG)
   type             TaskType          @default(PBI)
-  automationState  AutomationState   @default(NONE)
+  automationState  TaskAutomationState @default(NONE)
   parentId         String?
   sprintId         String?
   dueDate          DateTime?
@@ -384,13 +394,6 @@ model VelocityEntry {
   user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String?
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-}
-
-model AutomationSetting {
-  id        Int      @id @default(1)
-  low       Int
-  high      Int
-  updatedAt DateTime @updatedAt
 }
 
 model AiProviderSetting {
@@ -583,7 +586,7 @@ model TaskStatusEvent {
   fromStatus  TaskStatus?
   toStatus    TaskStatus
   actorId     String?
-  source      String?
+  source      TaskStatusEventSource?
   workspaceId String?
   task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
   actor       User?       @relation("StatusEventActor", fields: [actorId], references: [id], onDelete: SetNull)

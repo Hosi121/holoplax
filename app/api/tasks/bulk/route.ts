@@ -98,7 +98,7 @@ export async function POST(request: Request) {
                       fromStatus: task.status,
                       toStatus: status,
                       actorId: userId,
-                      source: "bulk",
+                      source: "BULK",
                       workspaceId,
                     })),
                   });
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
                     fromStatus: task.status,
                     toStatus: status,
                     actorId: userId,
-                    source: "bulk",
+                    source: "BULK",
                     workspaceId,
                   })),
                 });

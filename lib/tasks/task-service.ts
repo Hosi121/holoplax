@@ -192,7 +192,7 @@ export async function createTask(params: {
       fromStatus: null,
       toStatus: task.status,
       actorId: userId,
-      source: "api",
+      source: "API",
       workspaceId,
     },
   });
@@ -401,7 +401,7 @@ export async function updateTask(params: {
           fromStatus: currentTask.status ?? null,
           toStatus: statusValue,
           actorId: userId,
-          source: "api",
+          source: "API",
           workspaceId,
         },
       });

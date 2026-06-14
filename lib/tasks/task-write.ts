@@ -153,7 +153,7 @@ export async function createNextRoutineOccurrence(
       fromStatus: null,
       toStatus: TASK_STATUS.BACKLOG,
       actorId: userId,
-      source: "routine",
+      source: "ROUTINE",
       workspaceId,
     },
   });

@@ -3,17 +3,17 @@
  * These are the source of truth for enum values
  */
 export {
-  AutomationState,
   Severity,
   SprintStatus,
+  TaskAutomationState,
   TaskStatus,
   TaskType,
 } from "@prisma/client";
 
 import type {
-  AutomationState as PrismaAutomationState,
   Severity as PrismaSeverity,
   SprintStatus as PrismaSprintStatus,
+  TaskAutomationState as PrismaTaskAutomationState,
   TaskStatus as PrismaTaskStatus,
   TaskType as PrismaTaskType,
 } from "@prisma/client";
@@ -42,7 +42,7 @@ export const AUTOMATION_STATE = {
   SPLIT_PARENT: "SPLIT_PARENT",
   SPLIT_CHILD: "SPLIT_CHILD",
   SPLIT_REJECTED: "SPLIT_REJECTED",
-} as const satisfies Record<string, PrismaAutomationState>;
+} as const satisfies Record<string, PrismaTaskAutomationState>;
 
 export const SEVERITY = {
   LOW: "LOW",
@@ -88,7 +88,7 @@ export type TaskDTO = {
   risk: PrismaSeverity;
   status: PrismaTaskStatus;
   type?: PrismaTaskType;
-  automationState?: PrismaAutomationState;
+  automationState?: PrismaTaskAutomationState;
   routineCadence?: "DAILY" | "WEEKLY" | null;
   routineNextAt?: string | Date | null;
   parentId?: string | null;
