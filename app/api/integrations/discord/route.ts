@@ -4,7 +4,7 @@ import { logAudit } from "../../../../lib/audit";
 import { DiscordIntakeSchema } from "../../../../lib/contracts/integrations";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import { validateSharedToken } from "../../../../lib/integrations/auth";
+import { validateSharedToken, verifyIntegrationSignature } from "../../../../lib/integrations/auth";
 import prisma from "../../../../lib/prisma";
 
 export async function POST(request: Request) {
@@ -21,6 +21,8 @@ export async function POST(request: Request) {
     async () => {
       const authError = validateSharedToken(request, ["DISCORD_INTEGRATION_TOKEN"]);
       if (authError) return authError;
+      const sigError = await verifyIntegrationSignature(request, ["DISCORD_SIGNING_SECRET"]);
+      if (sigError) return sigError;
 
       const body = await parseBody(request, DiscordIntakeSchema, {
         code: "INTEGRATION_VALIDATION",

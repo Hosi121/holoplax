@@ -3,6 +3,7 @@
 // Usage: node scripts/discord-bot.js (requires env vars below and discord.js installed)
 
 /* eslint-disable @typescript-eslint/no-require-imports */
+const crypto = require("crypto");
 const { Client, GatewayIntentBits, EmbedBuilder, ChannelType } = require("discord.js");
 
 const {
@@ -14,10 +15,34 @@ const {
   DISCORD_INTEGRATION_URL = "http://localhost:3000/api/integrations/discord",
   DISCORD_TASK_URL = "http://localhost:3000/api/integrations/discord/task",
   DISCORD_INTEGRATION_TOKEN,
+  // Optional HMAC signing secret for replay-protected requests (must match the
+  // web app's DISCORD_SIGNING_SECRET). When unset, requests use token auth only.
+  DISCORD_SIGNING_SECRET,
   OPENAI_API_KEY,
   // Optional: Web app URL for task links
   HOLOPLAX_WEB_URL = "http://localhost:3000",
 } = process.env;
+
+// POST a JSON payload to an integration endpoint with the shared bearer token
+// and, when a signing secret is configured, an HMAC signature + timestamp that
+// the server verifies (defense-in-depth against token leakage / replay).
+async function postIntegration(url, payload) {
+  const raw = JSON.stringify(payload);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${DISCORD_INTEGRATION_TOKEN}`,
+  };
+  if (DISCORD_SIGNING_SECRET) {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = `v0=${crypto
+      .createHmac("sha256", DISCORD_SIGNING_SECRET)
+      .update(`v0:${timestamp}:${raw}`)
+      .digest("hex")}`;
+    headers["x-integration-timestamp"] = timestamp;
+    headers["x-integration-signature"] = signature;
+  }
+  return fetch(url, { method: "POST", headers, body: raw });
+}
 
 // Parse watch channel IDs (supports both single and multiple)
 const watchChannelIds = (() => {
@@ -156,7 +181,7 @@ async function analyzeMessage(content, threadContext = "") {
 - 不明な場合 → 3
 
 JSON形式で回答してください:
-{"isTask": true/false, "title": "タスクの場合は簡潔なタイトル(30文字以内)", "dueDate": "YYYY-MM-DD形式 or null", "urgency": "LOW/MEDIUM/HIGH", "points": 1/2/3/5/8/13}`;
+{"isTask": true/false, "title": "タスクの場合は簡潔なタイトル(30文字以内)", "dueDate": "YYYY-MM-DD形式 or null", "urgency": "LOW/MEDIUM/HIGH", "points": 1/2/3/5/8/13/21/34}`;
 
   const userMessage = threadContext
     ? `スレッドの親メッセージ:\n${threadContext}\n\n現在のメッセージ:\n${content}`
@@ -194,7 +219,7 @@ JSON形式で回答してください:
       title: result.title || null,
       dueDate: parseDueDate(result.dueDate),
       urgency: ["LOW", "MEDIUM", "HIGH"].includes(result.urgency) ? result.urgency : "MEDIUM",
-      points: [1, 2, 3, 5, 8, 13].includes(result.points) ? result.points : 3,
+      points: [1, 2, 3, 5, 8, 13, 21, 34].includes(result.points) ? result.points : 3,
     };
   } catch (error) {
     console.error("LLM analysis failed:", error.message);
@@ -251,22 +276,15 @@ async function handleSlashCommand(interaction) {
     const dueDate = parseDueDate(dueInput);
 
     try {
-      const res = await fetch(DISCORD_TASK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${DISCORD_INTEGRATION_TOKEN}`,
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          dueDate,
-          urgency,
-          points,
-          author: user.username,
-          channel: channel?.name ?? "unknown",
-          threadId: channel?.isThread?.() ? channel.id : null,
-        }),
+      const res = await postIntegration(DISCORD_TASK_URL, {
+        title,
+        description,
+        dueDate,
+        urgency,
+        points,
+        author: user.username,
+        channel: channel?.name ?? "unknown",
+        threadId: channel?.isThread?.() ? channel.id : null,
       });
 
       if (!res.ok) {
@@ -396,25 +414,18 @@ client.on("messageCreate", async (message) => {
   );
 
   try {
-    const res = await fetch(DISCORD_INTEGRATION_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${DISCORD_INTEGRATION_TOKEN}`,
-      },
-      body: JSON.stringify({
-        title: analysis.title,
-        body: content,
-        source: "discord",
-        author: message.author.username,
-        channel: message.channel.name,
-        dueDate: analysis.dueDate,
-        urgency: analysis.urgency,
-        points: analysis.points,
-        threadId,
-        threadUrl,
-        messageUrl: message.url,
-      }),
+    const res = await postIntegration(DISCORD_INTEGRATION_URL, {
+      title: analysis.title,
+      body: content,
+      source: "discord",
+      author: message.author.username,
+      channel: message.channel.name,
+      dueDate: analysis.dueDate,
+      urgency: analysis.urgency,
+      points: analysis.points,
+      threadId,
+      threadUrl,
+      messageUrl: message.url,
     });
 
     if (!res.ok) {

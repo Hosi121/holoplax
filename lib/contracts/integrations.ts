@@ -1,12 +1,10 @@
 import { z } from "zod";
+import { isStoryPoint } from "../points";
 
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
 
 // Valid urgency values
 const URGENCY_VALUES = ["LOW", "MEDIUM", "HIGH"] as const;
-
-// Valid point values for Fibonacci-like estimation
-const POINT_VALUES = [1, 2, 3, 5, 8, 13] as const;
 
 export const DiscordIntakeSchema = z
   .object({
@@ -23,11 +21,7 @@ export const DiscordIntakeSchema = z
     urgency: z.enum(URGENCY_VALUES).optional(),
     points: z.preprocess(
       (v) => (v == null ? null : Number(v)),
-      z
-        .number()
-        .refine((n) => POINT_VALUES.includes(n as (typeof POINT_VALUES)[number]))
-        .nullable()
-        .optional(),
+      z.number().refine(isStoryPoint).nullable().optional(),
     ),
     // Thread support
     threadId: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
@@ -48,10 +42,7 @@ export const DiscordCreateTaskSchema = z
     urgency: z.enum(URGENCY_VALUES).optional().default("MEDIUM"),
     points: z.preprocess(
       (v) => (v == null ? 3 : Number(v)),
-      z
-        .number()
-        .refine((n) => POINT_VALUES.includes(n as (typeof POINT_VALUES)[number]))
-        .default(3),
+      z.number().refine(isStoryPoint).default(3),
     ),
     author: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     channel: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),

@@ -23,16 +23,53 @@ export const validateSharedToken = (request: Request, envKeys: string[]) => {
   const received = extractHeaderToken(request);
   if (!received) return integrationUnauthorized("invalid integration token");
 
-  // Constant-time comparison to prevent timing attacks.
-  // Pad received to the expected length so timingSafeEqual never throws on
-  // mismatched lengths; also verify lengths match separately so that neither
-  // operation leaks information through timing side-channels.
-  const expectedBuf = Buffer.from(expected, "utf8");
-  const receivedPadded = received.slice(0, expected.length).padEnd(expected.length, "\0");
-  const receivedBuf = Buffer.from(receivedPadded, "utf8");
-  const contentMatch = crypto.timingSafeEqual(expectedBuf, receivedBuf);
-  const lengthMatch = received.length === expected.length;
-  if (!contentMatch || !lengthMatch) return integrationUnauthorized("invalid integration token");
+  // Constant-time comparison to prevent timing attacks. Hash both sides to a
+  // fixed-length digest first: this makes the comparison length-independent so
+  // it leaks neither the content nor the length of the expected token.
+  const expectedHash = crypto.createHash("sha256").update(expected, "utf8").digest();
+  const receivedHash = crypto.createHash("sha256").update(received, "utf8").digest();
+  if (!crypto.timingSafeEqual(expectedHash, receivedHash)) {
+    return integrationUnauthorized("invalid integration token");
+  }
+  return null;
+};
+
+/**
+ * Defense-in-depth HMAC verification for first-party integration webhooks
+ * (e.g. our Discord bot). When a signing secret is configured the request must
+ * carry `x-integration-timestamp` and `x-integration-signature` headers, where
+ * the signature is `v0=HMAC_SHA256(secret, "v0:{timestamp}:{rawBody}")`. A 5
+ * minute timestamp window provides replay protection. When no secret is
+ * configured this is a no-op so the shared-token check still governs access.
+ *
+ * Reads the body from a clone so the caller can still parse the original.
+ */
+export const verifyIntegrationSignature = async (request: Request, secretEnvKeys: string[]) => {
+  const secret = firstEnvToken(secretEnvKeys);
+  if (!secret) return null; // not configured → rely on shared-token auth only
+
+  const timestamp = request.headers.get("x-integration-timestamp") ?? "";
+  const signature = request.headers.get("x-integration-signature") ?? "";
+  if (!timestamp || !signature) {
+    return integrationUnauthorized("missing integration signature");
+  }
+
+  const ts = Number(timestamp);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(ts) || Math.abs(now - ts) > 60 * 5) {
+    return integrationUnauthorized("integration request expired");
+  }
+
+  const raw = await request.clone().text();
+  const base = `v0:${timestamp}:${raw}`;
+  const expected = `v0=${crypto.createHmac("sha256", secret).update(base).digest("hex")}`;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+      return integrationUnauthorized("invalid integration signature");
+    }
+  } catch {
+    return integrationUnauthorized("invalid integration signature");
+  }
   return null;
 };
 

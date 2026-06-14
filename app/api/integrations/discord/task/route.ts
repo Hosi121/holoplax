@@ -5,7 +5,11 @@ import { applyAutomationForTask } from "../../../../../lib/automation";
 import { DiscordCreateTaskSchema } from "../../../../../lib/contracts/integrations";
 import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
-import { validateSharedToken } from "../../../../../lib/integrations/auth";
+import {
+  validateSharedToken,
+  verifyIntegrationSignature,
+} from "../../../../../lib/integrations/auth";
+import { isStoryPoint } from "../../../../../lib/points";
 import prisma from "../../../../../lib/prisma";
 import { SEVERITY, type Severity, TASK_STATUS, TASK_TYPE } from "../../../../../lib/types";
 
@@ -31,9 +35,11 @@ export async function POST(request: Request) {
       },
     },
     async () => {
-      // 1. Token authentication
+      // 1. Token authentication (+ optional HMAC signature when configured)
       const authError = validateSharedToken(request, ["DISCORD_INTEGRATION_TOKEN"]);
       if (authError) return authError;
+      const sigError = await verifyIntegrationSignature(request, ["DISCORD_SIGNING_SECRET"]);
+      if (sigError) return sigError;
 
       // 2. Parse and validate body
       const body = await parseBody(request, DiscordCreateTaskSchema, {
@@ -68,9 +74,8 @@ export async function POST(request: Request) {
       };
       const urgency: Severity = urgencyMap[body.urgency ?? "MEDIUM"] ?? SEVERITY.MEDIUM;
 
-      // Validate points
-      const validPoints = [1, 2, 3, 5, 8, 13];
-      const points = validPoints.includes(body.points ?? 3) ? (body.points ?? 3) : 3;
+      // Validate points against the canonical story-point set.
+      const points = isStoryPoint(body.points ?? 3) ? (body.points ?? 3) : 3;
 
       // Resolve user and workspace
       const userEnv = getEnv("DISCORD_USER_ID") || getEnv("INTEGRATION_USER_ID");
