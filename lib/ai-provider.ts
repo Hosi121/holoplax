@@ -18,6 +18,37 @@ export type AiChatResult = {
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
+// Per-scope spend cap over a rolling 30-day window. 0/unset disables the cap.
+const AI_COST_LIMIT_USD = Number(process.env.AI_MONTHLY_COST_LIMIT_USD ?? "0") || 0;
+// Abort a hung provider call rather than holding the request open indefinitely.
+const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS ?? "20000") || 20000;
+
+/**
+ * Returns true when the caller's workspace (or user, if no workspace) has spent
+ * at least AI_COST_LIMIT_USD over the last 30 days. Callers treat a null result
+ * from requestAiChat as "no AI available" and fall back to heuristics.
+ */
+async function isOverAiBudget(context?: AiUsageContext): Promise<boolean> {
+  if (AI_COST_LIMIT_USD <= 0) return false;
+  const scope = context?.workspaceId
+    ? { workspaceId: context.workspaceId }
+    : context?.userId
+      ? { userId: context.userId }
+      : null;
+  if (!scope) return false;
+  const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  try {
+    const agg = await prisma.aiUsage.aggregate({
+      _sum: { costUsd: true },
+      where: { ...scope, createdAt: { gte: windowStart } },
+    });
+    return (agg._sum.costUsd ?? 0) >= AI_COST_LIMIT_USD;
+  } catch {
+    // On a metering failure, fail open (don't block the product on a DB hiccup).
+    return false;
+  }
+}
+
 const MODEL_PROVIDER_MAP: Record<string, string> = {
   "gpt-4o-mini": "OPENAI",
   "gpt-4o": "OPENAI",
@@ -106,32 +137,42 @@ const fetchOpenAiChat = async (
   params: { system: string; user: string; maxTokens: number; userTag?: string },
 ): Promise<AiChatResult | null> => {
   const url = `${normalizeBaseUrl(config.baseUrl)}/chat/completions`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        { role: "system", content: params.system },
-        { role: "user", content: params.user },
-      ],
-      max_tokens: params.maxTokens,
-      user: params.userTag,
-    }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content ?? null;
-  const responseModel = typeof data.model === "string" ? data.model : config.model;
-  return {
-    content,
-    usage: data.usage ?? undefined,
-    provider: resolveProviderKey(responseModel),
-    model: responseModel,
-  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: "system", content: params.system },
+          { role: "user", content: params.user },
+        ],
+        max_tokens: params.maxTokens,
+        user: params.userTag,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content ?? null;
+    const responseModel = typeof data.model === "string" ? data.model : config.model;
+    return {
+      content,
+      usage: data.usage ?? undefined,
+      provider: resolveProviderKey(responseModel),
+      model: responseModel,
+    };
+  } catch {
+    // Timeout / network / abort — callers fall back to heuristics on null.
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 export async function requestAiChat(params: {
@@ -142,6 +183,13 @@ export async function requestAiChat(params: {
 }): Promise<AiChatResult | null> {
   const config = await resolveAiProvider();
   if (!config) return null;
+  if (await isOverAiBudget(params.context)) {
+    logger.warn("AI request skipped: spend cap reached", {
+      workspaceId: params.context?.workspaceId ?? undefined,
+      userId: params.context?.userId ?? undefined,
+    });
+    return null;
+  }
   const result = await fetchOpenAiChat(config, {
     system: params.system,
     user: params.user,

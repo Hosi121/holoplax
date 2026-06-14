@@ -16,6 +16,10 @@ const DEFAULT_PRICING_USD_PER_M: AiPricingTable = {
 
 const roundUsd = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
 
+// A price (USD per million tokens) must be a finite, non-negative number.
+const isValidPrice = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
+
 const mergePricingTables = (base: AiPricingTable, overrides: AiPricingTable) => {
   const merged: AiPricingTable = { ...base };
   for (const [provider, models] of Object.entries(overrides)) {
@@ -36,7 +40,9 @@ const parsePricingJson = (raw: string): AiPricingTable | null => {
         if (!prices || typeof prices !== "object") continue;
         const input = (prices as { input?: unknown }).input;
         const output = (prices as { output?: unknown }).output;
-        if (typeof input !== "number" || typeof output !== "number") continue;
+        // Reject NaN/Infinity/negative prices, which would yield bogus or
+        // negative costs.
+        if (!isValidPrice(input) || !isValidPrice(output)) continue;
         if (!table[provider]) table[provider] = {};
         table[provider][model] = { input, output };
       }
@@ -72,6 +78,7 @@ export async function loadAiPricingTable(): Promise<{
   if (rows.length) {
     const table: AiPricingTable = {};
     for (const row of rows) {
+      if (!isValidPrice(row.inputUsdPerM) || !isValidPrice(row.outputUsdPerM)) continue;
       const provider = String(row.provider);
       if (!table[provider]) table[provider] = {};
       table[provider][row.model] = {
@@ -107,8 +114,8 @@ export function calculateAiUsageCost(params: {
   if (promptTokens === null && completionTokens === null) {
     return { costUsd: null, pricingMatched: true };
   }
-  const prompt = promptTokens ?? 0;
-  const completion = completionTokens ?? 0;
+  const prompt = Math.max(0, promptTokens ?? 0);
+  const completion = Math.max(0, completionTokens ?? 0);
   const costUsd = roundUsd(
     (prompt / 1_000_000) * pricing.input + (completion / 1_000_000) * pricing.output,
   );

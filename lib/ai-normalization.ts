@@ -52,6 +52,12 @@ export const normalizeSeverity = (
 // Kept for backwards compatibility during migration
 export const normalizePriorityLevel = normalizeSeverity;
 
+// Caps on untrusted, model-generated strings before they are persisted.
+const MAX_TITLE_LEN = 140;
+const MAX_DETAIL_LEN = 2000;
+
+const truncate = (value: string, max: number) => (value.length > max ? value.slice(0, max) : value);
+
 export const sanitizeSplitSuggestion = (item: {
   title: string;
   points: unknown;
@@ -59,9 +65,9 @@ export const sanitizeSplitSuggestion = (item: {
   risk?: unknown;
   detail?: string | null;
 }) => ({
-  title: toStringValue(item.title),
+  title: truncate(toStringValue(item.title), MAX_TITLE_LEN),
   points: normalizeStoryPoint(item.points),
   urgency: normalizeSeverity(item.urgency),
   risk: normalizeSeverity(item.risk),
-  detail: toStringValue(item.detail),
+  detail: truncate(toStringValue(item.detail), MAX_DETAIL_LEN),
 });

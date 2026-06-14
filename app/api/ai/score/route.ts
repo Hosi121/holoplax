@@ -83,11 +83,21 @@ export async function POST(request: Request) {
         // fall back to heuristic
       }
 
+      // Build the persisted payload from a fixed whitelist — never spread the
+      // raw (untrusted, possibly prompt-injected) model output. score is
+      // coerced and clamped to 0–100; reason is coerced to a bounded string.
+      const rawScore = Number((payload as { score?: unknown }).score);
+      const score = Number.isFinite(rawScore)
+        ? Math.min(100, Math.max(0, Math.round(rawScore)))
+        : 0;
+      const rawReason = (payload as { reason?: unknown }).reason;
+      const reason = (typeof rawReason === "string" ? rawReason : "").slice(0, 500);
       const normalizedPayload = {
-        ...payload,
         points: normalizeStoryPoint(payload.points),
         urgency: normalizeSeverity(payload.urgency),
         risk: normalizeSeverity(payload.risk),
+        score,
+        reason,
       };
 
       const saved = await prisma.aiSuggestion.create({

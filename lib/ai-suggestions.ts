@@ -71,7 +71,10 @@ export async function generateSplitSuggestions(params: {
       model = result.model;
       provider = result.provider;
       const parsed = JSON.parse(extractJsonArray(result.content));
-      if (Array.isArray(parsed) && parsed.length > 0) suggestions = parsed;
+      // Cap the number of accepted items — a model returning hundreds of
+      // entries would otherwise be persisted verbatim. (Per-field string
+      // lengths are bounded in sanitizeSplitSuggestion below.)
+      if (Array.isArray(parsed) && parsed.length > 0) suggestions = parsed.slice(0, 8);
     }
   } catch {
     // fall back to heuristic
