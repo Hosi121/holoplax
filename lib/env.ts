@@ -59,6 +59,12 @@ export function validateEnv(): ValidationResult {
     missing.push("ENCRYPTION_KEY: must be exactly 64 hexadecimal characters");
   }
 
+  // NEXTAUTH_SECRET signs JWT sessions — a weak/short secret enables forgery.
+  const nextauthSecret = process.env.NEXTAUTH_SECRET;
+  if (nextauthSecret && nextauthSecret.length < 32) {
+    missing.push("NEXTAUTH_SECRET: must be at least 32 characters");
+  }
+
   return {
     valid: missing.length === 0,
     missing,

@@ -22,9 +22,8 @@ const errors = createDomainErrors("ACCOUNT");
  * Security notes:
  * - The current password is verified via bcrypt.compare before any write.
  * - The new password is rejected if it equals the current one (Zod refine).
- * - Existing JWT sessions remain valid after the change (NextAuth JWT strategy
- *   has no server-side session store to invalidate). For higher security,
- *   users should sign out of other devices after changing their password.
+ * - passwordChangedAt is stamped so requireAuth rejects JWTs issued before the
+ *   change, evicting other sessions on the next authenticated request.
  */
 export async function PATCH(request: Request) {
   return withApiHandler(
@@ -64,10 +63,17 @@ export async function PATCH(request: Request) {
       // Persist the new hash. bcrypt work factor 12 — slightly higher than the
       // registration default of 10 to make offline cracking more expensive.
       const newHash = await hash(body.newPassword, 12);
-      await prisma.userPassword.update({
-        where: { userId },
-        data: { hash: newHash },
-      });
+      await prisma.$transaction([
+        prisma.userPassword.update({
+          where: { userId },
+          data: { hash: newHash },
+        }),
+        // Invalidate sessions issued before this change.
+        prisma.user.update({
+          where: { id: userId },
+          data: { passwordChangedAt: new Date() },
+        }),
+      ]);
 
       // Audit trail — password changes are security-sensitive events.
       await logAudit({

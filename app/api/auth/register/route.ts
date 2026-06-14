@@ -39,6 +39,12 @@ export async function POST(request: Request) {
       // ローカル（localhost）ではメール認証を自動スキップ。強制したい場合は EMAIL_VERIFY_ALWAYS=true を設定。
       const forceVerify = process.env.EMAIL_VERIFY_ALWAYS === "true";
       const hasEmailConfig = Boolean(process.env.EMAIL_SERVER && process.env.EMAIL_FROM);
+      // Fail closed: in a non-local deployment without email configured we must
+      // NOT silently auto-verify (that would let anyone register with an email
+      // they don't own and log in). Refuse registration instead.
+      if (!isLocal && !hasEmailConfig && !forceVerify) {
+        return errors.internal("registration is temporarily unavailable: email is not configured");
+      }
       const shouldVerify = forceVerify || (!isLocal && hasEmailConfig);
       const user = await prisma.user.create({
         data: {

@@ -1,5 +1,5 @@
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { compare } from "bcryptjs";
+import { compare, hashSync } from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import DiscordProvider from "next-auth/providers/discord";
@@ -8,6 +8,11 @@ import GoogleProvider from "next-auth/providers/google";
 import prisma from "./prisma";
 
 const providers = [];
+
+// A throwaway bcrypt hash used to equalize response time when a user/password
+// row is missing, so the credentials login path is not a username-enumeration
+// timing oracle (we always perform one bcrypt comparison).
+const DUMMY_PASSWORD_HASH = hashSync("holoplax-timing-equalizer", 10);
 
 providers.push(
   CredentialsProvider({
@@ -31,17 +36,18 @@ providers.push(
           disabledAt: true,
           emailVerified: true,
           onboardingCompletedAt: true,
+          passwordChangedAt: true,
         },
       });
-      if (!user) return null;
-      if (user.disabledAt) return null;
-      const passwordRow = await prisma.userPassword.findUnique({
-        where: { userId: user.id },
-      });
-      if (!passwordRow) return null;
-      if (!user.emailVerified) return null;
-      const valid = await compare(password, passwordRow.hash);
-      if (!valid) return null;
+      const passwordRow = user
+        ? await prisma.userPassword.findUnique({ where: { userId: user.id } })
+        : null;
+      // Always run one bcrypt comparison (against a dummy hash when no row
+      // exists) so timing does not reveal whether the account exists.
+      const valid = await compare(password, passwordRow?.hash ?? DUMMY_PASSWORD_HASH);
+      if (!user || user.disabledAt || !passwordRow || !user.emailVerified || !valid) {
+        return null;
+      }
       return {
         id: user.id,
         name: user.name,
@@ -50,6 +56,7 @@ providers.push(
         role: user.role,
         disabledAt: user.disabledAt,
         onboardingCompletedAt: user.onboardingCompletedAt,
+        passwordChangedAt: user.passwordChangedAt,
       };
     },
   }),
@@ -101,6 +108,8 @@ export const authOptions: NextAuthOptions = {
         token.disabledAt = (user as { disabledAt?: Date | null }).disabledAt ?? null;
         token.onboardingCompletedAt =
           (user as { onboardingCompletedAt?: Date | null }).onboardingCompletedAt ?? null;
+        const pwChangedAt = (user as { passwordChangedAt?: Date | null }).passwordChangedAt;
+        token.pwAt = pwChangedAt ? new Date(pwChangedAt).getTime() : null;
       }
       if (trigger === "update") {
         const nextUser = session?.user as
@@ -136,7 +145,7 @@ export const authOptions: NextAuthOptions = {
 
         const existingUser = await prisma.user.findUnique({
           where: { email },
-          select: { id: true, disabledAt: true },
+          select: { id: true, disabledAt: true, emailVerified: true },
         });
 
         if (existingUser?.disabledAt) return false;
@@ -157,10 +166,16 @@ export const authOptions: NextAuthOptions = {
         if (existingUser) {
           if (linkedAccount) return true;
 
-          const canLink =
+          // Only auto-link to an existing local account whose email is itself
+          // verified — otherwise someone who registered with another person's
+          // email could be hijacked. For Google we also require the provider's
+          // verified-email signal. (NextAuth's GitHub provider only returns the
+          // primary verified email, so the local-verified check covers it.)
+          const providerEmailOk =
+            account.provider === "github" ||
             (account.provider === "google" &&
-              (profile as { email_verified?: boolean })?.email_verified === true) ||
-            account.provider === "github";
+              (profile as { email_verified?: boolean })?.email_verified === true);
+          const canLink = providerEmailOk && existingUser.emailVerified !== null;
 
           if (!canLink) return false;
 
@@ -203,6 +218,7 @@ export const authOptions: NextAuthOptions = {
         image: token.picture as string | null | undefined,
         onboardingCompletedAt: (token as { onboardingCompletedAt?: Date | null })
           .onboardingCompletedAt,
+        pwChangedAt: (token as { pwAt?: number | null }).pwAt ?? null,
       },
     }),
   },

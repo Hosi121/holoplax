@@ -40,6 +40,12 @@ export async function POST(request: Request) {
             update: { hash: hashed },
             create: { userId: record.userId, hash: hashed },
           });
+          // Stamp passwordChangedAt so existing sessions are invalidated — a
+          // reset must evict any attacker session, not just rotate the secret.
+          await tx.user.update({
+            where: { id: record.userId },
+            data: { passwordChangedAt: new Date() },
+          });
           // Delete rather than mark used — keeps the table lean.
           await tx.passwordResetToken.delete({ where: { token } });
           return record.userId;
