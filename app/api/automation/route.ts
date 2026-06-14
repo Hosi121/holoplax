@@ -3,12 +3,10 @@ import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
 import { AutomationUpdateSchema } from "../../../lib/contracts/automation";
-import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 
 const STAGE_STEP = 5;
-const errors = createDomainErrors("AUTOMATION");
 
 export async function GET() {
   return withApiHandler(

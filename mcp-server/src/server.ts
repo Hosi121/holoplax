@@ -4,7 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "crypto";
 import express from "express";
-import { type AuthContext, verifyAuth } from "./auth.js";
+import { verifyAuth } from "./auth.js";
 import { getConfig, validateConfig } from "./config.js";
 import { type ExecutionContext, runWithContext } from "./context.js";
 import { getToolByName, listToolDefinitions } from "./tools/index.js";

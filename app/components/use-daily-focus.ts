@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
-import {
-  type DailyFocusResult,
-  type FocusTask,
-  getFocusSummary,
-  selectDailyFocus,
-} from "../../lib/daily-focus";
+import { type DailyFocusResult, getFocusSummary, selectDailyFocus } from "../../lib/daily-focus";
 import { TASK_STATUS, type TaskDTO } from "../../lib/types";
 import { useWorkspaceId } from "./use-workspace-id";
 

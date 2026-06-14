@@ -3,7 +3,7 @@ import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
 import { AdminAiUpdateSchema } from "../../../../lib/contracts/admin";
-import { encrypt, isEncrypted, safeDecrypt } from "../../../../lib/encryption";
+import { encrypt, isEncrypted } from "../../../../lib/encryption";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";

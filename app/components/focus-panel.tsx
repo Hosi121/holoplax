@@ -4,8 +4,7 @@ import { Check, RefreshCw, Target } from "lucide-react";
 import { useDailyFocus } from "./use-daily-focus";
 
 export function FocusPanel() {
-  const { focusTasks, totalPoints, summary, loading, accepted, accept, refresh, markDone } =
-    useDailyFocus();
+  const { focusTasks, summary, loading, accepted, accept, refresh, markDone } = useDailyFocus();
 
   if (loading) {
     return (
@@ -48,7 +47,7 @@ export function FocusPanel() {
       </div>
 
       <div className="mt-4 space-y-2">
-        {focusTasks.map(({ task, score, reasons }) => (
+        {focusTasks.map(({ task, reasons }) => (
           <div
             key={task.id}
             className="flex items-center gap-3 border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300"

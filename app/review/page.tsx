@@ -2,12 +2,10 @@ import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
   CalendarDays,
   CheckCircle2,
   ListTodo,
   Timer,
-  TrendingDown,
 } from "lucide-react";
 import Link from "next/link";
 import { getServerSession } from "next-auth";
@@ -59,9 +57,7 @@ export default async function ReviewPage() {
 
   // Single pass to collect all sprint-related metrics
   const sprintMetrics = (() => {
-    const sprintTasks: typeof tasks = [];
     const sprintDone: typeof tasks = [];
-    const sprintActive: typeof tasks = [];
     const sprintPbis: typeof tasks = [];
     const sprintPbiDone: typeof tasks = [];
     let committedPoints = 0;
@@ -75,14 +71,12 @@ export default async function ReviewPage() {
 
       if (!isSprintTask) continue;
 
-      sprintTasks.push(task);
       totalSprintPoints += task.points;
 
       if (task.status === "DONE") {
         sprintDone.push(task);
         donePoints += task.points;
       } else {
-        sprintActive.push(task);
         committedPoints += task.points;
       }
 
@@ -100,9 +94,7 @@ export default async function ReviewPage() {
     const completionRate = totalSprintPoints ? (donePoints / totalSprintPoints) * 100 : 0;
 
     return {
-      sprintTasks,
       sprintDone,
-      sprintActive,
       sprintPbis,
       sprintPbiDone,
       committedPoints,
@@ -113,9 +105,7 @@ export default async function ReviewPage() {
   })();
 
   const {
-    sprintTasks,
     sprintDone,
-    sprintActive,
     sprintPbis,
     sprintPbiDone,
     committedPoints,

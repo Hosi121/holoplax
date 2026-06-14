@@ -174,7 +174,6 @@ export default function BacklogPage() {
   const [form, setForm] = useState(createDefaultForm);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [scoreHint, setScoreHint] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
   const [editForm, setEditForm] = useState({
@@ -1505,11 +1504,6 @@ export default function BacklogPage() {
                 {scoreHint ? (
                   <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                     {scoreHint}
-                  </div>
-                ) : null}
-                {suggestion ? (
-                  <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
-                    {suggestion}
                   </div>
                 ) : null}
                 <div className="mt-4 flex items-center justify-between">
