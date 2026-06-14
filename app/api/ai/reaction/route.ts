@@ -95,20 +95,20 @@ export async function POST(request: Request) {
  */
 async function updateAcceptRateEMA(userId: string, suggestionType: string, reaction: string) {
   const typeKey = `ai_${suggestionType.toLowerCase()}_accept_rate_30d`;
-  const memoryType = await prisma.memoryType.findFirst({
+  const memoryDefinition = await prisma.memoryDefinition.findFirst({
     where: { key: typeKey, scope: "USER" },
   });
-  if (!memoryType) {
-    // MemoryTypeが未定義の場合はスキップ（Phase 2で追加予定）
+  if (!memoryDefinition) {
+    // MemoryDefinitionが未定義の場合はスキップ（Phase 2で追加予定）
     return;
   }
 
   const claim = await prisma.memoryClaim.findFirst({
-    where: { typeId: memoryType.id, userId, status: "ACTIVE" },
+    where: { definitionId: memoryDefinition.id, userId, status: "ACTIVE" },
   });
 
   // EMA: alpha = 1 - 2^(-1/decayDays)
-  const decayDays = memoryType.decayDays ?? 30;
+  const decayDays = memoryDefinition.decayDays ?? 30;
   const alpha = 1 - 2 ** (-1 / decayDays);
   const newValue = reaction === "ACCEPTED" || reaction === "MODIFIED" ? 1 : 0;
   const prevValue = claim?.valueNum ?? 0.5; // 初期値は50%
@@ -122,7 +122,7 @@ async function updateAcceptRateEMA(userId: string, suggestionType: string, react
   } else {
     await prisma.memoryClaim.create({
       data: {
-        typeId: memoryType.id,
+        definitionId: memoryDefinition.id,
         userId,
         valueNum: nextValue,
         source: "INFERRED",

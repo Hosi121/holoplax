@@ -59,7 +59,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       const question = await prisma.memoryQuestion.findFirst({
         where: { id: questionId },
-        include: { type: { select: { scope: true } } },
+        include: { definition: { select: { scope: true } } },
       });
       if (!question) {
         return errors.badRequest("invalid question");
@@ -87,17 +87,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         if (action === "accept") {
           await tx.memoryClaim.updateMany({
             where:
-              question.type.scope === "USER"
-                ? { typeId: question.typeId, userId, status: "ACTIVE" }
-                : { typeId: question.typeId, workspaceId, status: "ACTIVE" },
+              question.definition.scope === "USER"
+                ? { definitionId: question.definitionId, userId, status: "ACTIVE" }
+                : { definitionId: question.definitionId, workspaceId, status: "ACTIVE" },
             data: { status: "STALE", validTo: now },
           });
           const claimValue = pickClaimValue(question);
           await tx.memoryClaim.create({
             data: {
-              typeId: question.typeId,
-              userId: question.type.scope === "USER" ? userId : null,
-              workspaceId: question.type.scope === "WORKSPACE" ? workspaceId : null,
+              definitionId: question.definitionId,
+              userId: question.definition.scope === "USER" ? userId : null,
+              workspaceId: question.definition.scope === "WORKSPACE" ? workspaceId : null,
               ...claimValue,
               valueJson: toNullableJsonInput(claimValue.valueJson),
               confidence: question.confidence,
@@ -122,7 +122,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         actorId: userId,
         action: `MEMORY_QUESTION_${nextStatus}`,
         targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { questionId, typeId: question.typeId },
+        metadata: { questionId, definitionId: question.definitionId },
       });
       return ok({ question: updated });
     },

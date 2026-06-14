@@ -38,7 +38,7 @@ const toNullableJsonInput = (
   return value as Prisma.InputJsonValue;
 };
 
-const defaultMemoryTypes = [
+const defaultMemoryDefinitions = [
   {
     key: "life_rhythm",
     scope: "USER",
@@ -101,12 +101,14 @@ const defaultMemoryTypes = [
   },
 ];
 
-const ensureMemoryTypes = async (scopes: MemoryScope[]) => {
-  const targets = defaultMemoryTypes.filter((item) => scopes.includes(item.scope as MemoryScope));
+const ensureMemoryDefinitions = async (scopes: MemoryScope[]) => {
+  const targets = defaultMemoryDefinitions.filter((item) =>
+    scopes.includes(item.scope as MemoryScope),
+  );
   if (!targets.length) return;
   await prisma.$transaction(
     targets.map((item) =>
-      prisma.memoryType.upsert({
+      prisma.memoryDefinition.upsert({
         where: { key_scope: { key: item.key, scope: item.scope as MemoryScope } },
         update: {
           valueType: item.valueType as MemoryValueType,
@@ -186,9 +188,9 @@ export async function GET() {
       const { userId, workspaceId } = await requireWorkspaceAuth();
       const scopes: MemoryScope[] = workspaceId ? ["USER", "WORKSPACE"] : ["USER"];
 
-      await ensureMemoryTypes(scopes);
+      await ensureMemoryDefinitions(scopes);
 
-      const types = await prisma.memoryType.findMany({
+      const definitions = await prisma.memoryDefinition.findMany({
         where: { scope: { in: scopes } },
         orderBy: { key: "asc" },
         take: 100,
@@ -197,7 +199,7 @@ export async function GET() {
       const userClaims = await prisma.memoryClaim.findMany({
         where: { userId, status: "ACTIVE" },
         orderBy: { updatedAt: "desc" },
-        distinct: ["typeId"],
+        distinct: ["definitionId"],
         take: 100,
       });
 
@@ -205,12 +207,12 @@ export async function GET() {
         ? await prisma.memoryClaim.findMany({
             where: { workspaceId, status: "ACTIVE" },
             orderBy: { updatedAt: "desc" },
-            distinct: ["typeId"],
+            distinct: ["definitionId"],
             take: 100,
           })
         : [];
 
-      return ok({ types, userClaims, workspaceClaims, workspaceId });
+      return ok({ definitions, userClaims, workspaceClaims, workspaceId });
     },
   );
 }
@@ -231,31 +233,31 @@ export async function POST(request: Request) {
         code: "MEMORY_VALIDATION",
       });
       logger.debug("MEMORY_CLAIM_CREATE input", {
-        typeId: body.typeId,
+        definitionId: body.definitionId,
         valueType: typeof body.value,
         valueNull: body.value === null,
       });
-      const typeId = body.typeId;
+      const definitionId = body.definitionId;
       const rawValue = body.value;
 
-      const type = await prisma.memoryType.findFirst({
-        where: { id: typeId },
+      const definition = await prisma.memoryDefinition.findFirst({
+        where: { id: definitionId },
       });
-      if (!type) {
-        return errors.badRequest("invalid typeId");
+      if (!definition) {
+        return errors.badRequest("invalid definitionId");
       }
-      if (!isMemoryScope(type.scope) || !isMemoryValueType(type.valueType)) {
+      if (!isMemoryScope(definition.scope) || !isMemoryValueType(definition.valueType)) {
         return errors.badRequest("invalid memory type configuration");
       }
 
-      if (type.scope === "WORKSPACE" && !workspaceId) {
+      if (definition.scope === "WORKSPACE" && !workspaceId) {
         return errors.badRequest("workspace is required");
       }
 
-      const parsed = parseValue(rawValue, type.valueType);
+      const parsed = parseValue(rawValue, definition.valueType);
       logger.debug("MEMORY_CLAIM_CREATE parsed", {
         ok: parsed.ok,
-        valueType: type.valueType,
+        valueType: definition.valueType,
       });
       if (!parsed.ok) {
         return errors.badRequest(parsed.reason ?? "invalid value");
@@ -265,15 +267,15 @@ export async function POST(request: Request) {
       const claim = await prisma.$transaction(async (tx) => {
         await tx.memoryClaim.updateMany({
           where:
-            type.scope === "USER"
-              ? { typeId, userId, status: "ACTIVE" }
-              : { typeId, workspaceId, status: "ACTIVE" },
+            definition.scope === "USER"
+              ? { definitionId, userId, status: "ACTIVE" }
+              : { definitionId, workspaceId, status: "ACTIVE" },
           data: { status: "STALE", validTo: now },
         });
         const data = {
-          typeId,
-          userId: type.scope === "USER" ? userId : null,
-          workspaceId: type.scope === "WORKSPACE" ? workspaceId : null,
+          definitionId,
+          userId: definition.scope === "USER" ? userId : null,
+          workspaceId: definition.scope === "WORKSPACE" ? workspaceId : null,
           ...parsed.data,
           source: "EXPLICIT" as MemorySource,
           status: "ACTIVE" as MemoryStatus,
@@ -295,7 +297,7 @@ export async function POST(request: Request) {
         actorId: userId,
         action: "MEMORY_CLAIM_CREATE",
         targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { claimId: claim.id, typeId, scope: type.scope },
+        metadata: { claimId: claim.id, definitionId, scope: definition.scope },
       });
       return ok({ claim });
     },
@@ -341,7 +343,7 @@ export async function DELETE(request: Request) {
         actorId: userId,
         action: "MEMORY_CLAIM_DELETE",
         targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { claimId, typeId: claim.typeId },
+        metadata: { claimId, definitionId: claim.definitionId },
       });
       return ok({ claim: updated });
     },

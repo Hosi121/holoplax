@@ -42,13 +42,13 @@ export async function GET() {
       // 1. flow_state を MemoryClaim から取得
       let flowState: number | null = null;
       if (workspaceId) {
-        const flowType = await prisma.memoryType.findFirst({
+        const flowType = await prisma.memoryDefinition.findFirst({
           where: { key: "flow_state", scope: "WORKSPACE" },
         });
         if (flowType) {
           const flowClaim = await prisma.memoryClaim.findFirst({
             where: {
-              typeId: flowType.id,
+              definitionId: flowType.id,
               workspaceId,
               status: "ACTIVE",
             },
@@ -71,7 +71,7 @@ export async function GET() {
         "ai_score_accept_rate_30d",
         "ai_split_accept_rate_30d",
       ];
-      const acceptRateTypes = await prisma.memoryType.findMany({
+      const acceptRateTypes = await prisma.memoryDefinition.findMany({
         where: { key: { in: acceptRateKeys }, scope: "USER" },
         take: acceptRateKeys.length,
       });
@@ -81,7 +81,7 @@ export async function GET() {
         where: {
           userId,
           status: "ACTIVE",
-          typeId: { in: acceptRateTypes.map((t) => t.id) },
+          definitionId: { in: acceptRateTypes.map((t) => t.id) },
         },
         orderBy: { updatedAt: "desc" },
         take: acceptRateKeys.length,
@@ -93,7 +93,7 @@ export async function GET() {
         split: null,
       };
       for (const claim of acceptRateClaims) {
-        const key = typeIdToKey.get(claim.typeId);
+        const key = typeIdToKey.get(claim.definitionId);
         if (key === "ai_tip_accept_rate_30d") acceptRates.tip = claim.valueNum;
         if (key === "ai_score_accept_rate_30d") acceptRates.score = claim.valueNum;
         if (key === "ai_split_accept_rate_30d") acceptRates.split = claim.valueNum;

@@ -42,7 +42,7 @@ export async function GET() {
         take: 50,
         select: {
           id: true,
-          typeId: true,
+          definitionId: true,
           valueStr: true,
           valueNum: true,
           valueBool: true,
@@ -50,7 +50,7 @@ export async function GET() {
           confidence: true,
           status: true,
           createdAt: true,
-          type: {
+          definition: {
             select: {
               key: true,
               scope: true,
@@ -81,11 +81,11 @@ export async function POST(request: Request) {
         code: "MEMORY_VALIDATION",
       });
       logger.debug("MEMORY_QUESTION_CREATE input", {
-        typeId: body.typeId,
+        definitionId: body.definitionId,
         valueJsonType: typeof body.valueJson,
         valueJsonNull: body.valueJson === null,
       });
-      const typeId = body.typeId;
+      const definitionId = body.definitionId;
       const confidence = Number(body.confidence ?? CONFIDENCE_THRESHOLD);
       const valueStr = body.valueStr ?? null;
       const valueNum = body.valueNum ?? null;
@@ -96,9 +96,9 @@ export async function POST(request: Request) {
         valueJsonNull: valueJson === null,
       });
 
-      const type = await prisma.memoryType.findFirst({ where: { id: typeId } });
+      const type = await prisma.memoryDefinition.findFirst({ where: { id: definitionId } });
       if (!type) {
-        return errors.badRequest("invalid typeId");
+        return errors.badRequest("invalid definitionId");
       }
       if (type.scope === "WORKSPACE" && !workspaceId) {
         return errors.badRequest("workspace is required");
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
 
       const question = await prisma.memoryQuestion.create({
         data: {
-          typeId,
+          definitionId,
           userId: type.scope === "USER" ? userId : null,
           workspaceId: type.scope === "WORKSPACE" ? workspaceId : null,
           valueStr,
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
         actorId: userId,
         action: "MEMORY_QUESTION_CREATE",
         targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { questionId: question.id, typeId, scope: type.scope },
+        metadata: { questionId: question.id, definitionId, scope: type.scope },
       });
       return ok({ question });
     },

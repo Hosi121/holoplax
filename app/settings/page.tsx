@@ -10,7 +10,7 @@ import { useAccount } from "./hooks/use-account";
 import {
   formatClaimValue,
   type MemoryClaimRow,
-  type MemoryTypeRow,
+  type MemoryDefinitionRow,
   useMemory,
 } from "./hooks/use-memory";
 import { formatQuestionValue, useMemoryQuestions } from "./hooks/use-memory-questions";
@@ -74,8 +74,8 @@ function SettingsContent() {
     memorySavingId,
     memoryRemovingId,
     editingMemoryId,
-    userMemoryTypes,
-    workspaceMemoryTypes,
+    userMemoryDefinitions,
+    workspaceMemoryDefinitions,
     fetchMemory,
     handleMemoryDraftChange,
     saveMemory,
@@ -102,7 +102,7 @@ function SettingsContent() {
     void fetchMemoryQuestions();
   }, [fetchThresholds, fetchAccount, fetchMemory, fetchMemoryQuestions]);
 
-  const renderMemoryInput = (type: MemoryTypeRow) => {
+  const renderMemoryInput = (type: MemoryDefinitionRow) => {
     const value = memoryDrafts[type.id] ?? "";
     if (
       type.valueType === "JSON" ||
@@ -162,7 +162,7 @@ function SettingsContent() {
     removing,
     renderInput,
   }: {
-    type: MemoryTypeRow;
+    type: MemoryDefinitionRow;
     claim?: MemoryClaimRow;
     isEditing: boolean;
     onEdit: () => void;
@@ -408,8 +408,8 @@ function SettingsContent() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                 User
               </p>
-              {userMemoryTypes.length ? (
-                userMemoryTypes.map((type) => (
+              {userMemoryDefinitions.length ? (
+                userMemoryDefinitions.map((type) => (
                   <MemoryCard
                     key={type.id}
                     type={type}
@@ -433,8 +433,8 @@ function SettingsContent() {
                 Workspace
               </p>
               {workspaceId ? (
-                workspaceMemoryTypes.length ? (
-                  workspaceMemoryTypes.map((type) => (
+                workspaceMemoryDefinitions.length ? (
+                  workspaceMemoryDefinitions.map((type) => (
                     <MemoryCard
                       key={type.id}
                       type={type}
@@ -501,9 +501,11 @@ function SettingsContent() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Memory 確認</p>
-                <h3 className="text-lg font-semibold text-slate-900">{activeQuestion.type.key}</h3>
-                {activeQuestion.type.description ? (
-                  <p className="text-xs text-slate-500">{activeQuestion.type.description}</p>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {activeQuestion.definition.key}
+                </h3>
+                {activeQuestion.definition.description ? (
+                  <p className="text-xs text-slate-500">{activeQuestion.definition.description}</p>
                 ) : null}
               </div>
               <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">

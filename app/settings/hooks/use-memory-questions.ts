@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api-client";
 
 export type MemoryQuestionRow = {
   id: string;
-  typeId: string;
+  definitionId: string;
   valueStr?: string | null;
   valueNum?: number | null;
   valueBool?: boolean | null;
@@ -11,7 +11,7 @@ export type MemoryQuestionRow = {
   confidence: number;
   status: string;
   createdAt: string;
-  type: {
+  definition: {
     key: string;
     scope: "USER" | "WORKSPACE";
     valueType: string;
@@ -20,25 +20,25 @@ export type MemoryQuestionRow = {
 };
 
 export const formatQuestionValue = (question: MemoryQuestionRow) => {
-  const type = question.type;
-  if (type.valueType === "STRING") return question.valueStr ?? "";
+  const definition = question.definition;
+  if (definition.valueType === "STRING") return question.valueStr ?? "";
   if (
-    type.valueType === "NUMBER" ||
-    type.valueType === "DURATION_MS" ||
-    type.valueType === "RATIO"
+    definition.valueType === "NUMBER" ||
+    definition.valueType === "DURATION_MS" ||
+    definition.valueType === "RATIO"
   ) {
     return question.valueNum !== null && question.valueNum !== undefined
       ? String(question.valueNum)
       : "";
   }
-  if (type.valueType === "BOOL") {
+  if (definition.valueType === "BOOL") {
     if (question.valueBool === null || question.valueBool === undefined) return "";
     return question.valueBool ? "true" : "false";
   }
   if (
-    type.valueType === "JSON" ||
-    type.valueType === "HISTOGRAM_24x7" ||
-    type.valueType === "RATIO_BY_TYPE"
+    definition.valueType === "JSON" ||
+    definition.valueType === "HISTOGRAM_24x7" ||
+    definition.valueType === "RATIO_BY_TYPE"
   ) {
     if (question.valueJson === null || question.valueJson === undefined) return "";
     return JSON.stringify(question.valueJson, null, 2);

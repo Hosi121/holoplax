@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 
-export type MemoryTypeRow = {
+export type MemoryDefinitionRow = {
   id: string;
   key: string;
   scope: "USER" | "WORKSPACE";
@@ -15,7 +15,7 @@ export type MemoryTypeRow = {
 
 export type MemoryClaimRow = {
   id: string;
-  typeId: string;
+  definitionId: string;
   valueStr?: string | null;
   valueNum?: number | null;
   valueBool?: boolean | null;
@@ -23,7 +23,7 @@ export type MemoryClaimRow = {
   status: string;
 };
 
-export const formatClaimValue = (type: MemoryTypeRow, claim?: MemoryClaimRow) => {
+export const formatClaimValue = (type: MemoryDefinitionRow, claim?: MemoryClaimRow) => {
   if (!claim) return "";
   if (type.valueType === "STRING") return claim.valueStr ?? "";
   if (
@@ -58,7 +58,7 @@ export type UseMemoryOptions = {
 };
 
 export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
-  const [memoryTypes, setMemoryTypes] = useState<MemoryTypeRow[]>([]);
+  const [memoryDefinitions, setMemoryDefinitions] = useState<MemoryDefinitionRow[]>([]);
   const [memoryClaims, setMemoryClaims] = useState<Record<string, MemoryClaimRow>>({});
   const [memoryDrafts, setMemoryDrafts] = useState<Record<string, string>>({});
   const [memoryLoading, setMemoryLoading] = useState(false);
@@ -75,19 +75,19 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
       const res = await apiFetch("/api/memory");
       if (!res.ok) return;
       const data = await res.json();
-      const types: MemoryTypeRow[] = data.types ?? [];
+      const types: MemoryDefinitionRow[] = data.definitions ?? [];
       const claimMap: Record<string, MemoryClaimRow> = {};
       (data.userClaims ?? []).forEach((claim: MemoryClaimRow) => {
-        claimMap[claim.typeId] = claim;
+        claimMap[claim.definitionId] = claim;
       });
       (data.workspaceClaims ?? []).forEach((claim: MemoryClaimRow) => {
-        claimMap[claim.typeId] = claim;
+        claimMap[claim.definitionId] = claim;
       });
       const drafts: Record<string, string> = {};
       types.forEach((type) => {
         drafts[type.id] = formatClaimValue(type, claimMap[type.id]);
       });
-      setMemoryTypes(types);
+      setMemoryDefinitions(types);
       setMemoryClaims(claimMap);
       setMemoryDrafts(drafts);
     } finally {
@@ -95,21 +95,21 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     }
   }, [ready, workspaceId]);
 
-  const userMemoryTypes = useMemo(
-    () => memoryTypes.filter((type) => type.scope === "USER"),
-    [memoryTypes],
+  const userMemoryDefinitions = useMemo(
+    () => memoryDefinitions.filter((type) => type.scope === "USER"),
+    [memoryDefinitions],
   );
 
-  const workspaceMemoryTypes = useMemo(
-    () => memoryTypes.filter((type) => type.scope === "WORKSPACE"),
-    [memoryTypes],
+  const workspaceMemoryDefinitions = useMemo(
+    () => memoryDefinitions.filter((type) => type.scope === "WORKSPACE"),
+    [memoryDefinitions],
   );
 
-  const handleMemoryDraftChange = (typeId: string, value: string) => {
-    setMemoryDrafts((prev) => ({ ...prev, [typeId]: value }));
+  const handleMemoryDraftChange = (definitionId: string, value: string) => {
+    setMemoryDrafts((prev) => ({ ...prev, [definitionId]: value }));
   };
 
-  const saveMemory = async (type: MemoryTypeRow) => {
+  const saveMemory = async (type: MemoryDefinitionRow) => {
     const value = memoryDrafts[type.id];
     if (value === undefined || value === "") {
       onWarning?.("値を入力してください。");
@@ -120,7 +120,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
       const res = await apiFetch("/api/memory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ typeId: type.id, value }),
+        body: JSON.stringify({ definitionId: type.id, value }),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -136,7 +136,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     }
   };
 
-  const removeMemory = async (type: MemoryTypeRow) => {
+  const removeMemory = async (type: MemoryDefinitionRow) => {
     const claim = memoryClaims[type.id];
     if (!claim) return;
     setMemoryRemovingId(claim.id);
@@ -158,24 +158,27 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     }
   };
 
-  const cancelEdit = (typeId: string) => {
+  const cancelEdit = (definitionId: string) => {
     setEditingMemoryId(null);
     setMemoryDrafts((prev) => ({
       ...prev,
-      [typeId]: formatClaimValue(memoryTypes.find((t) => t.id === typeId)!, memoryClaims[typeId]),
+      [definitionId]: formatClaimValue(
+        memoryDefinitions.find((t) => t.id === definitionId)!,
+        memoryClaims[definitionId],
+      ),
     }));
   };
 
   return {
-    memoryTypes,
+    memoryDefinitions,
     memoryClaims,
     memoryDrafts,
     memoryLoading,
     memorySavingId,
     memoryRemovingId,
     editingMemoryId,
-    userMemoryTypes,
-    workspaceMemoryTypes,
+    userMemoryDefinitions,
+    workspaceMemoryDefinitions,
     fetchMemory,
     handleMemoryDraftChange,
     saveMemory,

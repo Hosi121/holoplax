@@ -28,11 +28,11 @@ enum AiSuggestionType {
 }
 
 enum SuggestionReaction {
-  VIEWED    // 表示された
-  ACCEPTED  // そのまま適用
-  MODIFIED  // 修正して適用
-  REJECTED  // 明示的に却下
-  IGNORED   // 表示後、別の操作をした（暗黙の却下）
+  VIEWED // 表示された
+  ACCEPTED // そのまま適用
+  MODIFIED // 修正して適用
+  REJECTED // 明示的に却下
+  IGNORED // 表示後、別の操作をした（暗黙の却下）
 }
 
 enum AiPrepType {
@@ -343,36 +343,36 @@ model AuditLog {
 }
 
 model Task {
-  id               String            @id @default(uuid())
+  id               String              @id @default(uuid())
   title            String
-  description      String            @default("")
-  definitionOfDone String            @default("")
+  description      String              @default("")
+  definitionOfDone String              @default("")
   checklist        Json?
   points           Int
-  urgency          Severity          @default(MEDIUM)
-  risk             Severity          @default(MEDIUM)
-  status           TaskStatus        @default(BACKLOG)
-  type             TaskType          @default(PBI)
+  urgency          Severity            @default(MEDIUM)
+  risk             Severity            @default(MEDIUM)
+  status           TaskStatus          @default(BACKLOG)
+  type             TaskType            @default(PBI)
   automationState  TaskAutomationState @default(NONE)
   parentId         String?
   sprintId         String?
   dueDate          DateTime?
   assigneeId       String?
   tags             String[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
   suggestions      AiSuggestion[]
   prepOutputs      AiPrepOutput[]
-  sprint           Sprint?           @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  assignee         User?             @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  sprint           Sprint?             @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee         User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   userId           String?
-  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId      String?
-  workspace        Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent           Task?             @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children         Task[]            @relation("TaskHierarchy")
-  dependencies     TaskDependency[]  @relation("TaskDependencies")
-  dependents       TaskDependency[]  @relation("TaskDependents")
+  workspace        Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent           Task?               @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children         Task[]              @relation("TaskHierarchy")
+  dependencies     TaskDependency[]    @relation("TaskDependencies")
+  dependents       TaskDependency[]    @relation("TaskDependents")
   intakeItems      IntakeItem[]
   statusEvents     TaskStatusEvent[]
   routineRule      RoutineRule?
@@ -419,13 +419,13 @@ model AiPricing {
 }
 
 model UserAutomationSetting {
-  id          String     @id @default(cuid())
+  id          String    @id @default(cuid())
   low         Int
   high        Int
-  stage       Int        @default(0)
+  stage       Int       @default(0)
   lastStageAt DateTime?
-  updatedAt   DateTime   @updatedAt
-  createdAt   DateTime   @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // workspaceId is required: the (userId, workspaceId) unique constraint only
@@ -487,26 +487,26 @@ model AiSuggestionReaction {
   reaction     SuggestionReaction
 
   // コンテキスト情報
-  taskType     TaskType?
-  taskPoints   Int?
-  hourOfDay    Int?               // 0-23
-  dayOfWeek    Int?               // 0-6 (Sunday=0)
-  wipCount     Int?               // 反応時のWIP数
-  flowState    Float?             // 反応時のflow_state
+  taskType   TaskType?
+  taskPoints Int?
+  hourOfDay  Int? // 0-23
+  dayOfWeek  Int? // 0-6 (Sunday=0)
+  wipCount   Int? // 反応時のWIP数
+  flowState  Float? // 反応時のflow_state
 
   // 修正の詳細（MODIFIEDの場合）
   modification Json?
 
   // タイミング
-  viewedAt     DateTime?
-  reactedAt    DateTime?
-  latencyMs    Int?               // 表示から反応までの時間（ミリ秒）
+  viewedAt  DateTime?
+  reactedAt DateTime?
+  latencyMs Int? // 表示から反応までの時間（ミリ秒）
 
-  userId       String
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId  String?
-  workspace    Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdAt    DateTime           @default(now())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
 
   @@index([suggestionId])
   @@index([userId, reaction, createdAt])
@@ -581,23 +581,23 @@ model TaskDependency {
 }
 
 model TaskStatusEvent {
-  id          String      @id @default(cuid())
+  id          String                 @id @default(cuid())
   taskId      String
   fromStatus  TaskStatus?
   toStatus    TaskStatus
   actorId     String?
   source      TaskStatusEventSource?
   workspaceId String?
-  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  actor       User?       @relation("StatusEventActor", fields: [actorId], references: [id], onDelete: SetNull)
-  workspace   Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  createdAt   DateTime    @default(now())
+  task        Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor       User?                  @relation("StatusEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  workspace   Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt   DateTime               @default(now())
 
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
 }
 
-model MemoryType {
+model MemoryDefinition {
   id           String           @id @default(cuid())
   key          String
   scope        MemoryScope
@@ -618,68 +618,68 @@ model MemoryType {
 }
 
 model MemoryClaim {
-  id          String       @id @default(cuid())
-  typeId      String
-  type        MemoryType   @relation(fields: [typeId], references: [id], onDelete: Cascade)
-  userId      String?
-  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId String?
-  workspace   Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  valueStr    String?
-  valueNum    Float?
-  valueBool   Boolean?
-  valueJson   Json?
-  confidence  Float        @default(0.5)
-  source      MemorySource @default(INFERRED)
-  status      MemoryStatus @default(ACTIVE)
-  validFrom   DateTime     @default(now())
-  validTo     DateTime?
-  evidence    Json?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id           String           @id @default(cuid())
+  definitionId String
+  definition   MemoryDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId  String?
+  workspace    Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  valueStr     String?
+  valueNum     Float?
+  valueBool    Boolean?
+  valueJson    Json?
+  confidence   Float            @default(0.5)
+  source       MemorySource     @default(INFERRED)
+  status       MemoryStatus     @default(ACTIVE)
+  validFrom    DateTime         @default(now())
+  validTo      DateTime?
+  evidence     Json?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   // A single ACTIVE claim per (type, scope) is enforced by PARTIAL unique
   // indexes created in the 20260613000000_fix_null_unique_constraints migration
   // (filtered on status='ACTIVE'); see that migration for details.
-  @@index([typeId, userId])
-  @@index([typeId, workspaceId])
+  @@index([definitionId, userId])
+  @@index([definitionId, workspaceId])
 }
 
 model MemoryQuestion {
-  id          String               @id @default(cuid())
-  typeId      String
-  type        MemoryType           @relation(fields: [typeId], references: [id], onDelete: Cascade)
-  userId      String?
-  user        User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId String?
-  workspace   Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  valueStr    String?
-  valueNum    Float?
-  valueBool   Boolean?
-  valueJson   Json?
-  confidence  Float                @default(0.7)
-  status      MemoryQuestionStatus @default(PENDING)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id           String               @id @default(cuid())
+  definitionId String
+  definition   MemoryDefinition     @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId  String?
+  workspace    Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  valueStr     String?
+  valueNum     Float?
+  valueBool    Boolean?
+  valueJson    Json?
+  confidence   Float                @default(0.7)
+  status       MemoryQuestionStatus @default(PENDING)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
-  @@index([typeId, status])
+  @@index([definitionId, status])
   @@index([userId, status])
   @@index([workspaceId, status])
 }
 
 model MemoryMetric {
-  id          String     @id @default(cuid())
-  typeId      String
-  type        MemoryType @relation(fields: [typeId], references: [id], onDelete: Cascade)
-  userId      String?
-  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId String?
-  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  windowStart DateTime
-  windowEnd   DateTime
-  valueNum    Float?
-  valueJson   Json?
-  computedAt  DateTime   @default(now())
+  id           String           @id @default(cuid())
+  definitionId String
+  definition   MemoryDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId  String?
+  workspace    Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  windowStart  DateTime
+  windowEnd    DateTime
+  valueNum     Float?
+  valueJson    Json?
+  computedAt   DateTime         @default(now())
 
   // NOTE: uniqueness is enforced by PARTIAL unique indexes created in the
   // 20260613000000_fix_null_unique_constraints migration (Prisma cannot express
@@ -739,7 +739,7 @@ model McpApiKey {
   id          String    @id @default(cuid())
   name        String
   keyHash     String    @unique
-  keyPrefix   String    // First 8 chars for display (mcp_xxxx...)
+  keyPrefix   String // First 8 chars for display (mcp_xxxx...)
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String

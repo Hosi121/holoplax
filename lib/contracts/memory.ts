@@ -6,7 +6,7 @@ const nonEmptyString = (message: string) =>
 
 export const MemoryClaimCreateSchema = z
   .object({
-    typeId: nonEmptyString("typeId is required"),
+    definitionId: nonEmptyString("definitionId is required"),
     value: z.unknown(),
   })
   .strip();
@@ -19,7 +19,7 @@ export const MemoryClaimDeleteSchema = z
 
 export const MemoryQuestionCreateSchema = z
   .object({
-    typeId: nonEmptyString("typeId is required"),
+    definitionId: nonEmptyString("definitionId is required"),
     confidence: z
       .preprocess((value) => {
         if (value === null || value === undefined || value === "") return undefined;
