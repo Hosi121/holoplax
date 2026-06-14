@@ -150,7 +150,13 @@ export async function resolveIntake(ctx: ExecutionContext, input: ResolveIntakeI
     throw new Error("invalid intakeId");
   }
 
-  if (intakeItem.userId !== userId && intakeItem.workspaceId !== workspaceId) {
+  // Authorization: allow only when the caller owns the item OR the item lives
+  // in the caller's authenticated workspace. Deny if EITHER condition fails
+  // (the previous `&&` only denied when BOTH failed, which let foreign items
+  // through whenever one side coincidentally matched).
+  const isOwner = intakeItem.userId === userId;
+  const isSameWorkspace = Boolean(intakeItem.workspaceId) && intakeItem.workspaceId === workspaceId;
+  if (!isOwner && !isSameWorkspace) {
     throw new Error("not allowed");
   }
 

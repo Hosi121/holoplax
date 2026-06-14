@@ -49,6 +49,11 @@ export async function createServer(sessionId?: string): Promise<Server> {
       if (context) {
         // Run with authenticated context
         result = await runWithContext(context, () => tool.handler(args ?? {}));
+      } else if (sessionId) {
+        // HTTP mode: a session was issued but its context is missing. Never fall
+        // back to env (stdio) context here — that could execute against the
+        // static MCP_WORKSPACE_ID/MCP_USER_ID instead of the authenticated one.
+        throw new Error("Missing authenticated context for session");
       } else {
         // Stdio mode: context comes from env vars
         result = await tool.handler(args ?? {});
@@ -119,10 +124,16 @@ export async function startHttpServer(): Promise<void> {
     let transport: StreamableHTTPServerTransport;
 
     if (sessionId && transports.has(sessionId)) {
-      // Existing session - verify same user
+      // Existing session - verify same user AND same workspace. A key rebound
+      // to a different workspace for the same user must not reuse the original
+      // session's workspace context.
       const existingContext = sessionContextMap.get(sessionId);
-      if (existingContext && existingContext.userId !== authContext.userId) {
-        res.status(403).json({ error: "Session belongs to different user" });
+      if (
+        existingContext &&
+        (existingContext.userId !== authContext.userId ||
+          existingContext.workspaceId !== authContext.workspaceId)
+      ) {
+        res.status(403).json({ error: "Session belongs to a different user or workspace" });
         return;
       }
       transport = transports.get(sessionId)!;

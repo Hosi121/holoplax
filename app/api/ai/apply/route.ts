@@ -38,6 +38,18 @@ export async function POST(request: Request) {
         return errors.badRequest("invalid taskId");
       }
 
+      // If a suggestion is referenced, ensure it belongs to the caller's
+      // workspace (prevents associating a foreign suggestionId via audit).
+      if (suggestionId) {
+        const suggestion = await prisma.aiSuggestion.findFirst({
+          where: { id: suggestionId, workspaceId },
+          select: { id: true },
+        });
+        if (!suggestion) {
+          return errors.badRequest("invalid suggestionId");
+        }
+      }
+
       if (type === "TIP") {
         const text = String(payload.text ?? "").trim();
         if (!text) {

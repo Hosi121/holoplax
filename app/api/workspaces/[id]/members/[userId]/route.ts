@@ -4,8 +4,11 @@ import { withApiHandler } from "../../../../../../lib/api-handler";
 import { ok } from "../../../../../../lib/api-response";
 import { logAudit } from "../../../../../../lib/audit";
 import { WorkspaceMemberRoleUpdateSchema } from "../../../../../../lib/contracts/workspace";
+import { createDomainErrors } from "../../../../../../lib/http/errors";
 import { parseBody } from "../../../../../../lib/http/validation";
 import prisma from "../../../../../../lib/prisma";
+
+const errors = createDomainErrors("WORKSPACE");
 
 export async function PATCH(
   request: Request,
@@ -23,11 +26,36 @@ export async function PATCH(
     async () => {
       const { userId } = await requireAuth();
       const { id, userId: targetUserId } = await params;
-      await requireWorkspaceManager("WORKSPACE", id, userId);
+      const callerMembership = await requireWorkspaceManager("WORKSPACE", id, userId);
       const body = await parseBody(request, WorkspaceMemberRoleUpdateSchema, {
         code: "WORKSPACE_VALIDATION",
       });
       const role = body.role;
+
+      // Only an owner may grant the owner role.
+      if (role === "owner" && callerMembership?.role !== "owner") {
+        return errors.forbidden("only the workspace owner can assign the owner role");
+      }
+
+      const target = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
+        select: { role: true },
+      });
+      if (!target) {
+        return errors.notFound("member not found");
+      }
+
+      // Prevent demoting the last remaining owner (which would orphan the
+      // workspace with no owner).
+      if (target.role === "owner" && role !== "owner") {
+        const ownerCount = await prisma.workspaceMember.count({
+          where: { workspaceId: id, role: "owner" },
+        });
+        if (ownerCount <= 1) {
+          return errors.conflict("cannot demote the last remaining owner");
+        }
+      }
+
       const updated = await prisma.workspaceMember.update({
         where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
         data: { role },
@@ -62,6 +90,25 @@ export async function DELETE(
       const { userId } = await requireAuth();
       const { id, userId: targetUserId } = await params;
       await requireWorkspaceManager("WORKSPACE", id, userId);
+
+      const target = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
+        select: { role: true },
+      });
+      if (!target) {
+        return errors.notFound("member not found");
+      }
+
+      // Prevent removing the last remaining owner.
+      if (target.role === "owner") {
+        const ownerCount = await prisma.workspaceMember.count({
+          where: { workspaceId: id, role: "owner" },
+        });
+        if (ownerCount <= 1) {
+          return errors.conflict("cannot remove the last remaining owner");
+        }
+      }
+
       await prisma.workspaceMember.delete({
         where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
       });

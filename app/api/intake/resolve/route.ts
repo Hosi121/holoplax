@@ -38,7 +38,22 @@ export async function POST(request: Request) {
       if (!intakeItem) {
         return errors.badRequest("invalid intakeId");
       }
-      if (intakeItem.userId !== userId && intakeItem.workspaceId !== workspaceId) {
+      // Authorization: the caller may act on this item only if they own it, or
+      // it belongs to a workspace they are a member of. The membership check
+      // uses the item's OWN workspaceId — never the (attacker-controlled)
+      // body-supplied workspaceId — to avoid the cross-tenant bypass.
+      const isOwner = intakeItem.userId === userId;
+      let isItemWorkspaceMember = false;
+      if (!isOwner && intakeItem.workspaceId) {
+        const itemMembership = await prisma.workspaceMember.findUnique({
+          where: {
+            workspaceId_userId: { workspaceId: intakeItem.workspaceId, userId },
+          },
+          select: { workspaceId: true },
+        });
+        isItemWorkspaceMember = Boolean(itemMembership);
+      }
+      if (!isOwner && !isItemWorkspaceMember) {
         return errors.badRequest("not allowed");
       }
 

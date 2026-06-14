@@ -25,9 +25,9 @@ export async function POST(request: Request) {
       },
     },
     async () => {
-      const { userId } = await requireWorkspaceAuth({
+      const { userId, workspaceId } = await requireWorkspaceAuth({
         domain: "AI",
-        requireWorkspace: false,
+        requireWorkspace: true,
       });
       const body = await parseBody(request, AiReactionSchema, { code: "AI_VALIDATION" });
       const { suggestionId, reaction, context, modification, viewedAt, reactedAt } = body;
@@ -38,6 +38,11 @@ export async function POST(request: Request) {
         select: { id: true, type: true, workspaceId: true },
       });
       if (!suggestion) {
+        return errors.badRequest("invalid suggestionId");
+      }
+      // Prevent cross-workspace IDOR: only allow recording a reaction against a
+      // suggestion that belongs to the caller's resolved workspace.
+      if (suggestion.workspaceId && suggestion.workspaceId !== workspaceId) {
         return errors.badRequest("invalid suggestionId");
       }
 

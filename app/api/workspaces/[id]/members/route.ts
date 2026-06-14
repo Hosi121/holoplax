@@ -55,13 +55,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     async () => {
       const { userId } = await requireAuth();
       const { id } = await params;
-      await requireWorkspaceManager("WORKSPACE", id, userId);
+      const callerMembership = await requireWorkspaceManager("WORKSPACE", id, userId);
 
       const body = await parseBody(request, WorkspaceMemberAddSchema, {
         code: "WORKSPACE_VALIDATION",
       });
       const email = body.email;
       const role = body.role ?? "member";
+
+      // Only an owner may grant the owner role. Otherwise an admin could
+      // escalate themselves/others to owner and take over the workspace.
+      if (role === "owner" && callerMembership?.role !== "owner") {
+        return errors.forbidden("only the workspace owner can assign the owner role");
+      }
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {

@@ -7,9 +7,12 @@ import { logAudit } from "../../../../../lib/audit";
 import { getBaseUrl } from "../../../../../lib/base-url";
 import { WorkspaceInviteCreateSchema } from "../../../../../lib/contracts/workspace";
 import { escapeHtml } from "../../../../../lib/html-escape";
+import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
 import { sendEmail } from "../../../../../lib/mailer";
 import prisma from "../../../../../lib/prisma";
+
+const errors = createDomainErrors("WORKSPACE");
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApiHandler(
@@ -24,12 +27,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     async () => {
       const { userId } = await requireAuth();
       const { id } = await params;
-      await requireWorkspaceManager("WORKSPACE", id, userId);
+      const callerMembership = await requireWorkspaceManager("WORKSPACE", id, userId);
       const body = await parseBody(request, WorkspaceInviteCreateSchema, {
         code: "WORKSPACE_VALIDATION",
       });
       const email = body.email;
       const role = body.role ?? "member";
+
+      // Only an owner may invite someone as owner (prevents admin escalation
+      // via the invite → accept flow).
+      if (role === "owner" && callerMembership?.role !== "owner") {
+        return errors.forbidden("only the workspace owner can invite an owner");
+      }
 
       // Fetch workspace name for the email subject / body
       const workspace = await prisma.workspace.findUnique({
