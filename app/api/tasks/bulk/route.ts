@@ -7,6 +7,7 @@ import { TaskPointsSchema } from "../../../../lib/contracts/task";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
+import { checkSprintCapacity } from "../../../../lib/tasks/sprint-capacity";
 import { TASK_STATUS } from "../../../../lib/types";
 
 const errors = createDomainErrors("TASK");
@@ -67,63 +68,44 @@ export async function POST(request: Request) {
             // causing the sprint to be over-committed (TOCTOU race condition).
             let capacityExceeded = false;
 
-            await prisma
-              .$transaction(
-                async (tx) => {
-                  const activeSprint = await tx.sprint.findFirst({
-                    where: { workspaceId, status: "ACTIVE" },
-                    orderBy: { startedAt: "desc" },
-                    select: { id: true, capacityPoints: true },
-                  });
+            await prisma.$transaction(
+              async (tx) => {
+                const tasksToMove = existingTasks.filter((t) => t.status !== TASK_STATUS.SPRINT);
+                const cap = await checkSprintCapacity(tx, {
+                  workspaceId,
+                  additionalPoints: tasksToMove.reduce((sum, t) => sum + t.points, 0),
+                  excludeTaskIds: validTaskIds,
+                });
 
-                  if (!activeSprint) {
-                    throw new Error("NO_ACTIVE_SPRINT");
-                  }
-
-                  const currentSprintPoints = await tx.task.aggregate({
-                    where: {
-                      workspaceId,
-                      status: TASK_STATUS.SPRINT,
-                      id: { notIn: validTaskIds },
-                    },
-                    _sum: { points: true },
-                  });
-
-                  const tasksToMove = existingTasks.filter((t) => t.status !== TASK_STATUS.SPRINT);
-                  const additionalPoints = tasksToMove.reduce((sum, t) => sum + t.points, 0);
-                  const nextTotal = (currentSprintPoints._sum.points ?? 0) + additionalPoints;
-
-                  if (nextTotal > activeSprint.capacityPoints) {
-                    capacityExceeded = true;
-                    return; // abort writes; transaction still commits cleanly
-                  }
-
-                  await tx.task.updateMany({
-                    where: { id: { in: validTaskIds }, workspaceId },
-                    data: { status, sprintId: activeSprint.id },
-                  });
-
-                  if (tasksToMove.length > 0) {
-                    await tx.taskStatusEvent.createMany({
-                      data: tasksToMove.map((task) => ({
-                        taskId: task.id,
-                        fromStatus: task.status,
-                        toStatus: status,
-                        actorId: userId,
-                        source: "bulk",
-                        workspaceId,
-                      })),
-                    });
-                  }
-                },
-                { isolationLevel: "Serializable" },
-              )
-              .catch((err: unknown) => {
-                if (err instanceof Error && err.message === "NO_ACTIVE_SPRINT") {
-                  throw err; // re-throw to be caught below
+                if (!cap.activeSprint) {
+                  throw new Error("NO_ACTIVE_SPRINT");
                 }
-                throw err;
-              });
+
+                if (cap.exceeded) {
+                  capacityExceeded = true;
+                  return; // abort writes; transaction still commits cleanly
+                }
+
+                await tx.task.updateMany({
+                  where: { id: { in: validTaskIds }, workspaceId },
+                  data: { status, sprintId: cap.activeSprint.id },
+                });
+
+                if (tasksToMove.length > 0) {
+                  await tx.taskStatusEvent.createMany({
+                    data: tasksToMove.map((task) => ({
+                      taskId: task.id,
+                      fromStatus: task.status,
+                      toStatus: status,
+                      actorId: userId,
+                      source: "bulk",
+                      workspaceId,
+                    })),
+                  });
+                }
+              },
+              { isolationLevel: "Serializable" },
+            );
 
             if (capacityExceeded) {
               return errors.badRequest("sprint capacity exceeded");
@@ -213,29 +195,15 @@ export async function POST(request: Request) {
           await prisma.$transaction(
             async (tx) => {
               if (sprintTasks.length > 0) {
-                const activeSprint = await tx.sprint.findFirst({
-                  where: { workspaceId, status: "ACTIVE" },
-                  orderBy: { startedAt: "desc" },
-                  select: { id: true, capacityPoints: true },
+                const cap = await checkSprintCapacity(tx, {
+                  workspaceId,
+                  additionalPoints: sprintTasks.length * points,
+                  excludeTaskIds: validTaskIds,
                 });
 
-                if (activeSprint) {
-                  const currentSprintPoints = await tx.task.aggregate({
-                    where: {
-                      workspaceId,
-                      status: TASK_STATUS.SPRINT,
-                      id: { notIn: validTaskIds },
-                    },
-                    _sum: { points: true },
-                  });
-
-                  const nextTotal =
-                    (currentSprintPoints._sum.points ?? 0) + sprintTasks.length * points;
-
-                  if (nextTotal > activeSprint.capacityPoints) {
-                    pointsCapacityExceeded = true;
-                    return; // abort writes; transaction still commits cleanly
-                  }
+                if (cap.exceeded) {
+                  pointsCapacityExceeded = true;
+                  return; // abort writes; transaction still commits cleanly
                 }
               }
 

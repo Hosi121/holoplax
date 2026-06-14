@@ -10,6 +10,7 @@ import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { logger } from "../../../../lib/logger";
 import prisma from "../../../../lib/prisma";
+import { checkSprintCapacity } from "../../../../lib/tasks/sprint-capacity";
 import { TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
 
 const toNullableJsonInput = (
@@ -180,7 +181,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const needsSprintCheck = statusValue === TASK_STATUS.SPRINT;
 
       // Build parallel queries
-      const [memberResult, parentResult, sprintData] = await Promise.all([
+      const [memberResult, parentResult, capacity] = await Promise.all([
         needsAssigneeCheck
           ? prisma.workspaceMember.findUnique({
               where: { workspaceId_userId: { workspaceId, userId: String(body.assigneeId) } },
@@ -194,17 +195,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             })
           : Promise.resolve(null),
         needsSprintCheck
-          ? prisma.$transaction([
-              prisma.sprint.findFirst({
-                where: { workspaceId, status: "ACTIVE" },
-                orderBy: { startedAt: "desc" },
-                select: { id: true, capacityPoints: true },
-              }),
-              prisma.task.aggregate({
-                where: { workspaceId, status: TASK_STATUS.SPRINT, id: { not: id } },
-                _sum: { points: true },
-              }),
-            ])
+          ? checkSprintCapacity(prisma, {
+              workspaceId,
+              additionalPoints:
+                typeof data.points === "number" ? data.points : (currentTask.points ?? 0),
+              excludeTaskIds: [id],
+            })
           : Promise.resolve(null),
       ]);
 
@@ -228,21 +224,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       // Process sprint capacity check
       if (statusValue === TASK_STATUS.SPRINT) {
-        const [activeSprint, currentPointsAgg] = sprintData as [
-          { id: string; capacityPoints: number } | null,
-          { _sum: { points: number | null } },
-        ];
-        if (!activeSprint) {
+        if (!capacity?.activeSprint) {
           return errors.badRequest("active sprint not found");
         }
-        const currentPoints = currentTask.points ?? 0;
-        const nextPoints =
-          (currentPointsAgg._sum.points ?? 0) +
-          (typeof data.points === "number" ? data.points : currentPoints);
-        if (nextPoints > activeSprint.capacityPoints) {
+        if (capacity.exceeded) {
           return errors.badRequest("sprint capacity exceeded");
         }
-        data.sprintId = activeSprint.id;
+        data.sprintId = capacity.activeSprint.id;
       }
       if (statusValue === TASK_STATUS.BACKLOG) {
         data.sprintId = null;

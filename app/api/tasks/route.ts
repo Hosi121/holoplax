@@ -13,6 +13,7 @@ import { logger } from "../../../lib/logger";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
 import { badPoints } from "../../../lib/points";
 import prisma from "../../../lib/prisma";
+import { checkSprintCapacity, findActiveSprint } from "../../../lib/tasks/sprint-capacity";
 import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 
 const isTaskStatus = (value: unknown): value is TaskStatus =>
@@ -290,20 +291,14 @@ export async function POST(request: Request) {
         return errors.badRequest("dependencies must be done before moving to sprint");
       }
       const activeSprint =
-        statusValue === TASK_STATUS.SPRINT
-          ? await prisma.sprint.findFirst({
-              where: { workspaceId, status: "ACTIVE" },
-              orderBy: { startedAt: "desc" },
-              select: { id: true, capacityPoints: true },
-            })
-          : null;
-      if (statusValue === TASK_STATUS.SPRINT && activeSprint) {
-        const current = await prisma.task.aggregate({
-          where: { workspaceId, status: TASK_STATUS.SPRINT },
-          _sum: { points: true },
+        statusValue === TASK_STATUS.SPRINT ? await findActiveSprint(prisma, workspaceId) : null;
+      if (activeSprint) {
+        const { exceeded } = await checkSprintCapacity(prisma, {
+          workspaceId,
+          additionalPoints: Number(points),
+          activeSprint,
         });
-        const nextTotal = (current._sum.points ?? 0) + Number(points);
-        if (nextTotal > activeSprint.capacityPoints) {
+        if (exceeded) {
           return errors.badRequest("sprint capacity exceeded");
         }
       }
