@@ -148,6 +148,9 @@ model User {
   role                     UserRole                 @default(USER)
   disabledAt               DateTime?
   onboardingCompletedAt    DateTime?
+  // Stamped on every password change/reset. Sessions (JWTs) issued before this
+  // timestamp are rejected by requireAuth, so a reset evicts existing sessions.
+  passwordChangedAt        DateTime?
   accounts                 Account[]
   sessions                 Session[]
   memberships              WorkspaceMember[]
@@ -206,6 +209,9 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expires])
 }
 
 model UserPassword {
@@ -224,6 +230,9 @@ model EmailVerificationToken {
   expiresAt DateTime
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model PasswordResetToken {
@@ -234,6 +243,9 @@ model PasswordResetToken {
   used      Boolean  @default(false)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model VerificationToken {
@@ -296,6 +308,10 @@ model WorkspaceInvite {
   acceptedAt  DateTime?
   workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdAt   DateTime      @default(now())
+
+  @@index([workspaceId])
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model AuditLog {
@@ -408,9 +424,11 @@ model UserAutomationSetting {
   updatedAt   DateTime   @updatedAt
   createdAt   DateTime   @default(now())
   userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId String?
-  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // workspaceId is required: the (userId, workspaceId) unique constraint only
+  // dedupes when workspaceId is non-null (Postgres treats NULLs as distinct).
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
 }
@@ -530,6 +548,7 @@ model AiUsage {
   @@index([workspaceId, createdAt])
   @@index([userId, createdAt])
   @@index([action, createdAt])
+  @@index([taskId])
 }
 
 model Sprint {
@@ -616,6 +635,9 @@ model MemoryClaim {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  // A single ACTIVE claim per (type, scope) is enforced by PARTIAL unique
+  // indexes created in the 20260613000000_fix_null_unique_constraints migration
+  // (filtered on status='ACTIVE'); see that migration for details.
   @@index([typeId, userId])
   @@index([typeId, workspaceId])
 }
@@ -656,8 +678,10 @@ model MemoryMetric {
   valueJson   Json?
   computedAt  DateTime   @default(now())
 
-  @@unique([typeId, userId, windowStart, windowEnd])
-  @@unique([typeId, workspaceId, windowStart, windowEnd])
+  // NOTE: uniqueness is enforced by PARTIAL unique indexes created in the
+  // 20260613000000_fix_null_unique_constraints migration (Prisma cannot express
+  // partial/filtered indexes). A plain @@unique here would NOT dedupe the
+  // NULL-scoped side because Postgres treats NULLs as distinct in unique indexes.
   @@index([workspaceId, windowStart])
   @@index([userId, windowStart])
 }
