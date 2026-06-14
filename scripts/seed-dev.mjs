@@ -4,6 +4,13 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 const main = async () => {
+  // Refuse to run against production — this seeds known-credential accounts
+  // (including an ADMIN) and must never touch a real database.
+  if (process.env.NODE_ENV === "production") {
+    console.error("seed-dev refuses to run with NODE_ENV=production");
+    process.exit(1);
+  }
+
   const adminEmail = process.env.ADMIN_EMAIL ?? "admin@holoplax.local";
   const adminPassword = process.env.ADMIN_PASSWORD ?? "admin1234";
   const testEmail = process.env.TEST_EMAIL ?? "test@holoplax.local";

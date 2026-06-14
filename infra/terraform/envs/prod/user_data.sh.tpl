@@ -1,5 +1,7 @@
 #!/bin/bash
-set -ex
+# NOTE: do NOT use `set -x` here — command tracing would echo secrets (DB
+# password, NEXTAUTH_SECRET, ENCRYPTION_KEY) into /var/log/user-data.log.
+set -e
 
 # Log output to file
 exec > >(tee /var/log/user-data.log) 2>&1

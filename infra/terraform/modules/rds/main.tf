@@ -43,7 +43,15 @@ resource "aws_db_instance" "this" {
   vpc_security_group_ids = [aws_security_group.db.id]
   multi_az               = var.multi_az
   publicly_accessible    = false
-  skip_final_snapshot    = true
+
+  # Encrypt storage at rest, retain automated backups, and protect against
+  # accidental destroy/replace. skip_final_snapshot defaults to false so a
+  # destroy still captures a final snapshot.
+  storage_encrypted         = true
+  backup_retention_period   = var.backup_retention_period
+  deletion_protection       = var.deletion_protection
+  skip_final_snapshot       = var.skip_final_snapshot
+  final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.name_prefix}-db-final"
 
   tags = {
     Name = "${var.name_prefix}-db"

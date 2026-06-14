@@ -1,5 +1,9 @@
 resource "aws_ecr_repository" "this" {
-  name                 = var.repository_name
+  name = var.repository_name
+  # MUTABLE because the task definitions deploy the `:latest` tag, which is
+  # re-pushed each build. To harden against tag-overwrite/supply-chain
+  # tampering, switch this to IMMUTABLE and pin task definitions to the
+  # immutable `$GITHUB_SHA` image tag that CI already pushes.
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -18,7 +22,7 @@ resource "aws_ecr_lifecycle_policy" "this" {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep last 10 images"
+        description  = "Keep last 30 images"
         selection = {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"

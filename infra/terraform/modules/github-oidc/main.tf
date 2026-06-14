@@ -9,6 +9,18 @@ resource "aws_iam_openid_connect_provider" "github" {
   }
 }
 
+# Allowed OIDC subjects — restrict to the deploy branches/environments rather
+# than the bare `repo:<repo>:*` wildcard (which lets ANY branch, tag, or fork
+# pull_request assume the deploy role).
+locals {
+  oidc_allowed_subs = [
+    "repo:${var.github_repo}:ref:refs/heads/main",
+    "repo:${var.github_repo}:ref:refs/heads/staging",
+    "repo:${var.github_repo}:environment:production",
+    "repo:${var.github_repo}:environment:staging",
+  ]
+}
+
 # IAM Role for GitHub Actions
 resource "aws_iam_role" "github_actions" {
   name = "${var.name_prefix}-github-actions"
@@ -27,7 +39,7 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:*"
+            "token.actions.githubusercontent.com:sub" = local.oidc_allowed_subs
           }
         }
       }
@@ -48,15 +60,34 @@ resource "aws_iam_role_policy" "ecs_deploy" {
     Version = "2012-10-17"
     Statement = [
       {
+        # Service mutations scoped to this project's services.
         Effect = "Allow"
         Action = [
           "ecs:DescribeServices",
-          "ecs:UpdateService",
+          "ecs:UpdateService"
+        ]
+        Resource = [
+          "arn:aws:ecs:${var.region}:${var.account_id}:service/${var.name_prefix}-*/*"
+        ]
+      },
+      {
+        # RunTask scoped to this project's task definitions.
+        Effect = "Allow"
+        Action = [
+          "ecs:RunTask"
+        ]
+        Resource = [
+          "arn:aws:ecs:${var.region}:${var.account_id}:task-definition/${var.name_prefix}-*:*"
+        ]
+      },
+      {
+        # These actions do not support resource-level scoping in the ECS API.
+        Effect = "Allow"
+        Action = [
           "ecs:DescribeTaskDefinition",
           "ecs:RegisterTaskDefinition",
           "ecs:ListTasks",
-          "ecs:DescribeTasks",
-          "ecs:RunTask"
+          "ecs:DescribeTasks"
         ]
         Resource = "*"
       },

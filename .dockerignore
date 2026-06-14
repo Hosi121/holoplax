@@ -6,9 +6,13 @@ node_modules
 .next
 out
 
-# Development
-.env*.local
+# Development — exclude ALL env files and key material from the build context
 .env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
 
 # IDE
 .idea

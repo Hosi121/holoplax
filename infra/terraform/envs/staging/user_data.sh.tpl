@@ -1,5 +1,12 @@
 #!/bin/bash
-set -ex
+# LEGACY: this EC2/PM2 bootstrap is not referenced by any Terraform resource —
+# the live stack runs on Fargate and reads NEXTAUTH_SECRET/ENCRYPTION_KEY from
+# Secrets Manager. If this path is ever revived, source NEXTAUTH_SECRET from the
+# `app` secret (as prod does) instead of generating an ephemeral one per boot,
+# which would invalidate all sessions on every instance replacement.
+# NOTE: do NOT use `set -x` here — command tracing would echo secrets (DB
+# password, NEXTAUTH_SECRET, ENCRYPTION_KEY) into /var/log/user-data.log.
+set -e
 
 # Log output to file
 exec > >(tee /var/log/user-data.log) 2>&1
