@@ -47,7 +47,12 @@ export function useSuggestionContext() {
 
   useEffect(() => {
     fetchContext();
-    const interval = setInterval(fetchContext, REFRESH_INTERVAL_MS);
+    const interval = setInterval(() => {
+      // Skip polling while the tab is hidden to avoid needless requests
+      // (and 401s) when the user isn't looking at the page.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      fetchContext();
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchContext]);
 

@@ -82,6 +82,10 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
       return;
     }
     const res = await apiFetch("/api/tasks?status=SPRINT&limit=200");
+    if (!res.ok) {
+      setItems([]);
+      return;
+    }
     const data = await res.json();
     setItems(data.tasks ?? []);
   }, [ready, workspaceId]);
@@ -212,11 +216,13 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
     setItems((prev) =>
       prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
-    await apiFetch(`/api/tasks/${taskId}`, {
+    const res = await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checklist: nextChecklist }),
     });
+    // Re-sync from the server on failure so the optimistic toggle doesn't stick.
+    if (!res.ok) fetchTasks();
   };
 
   return {

@@ -68,11 +68,14 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
     });
     if (!res.ok) return;
     const data = await res.json();
-    await fetch(data.uploadUrl, {
+    // Only mark the new image URL if the storage PUT actually succeeded —
+    // otherwise we'd save a URL pointing at an object that was never uploaded.
+    const putRes = await fetch(data.uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": file.type || "image/png" },
       body: file,
     });
+    if (!putRes.ok) return;
     setAccount((p) => ({ ...p, image: data.publicUrl }));
     setAccountDirty(true);
   };

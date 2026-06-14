@@ -81,7 +81,11 @@ export default function WorkspacesPage() {
                 key={workspace.id}
                 onClick={async () => {
                   setSelectedId(workspace.id);
-                  await useWorkspaceStore.getState().setWorkspaceId(workspace.id);
+                  try {
+                    await useWorkspaceStore.getState().setWorkspaceId(workspace.id);
+                  } catch {
+                    // optimistic state already reverted in the store
+                  }
                 }}
                 className={`border px-3 py-2 text-left text-sm transition ${
                   selectedId === workspace.id
@@ -119,7 +123,11 @@ export default function WorkspacesPage() {
                     fetchWorkspaces();
                     if (data?.workspace?.id) {
                       setSelectedId(data.workspace.id);
-                      await useWorkspaceStore.getState().setWorkspaceId(data.workspace.id);
+                      try {
+                        await useWorkspaceStore.getState().setWorkspaceId(data.workspace.id);
+                      } catch {
+                        // optimistic state already reverted in the store
+                      }
                       useWorkspaceStore.getState().fetchWorkspaces();
                     }
                   }

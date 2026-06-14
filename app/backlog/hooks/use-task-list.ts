@@ -142,11 +142,13 @@ export function useTaskList({ workspaceId, ready }: UseTaskListOptions) {
     setItems((prev) =>
       prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
-    await apiFetch(`/api/tasks/${taskId}`, {
+    const res = await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checklist: nextChecklist }),
     });
+    // Re-sync from the server on failure so the optimistic toggle doesn't stick.
+    if (!res.ok) void fetchTasks();
   };
 
   const approveAutomation = async (id: string) => {

@@ -20,6 +20,7 @@ export function useThresholds({ ready, workspaceId }: UseThresholdsOptions) {
       return;
     }
     const res = await apiFetch("/api/automation");
+    if (!res.ok) return;
     const data = await res.json();
     setLow(data.low ?? 35);
     setHigh(data.high ?? 70);
@@ -36,13 +37,16 @@ export function useThresholds({ ready, workspaceId }: UseThresholdsOptions) {
     setDirty(true);
   };
 
-  const saveThresholds = async () => {
-    await apiFetch("/api/automation", {
+  const saveThresholds = async (): Promise<boolean> => {
+    const res = await apiFetch("/api/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ low, high }),
     });
+    // Keep the form dirty on failure so the user knows the change didn't persist.
+    if (!res.ok) return false;
     setDirty(false);
+    return true;
   };
 
   return {

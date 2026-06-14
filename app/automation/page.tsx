@@ -29,6 +29,7 @@ export default function AutomationPage() {
       return;
     }
     const res = await apiFetch("/api/automation");
+    if (!res.ok) return;
     const data = await res.json();
     setThresholds({
       low: data.low ?? 35,
@@ -46,11 +47,13 @@ export default function AutomationPage() {
   }, [fetchThresholds]);
 
   const saveThresholds = async () => {
-    await apiFetch("/api/automation", {
+    const res = await apiFetch("/api/automation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(thresholds),
     });
+    // Keep dirty on failure so the unsaved change stays visible.
+    if (!res.ok) return;
     setDirty(false);
   };
 

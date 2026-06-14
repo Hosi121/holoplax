@@ -28,7 +28,8 @@ export function ExpandableText({
   return (
     <span className={className}>
       <span
-        className={maxLines && !expanded ? `line-clamp-${maxLines}` : ""}
+        // Line clamping is done via the inline Webkit style below; a dynamic
+        // `line-clamp-${maxLines}` class would be purged from the Tailwind build.
         style={
           maxLines && !expanded
             ? {

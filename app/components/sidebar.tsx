@@ -401,8 +401,13 @@ function WorkspaceSelector() {
             value={workspaceId ?? ""}
             onChange={async (event) => {
               const nextId = event.target.value;
-              await setWorkspaceId(nextId);
-              router.refresh();
+              try {
+                await setWorkspaceId(nextId);
+                router.refresh();
+              } catch {
+                // setWorkspaceId already reverted the optimistic state; avoid an
+                // unhandled rejection and skip the refresh on failure.
+              }
             }}
             className="border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text-secondary)]"
           >
