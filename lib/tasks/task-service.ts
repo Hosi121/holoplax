@@ -170,7 +170,8 @@ export async function createTask(params: {
   });
   const cadenceValue =
     routineCadence === "DAILY" || routineCadence === "WEEKLY" ? routineCadence : null;
-  if (typeValue === TASK_TYPE.ROUTINE && cadenceValue) {
+  // A task is recurring iff it carries a cadence — independent of its type.
+  if (cadenceValue) {
     const baseDate = dueDate ? new Date(dueDate) : new Date();
     const nextAt = routineNextAt ? new Date(routineNextAt) : nextRoutineAt(cadenceValue, baseDate);
     await prisma.routineRule.create({
@@ -411,7 +412,7 @@ export async function updateTask(params: {
       updatedTask &&
       statusValue === TASK_STATUS.DONE &&
       currentTask.status !== TASK_STATUS.DONE &&
-      updatedTask.type === TASK_TYPE.ROUTINE
+      updatedTask.routineRule != null
         ? await createNextRoutineOccurrence(tx, { task: updatedTask, userId, workspaceId })
         : null;
 

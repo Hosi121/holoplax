@@ -1,6 +1,6 @@
 import { Prisma, type Task } from "@prisma/client";
 import { randomUUID } from "crypto";
-import { TASK_STATUS, TASK_TYPE } from "../types";
+import { TASK_STATUS } from "../types";
 
 type Tx = Prisma.TransactionClient;
 
@@ -73,9 +73,9 @@ type TaskWithRoutineRule = Task & {
 };
 
 /**
- * Reconcile a task's RoutineRule after an update: drop it when the task is no
- * longer a routine, upsert it when a cadence is set, bump only its nextAt, or
- * clear it when the caller asked to.
+ * Reconcile a task's RoutineRule after an update. Recurrence is expressed solely
+ * by the rule's presence (there is no ROUTINE task type): upsert it when a
+ * cadence is given, bump only its nextAt, or clear it when the caller asked to.
  */
 export async function syncRoutineRule(
   tx: Tx,
@@ -87,11 +87,6 @@ export async function syncRoutineRule(
   },
 ) {
   const { task, cadenceValue, routineNextAt, shouldClearRoutine } = params;
-  const finalType = (task.type ?? TASK_TYPE.PBI) as string;
-  if (finalType !== TASK_TYPE.ROUTINE) {
-    if (task.routineRule) await tx.routineRule.delete({ where: { taskId: task.id } });
-    return;
-  }
   if (cadenceValue) {
     const baseDate = task.dueDate ? new Date(task.dueDate) : new Date();
     const nextAt =
@@ -135,7 +130,7 @@ export async function createNextRoutineOccurrence(
       urgency: task.urgency,
       risk: task.risk,
       status: TASK_STATUS.BACKLOG,
-      type: TASK_TYPE.ROUTINE,
+      type: task.type,
       dueDate: dueAt,
       tags: task.tags ?? [],
       assigneeId: task.assigneeId ?? null,

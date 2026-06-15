@@ -14,11 +14,12 @@ enum TaskStatus {
   DONE
 }
 
+// Work-breakdown level only. "Recurring" is orthogonal and modeled by the
+// presence of a RoutineRule (cadence), not by a task type.
 enum TaskType {
   EPIC
   PBI
   TASK
-  ROUTINE
 }
 
 enum AiSuggestionType {

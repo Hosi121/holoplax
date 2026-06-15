@@ -32,7 +32,6 @@ export const TASK_TYPE = {
   EPIC: "EPIC",
   PBI: "PBI",
   TASK: "TASK",
-  ROUTINE: "ROUTINE",
 } as const satisfies Record<string, PrismaTaskType>;
 
 export const AUTOMATION_STATE = {

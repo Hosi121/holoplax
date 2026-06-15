@@ -82,8 +82,9 @@ export async function POST(request: Request) {
             points: 1,
             urgency: SEVERITY.MEDIUM,
             risk: SEVERITY.LOW,
+            // Recurrence is expressed by the RoutineRule created below, not a type.
             status: "BACKLOG",
-            type: TASK_TYPE.ROUTINE,
+            type: TASK_TYPE.TASK,
             dueDate: dueAt,
             userId,
             workspaceId: workspace.id,

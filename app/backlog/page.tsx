@@ -34,20 +34,13 @@ const taskTypeLabels: Record<TaskType, string> = {
   [TASK_TYPE.EPIC]: "目標",
   [TASK_TYPE.PBI]: "PBI",
   [TASK_TYPE.TASK]: "タスク",
-  [TASK_TYPE.ROUTINE]: "ルーティン",
 };
 const taskTypeOptions = [
   { value: TASK_TYPE.EPIC, label: "目標 (EPIC)" },
   { value: TASK_TYPE.PBI, label: "PBI" },
   { value: TASK_TYPE.TASK, label: "タスク" },
-  { value: TASK_TYPE.ROUTINE, label: "ルーティン" },
 ];
-const taskTypeOrder: TaskType[] = [
-  TASK_TYPE.EPIC,
-  TASK_TYPE.PBI,
-  TASK_TYPE.TASK,
-  TASK_TYPE.ROUTINE,
-];
+const taskTypeOrder: TaskType[] = [TASK_TYPE.EPIC, TASK_TYPE.PBI, TASK_TYPE.TASK];
 const checklistFromText = (text: string) =>
   text
     .split("\n")
@@ -360,7 +353,6 @@ export default function BacklogPage() {
       [TASK_TYPE.EPIC]: [],
       [TASK_TYPE.PBI]: [],
       [TASK_TYPE.TASK]: [],
-      [TASK_TYPE.ROUTINE]: [],
     };
     const parentCandidates: TaskDTO[] = [];
 
@@ -436,7 +428,7 @@ export default function BacklogPage() {
             .split(",")
             .map((tag) => tag.trim())
             .filter(Boolean),
-          routineCadence: form.type === TASK_TYPE.ROUTINE ? form.routineCadence : "NONE",
+          routineCadence: form.routineCadence,
           dependencyIds: form.dependencyIds,
         }),
       });
@@ -554,7 +546,7 @@ export default function BacklogPage() {
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean),
-        routineCadence: editForm.type === TASK_TYPE.ROUTINE ? editForm.routineCadence : "NONE",
+        routineCadence: editForm.routineCadence,
         dependencyIds: editForm.dependencyIds,
       }),
     });
@@ -1420,25 +1412,23 @@ export default function BacklogPage() {
                     </select>
                   </label>
                 </div>
-                {form.type === TASK_TYPE.ROUTINE ? (
-                  <label className="grid gap-1 text-xs text-slate-500">
-                    ルーティン周期
-                    <select
-                      value={form.routineCadence}
-                      onChange={(e) =>
-                        setForm((p) => ({
-                          ...p,
-                          routineCadence: e.target.value,
-                        }))
-                      }
-                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    >
-                      <option value="DAILY">毎日</option>
-                      <option value="WEEKLY">毎週</option>
-                      <option value="NONE">なし</option>
-                    </select>
-                  </label>
-                ) : null}
+                <label className="grid gap-1 text-xs text-slate-500">
+                  繰り返し（任意）
+                  <select
+                    value={form.routineCadence}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        routineCadence: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="NONE">なし</option>
+                    <option value="DAILY">毎日</option>
+                    <option value="WEEKLY">毎週</option>
+                  </select>
+                </label>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-1 text-xs text-slate-500">
                     期限
@@ -1684,25 +1674,23 @@ export default function BacklogPage() {
                   </select>
                 </label>
               </div>
-              {editForm.type === TASK_TYPE.ROUTINE ? (
-                <label className="grid gap-1 text-xs text-slate-500">
-                  ルーティン周期
-                  <select
-                    value={editForm.routineCadence}
-                    onChange={(e) =>
-                      setEditForm((p) => ({
-                        ...p,
-                        routineCadence: e.target.value,
-                      }))
-                    }
-                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  >
-                    <option value="DAILY">毎日</option>
-                    <option value="WEEKLY">毎週</option>
-                    <option value="NONE">なし</option>
-                  </select>
-                </label>
-              ) : null}
+              <label className="grid gap-1 text-xs text-slate-500">
+                繰り返し（任意）
+                <select
+                  value={editForm.routineCadence}
+                  onChange={(e) =>
+                    setEditForm((p) => ({
+                      ...p,
+                      routineCadence: e.target.value,
+                    }))
+                  }
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                >
+                  <option value="NONE">なし</option>
+                  <option value="DAILY">毎日</option>
+                  <option value="WEEKLY">毎週</option>
+                </select>
+              </label>
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 text-xs text-slate-500">
                   期限

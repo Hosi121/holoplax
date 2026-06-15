@@ -752,7 +752,7 @@ describe("TaskStatusSchema", () => {
 
 describe("TaskTypeSchema", () => {
   it("accepts all valid types", () => {
-    for (const t of ["EPIC", "PBI", "TASK", "ROUTINE"]) {
+    for (const t of ["EPIC", "PBI", "TASK"]) {
       expect(TaskTypeSchema.safeParse(t).success, `should accept "${t}"`).toBe(true);
     }
   });
@@ -797,7 +797,7 @@ describe("TaskCreateSchema — status and type enum enforcement", () => {
   });
 
   it("accepts valid type values", () => {
-    for (const t of ["EPIC", "PBI", "TASK", "ROUTINE"]) {
+    for (const t of ["EPIC", "PBI", "TASK"]) {
       expect(TaskCreateSchema.safeParse({ ...minValid, type: t }).success, `type="${t}"`).toBe(
         true,
       );

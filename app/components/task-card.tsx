@@ -19,7 +19,6 @@ const taskTypeLabels: Record<TaskType, string> = {
   [TASK_TYPE.EPIC]: "目標",
   [TASK_TYPE.PBI]: "PBI",
   [TASK_TYPE.TASK]: "タスク",
-  [TASK_TYPE.ROUTINE]: "ルーティン",
 };
 
 // ============================================================
@@ -522,7 +521,7 @@ export function TaskCard({
               #{item.tags.join(" #")}
             </span>
           )}
-          {item.type === TASK_TYPE.ROUTINE && item.routineCadence && (
+          {item.routineCadence && (
             <span className="border border-slate-200 bg-white px-2 py-1">
               ルーティン: {item.routineCadence === "DAILY" ? "毎日" : "毎週"}
             </span>
@@ -547,7 +546,7 @@ export function TaskCard({
       {/* Sprint variant metadata (inline) */}
       {variant === "sprint" && !isCompact && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-          {item.type === TASK_TYPE.ROUTINE && item.routineCadence && (
+          {item.routineCadence && (
             <span className="border border-slate-200 bg-white px-2 py-1">
               {item.routineCadence === "DAILY" ? "毎日" : "毎週"}
             </span>

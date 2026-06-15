@@ -19,7 +19,7 @@ const nullableTaskType = z
     if (value == null) return null;
     const text = String(value).trim().toUpperCase();
     return text.length ? text : null;
-  }, z.enum(["EPIC", "PBI", "TASK", "ROUTINE"]).nullable())
+  }, z.enum(["EPIC", "PBI", "TASK"]).nullable())
   .optional();
 
 export const IntakeMemoSchema = z
