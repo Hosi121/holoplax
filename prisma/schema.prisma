@@ -366,10 +366,11 @@ model Task {
   prepOutputs      AiPrepOutput[]
   sprint           Sprint?             @relation(fields: [sprintId], references: [id], onDelete: SetNull)
   assignee         User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  userId           String?
-  user             User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId      String?
-  workspace        Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // A task always belongs to a workspace (tenant invariant) and a creator.
+  userId           String
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId      String
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   parent           Task?               @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children         Task[]              @relation("TaskHierarchy")
   dependencies     TaskDependency[]    @relation("TaskDependencies")

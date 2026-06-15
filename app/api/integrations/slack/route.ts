@@ -79,6 +79,12 @@ export async function POST(request: Request) {
           text: "workspaceId を解決できませんでした。SLACK_WORKSPACE_ID を設定してください。",
         });
       }
+      if (!userEnv) {
+        return ok({
+          response_type: "ephemeral",
+          text: "userId を解決できませんでした。SLACK_USER_ID を設定してください。",
+        });
+      }
 
       const task = await prisma.task.create({
         data: {
@@ -90,7 +96,7 @@ export async function POST(request: Request) {
           status: TASK_STATUS.BACKLOG,
           type: TASK_TYPE.PBI,
           workspace: { connect: { id: workspaceId } },
-          user: userEnv ? { connect: { id: userEnv } } : undefined,
+          user: { connect: { id: userEnv } },
         },
       });
 
