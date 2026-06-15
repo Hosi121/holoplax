@@ -183,7 +183,7 @@ export async function PATCH() {
               fromStatus: "SPRINT",
               toStatus: "BACKLOG",
               actorId: userId,
-              source: "SPRINT_END",
+              trigger: "SPRINT_END",
               workspaceId,
             })),
           });

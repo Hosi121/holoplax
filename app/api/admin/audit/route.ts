@@ -125,7 +125,7 @@ export async function GET(request: Request) {
           actor: { name: log.user?.name ?? null, email: log.user?.email ?? null },
           targetUser: null,
           targetWorkspace: log.workspace ? { name: log.workspace.name } : null,
-          metadata: { taskId: log.taskId, source: log.source },
+          metadata: { taskId: log.taskId, source: log.feature },
           usage: normalizeUsageRow(log, pricingTable),
         }));
         const mappedLegacyLogs = legacyLogs.map((log) => ({

@@ -125,7 +125,7 @@ async function updateAcceptRateEMA(userId: string, suggestionType: string, react
         definitionId: memoryDefinition.id,
         userId,
         valueNum: nextValue,
-        source: "INFERRED",
+        provenance: "INFERRED",
         status: "ACTIVE",
       },
     });

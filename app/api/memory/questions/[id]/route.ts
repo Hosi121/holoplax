@@ -101,7 +101,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
               ...claimValue,
               valueJson: toNullableJsonInput(claimValue.valueJson),
               confidence: question.confidence,
-              source: "INFERRED",
+              provenance: "INFERRED",
               status: "ACTIVE",
               validFrom: now,
             },

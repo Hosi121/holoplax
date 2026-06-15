@@ -540,7 +540,7 @@ model AiUsage {
   totalTokens      Int?
   costUsd          Float?
   usageSource      String
-  source           String?
+  feature          String?
   taskId           String?
   userId           String?
   user             User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -586,7 +586,7 @@ model TaskStatusEvent {
   fromStatus  TaskStatus?
   toStatus    TaskStatus
   actorId     String?
-  source      TaskStatusEventSource?
+  trigger     TaskStatusEventSource?
   workspaceId String?
   task        Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
   actor       User?                  @relation("StatusEventActor", fields: [actorId], references: [id], onDelete: SetNull)
@@ -630,7 +630,7 @@ model MemoryClaim {
   valueBool    Boolean?
   valueJson    Json?
   confidence   Float            @default(0.5)
-  source       MemorySource     @default(INFERRED)
+  provenance   MemorySource     @default(INFERRED)
   status       MemoryStatus     @default(ACTIVE)
   validFrom    DateTime         @default(now())
   validTo      DateTime?
@@ -701,7 +701,7 @@ model FocusQueue {
 
 model IntakeItem {
   id          String       @id @default(uuid())
-  source      IntakeSource
+  origin      IntakeSource
   status      IntakeStatus @default(PENDING)
   title       String
   body        String

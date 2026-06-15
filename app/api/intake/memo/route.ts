@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       const title = deriveIntakeTitle(text);
       const item = await prisma.intakeItem.create({
         data: {
-          source: "MEMO",
+          origin: "MEMO",
           status: "PENDING",
           title,
           body: text,

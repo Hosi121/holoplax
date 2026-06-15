@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       // Create IntakeItem (Global Inbox)
       const item = await prisma.intakeItem.create({
         data: {
-          source: "DISCORD",
+          origin: "DISCORD",
           status: "PENDING",
           title: title.slice(0, 140),
           body: bodyText,

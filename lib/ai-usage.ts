@@ -110,7 +110,7 @@ export async function recordAiUsage(params: {
         totalTokens: usageMeta.totalTokens ?? undefined,
         costUsd: costUsd ?? undefined,
         usageSource: usageMeta.usageSource,
-        source: params.context.source ?? null,
+        feature: params.context.source ?? null,
         taskId: params.context.taskId ?? null,
         userId: params.context.userId ?? null,
         workspaceId: params.context.workspaceId ?? null,
