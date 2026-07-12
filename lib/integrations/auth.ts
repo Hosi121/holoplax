@@ -4,12 +4,12 @@ import { AppError, errorResponse } from "../http/errors";
 const integrationUnauthorized = (message: string) =>
   errorResponse(new AppError("INTEGRATION_UNAUTHORIZED", message, 401));
 
-export const extractHeaderToken = (request: Request) =>
+const extractHeaderToken = (request: Request) =>
   request.headers.get("x-integration-token") ??
   request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
   null;
 
-export const firstEnvToken = (keys: string[]) => {
+const firstEnvToken = (keys: string[]) => {
   for (const key of keys) {
     const val = process.env[key];
     if (val?.trim()) return val.trim();

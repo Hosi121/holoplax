@@ -1,5 +1,5 @@
 // User preference tag (not an automation state)
-export const NO_DELEGATE_TAG = "no-delegate";
+const NO_DELEGATE_TAG = "no-delegate";
 
 // Helper to check if task has no-delegate preference
 export const hasNoDelegateTag = (tags: string[] | null | undefined): boolean =>

@@ -72,36 +72,6 @@ const TRIGGERS: TriggerCondition[] = [
 ];
 
 /**
- * タスクに対してプロアクティブに表示すべき提案を判定する
- */
-export function useProactiveSuggestions(
-  task: TaskDTO | null,
-  context: AiContext | null,
-): ProactiveSuggestion | null {
-  return useMemo(() => {
-    if (!task || !context) return null;
-
-    // WIPが多すぎる場合は提案しない（邪魔しない）
-    if (context.wipCount > WIP_LIMIT) return null;
-
-    // 条件を評価して最初にマッチしたものを返す（priority順にソート済み）
-    const sortedTriggers = [...TRIGGERS].sort((a, b) => b.priority - a.priority);
-
-    for (const trigger of sortedTriggers) {
-      if (trigger.when(context, task)) {
-        return {
-          type: trigger.type,
-          reason: trigger.reason,
-          priority: trigger.priority,
-        };
-      }
-    }
-
-    return null;
-  }, [task, context]);
-}
-
-/**
  * 複数タスクに対して提案が必要なものをフィルタリング
  */
 export function useProactiveSuggestionsList(

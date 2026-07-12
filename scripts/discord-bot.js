@@ -138,7 +138,7 @@ function parseDueDate(dueDateStr) {
 
   // Try parsing as date
   const parsed = new Date(dueDateStr);
-  if (!isNaN(parsed.getTime())) {
+  if (!Number.isNaN(parsed.getTime())) {
     return parsed.toISOString().split("T")[0];
   }
 

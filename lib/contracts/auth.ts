@@ -10,7 +10,7 @@ export const EmailSchema = z
   )
   .transform(normalizeEmail);
 
-export const OptionalEmailSchema = z
+const OptionalEmailSchema = z
   .preprocess(toStringOrEmpty, z.string().trim())
   .transform(normalizeEmail)
   .refine((value) => value === "" || z.string().email().safeParse(value).success, {

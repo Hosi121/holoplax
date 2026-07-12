@@ -39,53 +39,67 @@ export async function GET() {
         requireWorkspace: false,
       });
 
-      // 1. flow_state を MemoryClaim から取得
-      let flowState: number | null = null;
-      if (workspaceId) {
-        const flowType = await prisma.memoryDefinition.findFirst({
-          where: { key: "flow_state", scope: "WORKSPACE" },
-        });
-        if (flowType) {
-          const flowClaim = await prisma.memoryClaim.findFirst({
-            where: {
-              definitionId: flowType.id,
-              workspaceId,
-              status: "ACTIVE",
-            },
-            orderBy: { updatedAt: "desc" },
-          });
-          flowState = flowClaim?.valueNum ?? null;
-        }
-      }
-
-      // 2. WIP数をリアルタイム計算
-      const wipCount = workspaceId
-        ? await prisma.task.count({
-            where: { workspaceId, status: "SPRINT" },
-          })
-        : 0;
-
-      // 3. 受容率を MemoryClaim から取得
       const acceptRateKeys = [
         "ai_tip_accept_rate_30d",
         "ai_score_accept_rate_30d",
         "ai_split_accept_rate_30d",
       ];
-      const acceptRateTypes = await prisma.memoryDefinition.findMany({
-        where: { key: { in: acceptRateKeys }, scope: "USER" },
-        take: acceptRateKeys.length,
-      });
-      const typeIdToKey = new Map(acceptRateTypes.map((t) => [t.id, t.key]));
 
-      const acceptRateClaims = await prisma.memoryClaim.findMany({
-        where: {
-          userId,
-          status: "ACTIVE",
-          definitionId: { in: acceptRateTypes.map((t) => t.id) },
-        },
-        orderBy: { updatedAt: "desc" },
-        take: acceptRateKeys.length,
-      });
+      // The definitions, WIP count, and latency aggregate are independent.
+      // Fetching them in one wave reduces this endpoint from six sequential
+      // database round trips to two in the fully populated case.
+      const [flowType, wipCount, acceptRateTypes, latencyAgg] = await Promise.all([
+        workspaceId
+          ? prisma.memoryDefinition.findFirst({
+              where: { key: "flow_state", scope: "WORKSPACE" },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+        workspaceId
+          ? prisma.task.count({ where: { workspaceId, status: "SPRINT" } })
+          : Promise.resolve(0),
+        prisma.memoryDefinition.findMany({
+          where: { key: { in: acceptRateKeys }, scope: "USER" },
+          take: acceptRateKeys.length,
+          select: { id: true, key: true },
+        }),
+        prisma.aiSuggestionReaction.aggregate({
+          where: {
+            userId,
+            latencyMs: { not: null },
+            createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+          },
+          _avg: { latencyMs: true },
+        }),
+      ]);
+
+      const [flowClaim, acceptRateClaims] = await Promise.all([
+        workspaceId && flowType
+          ? prisma.memoryClaim.findFirst({
+              where: {
+                definitionId: flowType.id,
+                workspaceId,
+                status: "ACTIVE",
+              },
+              orderBy: { updatedAt: "desc" },
+              select: { valueNum: true },
+            })
+          : Promise.resolve(null),
+        acceptRateTypes.length
+          ? prisma.memoryClaim.findMany({
+              where: {
+                userId,
+                status: "ACTIVE",
+                definitionId: { in: acceptRateTypes.map((type) => type.id) },
+              },
+              orderBy: { updatedAt: "desc" },
+              take: acceptRateKeys.length,
+              select: { definitionId: true, valueNum: true },
+            })
+          : Promise.resolve([]),
+      ]);
+      const flowState = flowClaim?.valueNum ?? null;
+      const typeIdToKey = new Map(acceptRateTypes.map((t) => [t.id, t.key]));
 
       const acceptRates: AiContextResponse["acceptRates"] = {
         tip: null,
@@ -99,15 +113,6 @@ export async function GET() {
         if (key === "ai_split_accept_rate_30d") acceptRates.split = claim.valueNum;
       }
 
-      // 4. 平均反応時間
-      const latencyAgg = await prisma.aiSuggestionReaction.aggregate({
-        where: {
-          userId,
-          latencyMs: { not: null },
-          createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-        },
-        _avg: { latencyMs: true },
-      });
       const avgLatencyMs = latencyAgg._avg.latencyMs ?? null;
 
       // 5. 推奨を計算

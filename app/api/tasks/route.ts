@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       if (cursor) {
         const tasks = await prisma.task.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: take + 1, // Fetch one extra to determine if there's a next page
           cursor: { id: cursor },
           skip: 1, // Skip the cursor item itself
@@ -129,7 +129,7 @@ export async function GET(request: Request) {
       const skip = Math.max(0, Number.isFinite(pageParam) ? pageParam : 0) * take;
       const tasks = await prisma.task.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip,
         take: take + 1, // Fetch one extra to determine if there's a next page
         include: {

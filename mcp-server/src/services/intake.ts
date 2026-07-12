@@ -1,28 +1,6 @@
 import type { ExecutionContext } from "../context.js";
+import { SEVERITY, TASK_STATUS, TASK_TYPE, type TaskStatus, type TaskType } from "../domain.js";
 import prisma from "../prisma.js";
-
-// Type definitions matching Prisma schema
-type TaskStatus = "BACKLOG" | "SPRINT" | "DONE";
-type TaskType = "EPIC" | "PBI" | "TASK" | "ROUTINE";
-
-const TASK_STATUS = {
-  BACKLOG: "BACKLOG",
-  SPRINT: "SPRINT",
-  DONE: "DONE",
-} as const;
-
-const TASK_TYPE = {
-  EPIC: "EPIC",
-  PBI: "PBI",
-  TASK: "TASK",
-  ROUTINE: "ROUTINE",
-} as const;
-
-const SEVERITY = {
-  LOW: "LOW",
-  MEDIUM: "MEDIUM",
-  HIGH: "HIGH",
-} as const;
 
 function deriveIntakeTitle(text: string): string {
   const firstLine = text.split("\n")[0] ?? text;
@@ -118,7 +96,7 @@ export async function createMemo(ctx: ExecutionContext, input: CreateMemoInput) 
 
   const item = await prisma.intakeItem.create({
     data: {
-      source: "MEMO",
+      origin: "MEMO",
       status: "PENDING",
       title,
       body: input.text,

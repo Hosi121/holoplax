@@ -116,20 +116,3 @@ export const logger = {
   error: (message: string, context?: LogContext, error?: unknown) =>
     log("error", message, context, error),
 };
-
-/**
- * Create a child logger with preset context
- * Useful for request-scoped logging
- */
-export const createLogger = (baseContext: LogContext) => ({
-  debug: (message: string, context?: LogContext) =>
-    log("debug", message, { ...baseContext, ...context }),
-  info: (message: string, context?: LogContext) =>
-    log("info", message, { ...baseContext, ...context }),
-  warn: (message: string, context?: LogContext, error?: unknown) =>
-    log("warn", message, { ...baseContext, ...context }, error),
-  error: (message: string, context?: LogContext, error?: unknown) =>
-    log("error", message, { ...baseContext, ...context }, error),
-});
-
-export type Logger = typeof logger;

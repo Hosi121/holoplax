@@ -49,6 +49,9 @@ export async function POST(request: Request) {
       // タイミング情報の計算
       const viewedDate = viewedAt ? new Date(viewedAt) : null;
       const reactedDate = reactedAt ? new Date(reactedAt) : null;
+      if (viewedDate && reactedDate && reactedDate < viewedDate) {
+        return errors.badRequest("reactedAt must not be before viewedAt");
+      }
       const latencyMs =
         viewedDate && reactedDate ? reactedDate.getTime() - viewedDate.getTime() : null;
 

@@ -1,23 +1,12 @@
 import type { ExecutionContext } from "../context.js";
+import { SEVERITY, type Severity, STORY_POINTS, type StoryPoint } from "../domain.js";
 import prisma from "../prisma.js";
 
-// Type definitions matching Prisma schema
-type Severity = "LOW" | "MEDIUM" | "HIGH";
-
-const SEVERITY = {
-  LOW: "LOW",
-  MEDIUM: "MEDIUM",
-  HIGH: "HIGH",
-} as const;
-
-const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13, 21, 34] as const;
-type FibonacciPoint = (typeof FIBONACCI_POINTS)[number];
-
-function normalizeStoryPoint(value: unknown, fallback: FibonacciPoint = 3): FibonacciPoint {
+function normalizeStoryPoint(value: unknown, fallback: StoryPoint = 3): StoryPoint {
   const num = Number(value);
   if (!Number.isFinite(num) || num <= 0) return fallback;
-  let closest: FibonacciPoint = FIBONACCI_POINTS[0];
-  for (const point of FIBONACCI_POINTS) {
+  let closest: StoryPoint = STORY_POINTS[0];
+  for (const point of STORY_POINTS) {
     if (Math.abs(point - num) < Math.abs(closest - num)) {
       closest = point;
     }
@@ -36,7 +25,7 @@ function normalizeSeverity(value: unknown, fallback: Severity = SEVERITY.MEDIUM)
 
 export interface SplitItem {
   title: string;
-  points: FibonacciPoint;
+  points: StoryPoint;
   urgency: Severity;
   risk: Severity;
   detail: string;
@@ -55,7 +44,7 @@ function sanitizeSplitSuggestion(item: unknown): SplitItem {
 
 function fallbackEstimate(title: string, description: string) {
   const base = title.length + description.length;
-  const points: FibonacciPoint = base > 120 ? 8 : base > 60 ? 5 : base > 20 ? 3 : 1;
+  const points: StoryPoint = base > 120 ? 8 : base > 60 ? 5 : base > 20 ? 3 : 1;
   const isUrgent = /今日|至急|締切|すぐ/.test(`${title}${description}`);
   const isRisky = /依存|外部|不確実|未知|調査/.test(`${title}${description}`);
   const urgency = isUrgent ? SEVERITY.HIGH : SEVERITY.MEDIUM;

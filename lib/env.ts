@@ -40,7 +40,7 @@ type ValidationResult = {
   warnings: string[];
 };
 
-export function validateEnv(): ValidationResult {
+function validateEnv(): ValidationResult {
   const missing: string[] = [];
   const warnings: string[] = [];
 
@@ -72,7 +72,7 @@ export function validateEnv(): ValidationResult {
   };
 }
 
-export function assertEnv(): void {
+function assertEnv(): void {
   const result = validateEnv();
 
   if (!result.valid) {

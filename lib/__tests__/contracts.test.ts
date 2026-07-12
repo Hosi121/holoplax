@@ -43,6 +43,7 @@ import {
   WorkspaceMemberRoleUpdateSchema,
   WorkspaceRoleSchema,
 } from "../contracts/workspace";
+import { STORY_POINTS } from "../points";
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -209,7 +210,7 @@ describe("AvatarUploadSchema", () => {
 
 describe("TaskPointsSchema", () => {
   it("accepts valid story points", () => {
-    for (const pts of [1, 2, 3, 5, 8, 13, 21, 34]) {
+    for (const pts of STORY_POINTS) {
       expect(TaskPointsSchema.safeParse(pts).success, `should accept ${pts}`).toBe(true);
     }
   });
@@ -645,7 +646,7 @@ describe("AiSplitSchema", () => {
   const valid = { title: "Implement login", points: 5 };
 
   it("accepts valid title and Fibonacci points", () => {
-    for (const pts of [1, 2, 3, 5, 8, 13, 21, 34]) {
+    for (const pts of STORY_POINTS) {
       const result = AiSplitSchema.safeParse({ ...valid, points: pts });
       expect(result.success, `should accept points=${pts}`).toBe(true);
     }
@@ -1103,7 +1104,7 @@ describe("OnboardingSchema", () => {
   });
 
   it("accepts valid Fibonacci points", () => {
-    for (const pts of [1, 2, 3, 5, 8, 13, 21, 34]) {
+    for (const pts of STORY_POINTS) {
       expect(
         OnboardingSchema.safeParse({ ...minValid, points: pts }).success,
         `should accept points=${pts}`,

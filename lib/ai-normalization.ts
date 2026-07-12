@@ -1,4 +1,4 @@
-import { storyPointOptions } from "./points";
+import { STORY_POINTS, type StoryPoint } from "./points";
 import { SEVERITY, SEVERITY_FROM_LABEL, type Severity } from "./types";
 
 const toNumber = (value: unknown) => {
@@ -9,9 +9,9 @@ const toNumber = (value: unknown) => {
 export const normalizeStoryPoint = (value: unknown, fallback = 3) => {
   const target = toNumber(value);
   if (!Number.isFinite(target)) return fallback;
-  let nearest = storyPointOptions[0];
+  let nearest: StoryPoint = STORY_POINTS[0];
   let minDiff = Infinity;
-  for (const option of storyPointOptions) {
+  for (const option of STORY_POINTS) {
     const diff = Math.abs(option - target);
     if (diff < minDiff) {
       nearest = option;
@@ -47,10 +47,6 @@ export const normalizeSeverity = (
 
   return fallback;
 };
-
-// Deprecated: use normalizeSeverity instead
-// Kept for backwards compatibility during migration
-export const normalizePriorityLevel = normalizeSeverity;
 
 // Caps on untrusted, model-generated strings before they are persisted.
 const MAX_TITLE_LEN = 140;

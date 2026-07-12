@@ -81,7 +81,9 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
       setItems([]);
       return;
     }
-    const res = await apiFetch("/api/tasks?status=SPRINT&limit=200");
+    // Completed tasks retain their sprintId and belong in the current sprint's
+    // completed section, so fetch both states before filtering by sprintId.
+    const res = await apiFetch("/api/tasks?status=SPRINT&status=DONE&limit=500");
     if (!res.ok) {
       setItems([]);
       return;

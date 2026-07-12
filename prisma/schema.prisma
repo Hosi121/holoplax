@@ -287,7 +287,6 @@ model Workspace {
   memoryClaims             MemoryClaim[]
   memoryMetrics            MemoryMetric[]
   memoryQuestions          MemoryQuestion[]
-  focusQueues              FocusQueue[]
   automationStageHistories AutomationStageHistory[]
   aiSuggestionReactions    AiSuggestionReaction[]
   taskComments             TaskComment[]
@@ -381,7 +380,10 @@ model Task {
   comments         TaskComment[]
 
   @@index([parentId])
-  @@index([workspaceId, status])
+  // Task lists are tenant-scoped and ordered newest-first. Including the
+  // unique id makes cursor pagination deterministic when timestamps tie.
+  @@index([workspaceId, status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, automationState])
   @@index([sprintId, status])
 }
@@ -689,16 +691,6 @@ model MemoryMetric {
   // NULL-scoped side because Postgres treats NULLs as distinct in unique indexes.
   @@index([workspaceId, windowStart])
   @@index([userId, windowStart])
-}
-
-model FocusQueue {
-  id          String    @id @default(cuid())
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  items       Json
-  computedAt  DateTime  @default(now())
-
-  @@index([workspaceId, computedAt])
 }
 
 model IntakeItem {

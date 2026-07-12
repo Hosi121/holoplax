@@ -1,35 +1,16 @@
+import { randomUUID } from "node:crypto";
+import { Prisma, type RoutineCadence } from "@prisma/client";
 import type { ExecutionContext } from "../context.js";
+import {
+  isStoryPoint,
+  SEVERITY,
+  type Severity,
+  TASK_STATUS,
+  TASK_TYPE,
+  type TaskStatus,
+  type TaskType,
+} from "../domain.js";
 import prisma from "../prisma.js";
-
-// Type definitions matching Prisma schema
-type TaskStatus = "BACKLOG" | "SPRINT" | "DONE";
-type TaskType = "EPIC" | "PBI" | "TASK" | "ROUTINE";
-type Severity = "LOW" | "MEDIUM" | "HIGH";
-
-const TASK_STATUS = {
-  BACKLOG: "BACKLOG",
-  SPRINT: "SPRINT",
-  DONE: "DONE",
-} as const;
-
-const TASK_TYPE = {
-  EPIC: "EPIC",
-  PBI: "PBI",
-  TASK: "TASK",
-  ROUTINE: "ROUTINE",
-} as const;
-
-const SEVERITY = {
-  LOW: "LOW",
-  MEDIUM: "MEDIUM",
-  HIGH: "HIGH",
-} as const;
-
-const VALID_POINTS = [1, 2, 3, 5, 8, 13, 21, 34] as const;
-
-function isValidPoints(value: number): boolean {
-  return VALID_POINTS.includes(value as (typeof VALID_POINTS)[number]);
-}
 
 function isTaskStatus(value: unknown): value is TaskStatus {
   return Object.values(TASK_STATUS).includes(value as TaskStatus);
@@ -41,6 +22,23 @@ function isTaskType(value: unknown): value is TaskType {
 
 function isSeverity(value: unknown): value is Severity {
   return Object.values(SEVERITY).includes(value as Severity);
+}
+
+function nextRoutineAt(cadence: RoutineCadence, base: Date): Date {
+  const next = new Date(base);
+  next.setDate(next.getDate() + (cadence === "DAILY" ? 1 : 7));
+  return next;
+}
+
+function resetChecklist(value: Prisma.JsonValue): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  if (!Array.isArray(value)) return Prisma.DbNull;
+  return value
+    .map((item) => {
+      const record = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+      const text = String((record as Record<string, unknown>).text ?? "").trim();
+      return { id: randomUUID(), text, done: false };
+    })
+    .filter((item) => item.text.length > 0);
 }
 
 export interface TaskFilters {
@@ -114,7 +112,7 @@ export async function listTasks(ctx: ExecutionContext, filters: TaskFilters = {}
   if (filters.cursor) {
     const tasks = await prisma.task.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: take + 1,
       cursor: { id: filters.cursor },
       skip: 1,
@@ -138,7 +136,7 @@ export async function listTasks(ctx: ExecutionContext, filters: TaskFilters = {}
 
   const tasks = await prisma.task.findMany({
     where,
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
     include: {
       routineRule: { select: { cadence: true, nextAt: true } },
@@ -193,12 +191,14 @@ export interface CreateTaskInput {
   assigneeId?: string;
   tags?: string[];
   dependencyIds?: string[];
+  routineCadence?: RoutineCadence;
+  routineNextAt?: string;
 }
 
 export async function createTask(ctx: ExecutionContext, input: CreateTaskInput) {
   const { workspaceId, userId } = ctx;
 
-  if (!isValidPoints(input.points)) {
+  if (!isStoryPoint(input.points)) {
     throw new Error("points must be one of 1,2,3,5,8,13,21,34");
   }
 
@@ -251,7 +251,11 @@ export async function createTask(ctx: ExecutionContext, input: CreateTaskInput) 
         })
       : null;
 
-  if (statusValue === TASK_STATUS.SPRINT && activeSprint) {
+  if (statusValue === TASK_STATUS.SPRINT && !activeSprint) {
+    throw new Error("active sprint not found");
+  }
+
+  if (activeSprint) {
     const current = await prisma.task.aggregate({
       where: { workspaceId, status: TASK_STATUS.SPRINT },
       _sum: { points: true },
@@ -261,6 +265,17 @@ export async function createTask(ctx: ExecutionContext, input: CreateTaskInput) 
       throw new Error("sprint capacity exceeded");
     }
   }
+  const allowedDependencyIds = new Set(
+    allowedDependencies.map((dependency: { id: string }) => dependency.id),
+  );
+  const dependsOnIds = [
+    ...new Set(dependencyList.filter((id) => id && allowedDependencyIds.has(id))),
+  ];
+  const routineNextAt = input.routineCadence
+    ? input.routineNextAt
+      ? new Date(input.routineNextAt)
+      : nextRoutineAt(input.routineCadence, input.dueDate ? new Date(input.dueDate) : new Date())
+    : null;
 
   const task = await prisma.task.create({
     data: {
@@ -279,30 +294,27 @@ export async function createTask(ctx: ExecutionContext, input: CreateTaskInput) 
       assignee: safeAssigneeId ? { connect: { id: safeAssigneeId } } : undefined,
       user: { connect: { id: userId } },
       workspace: { connect: { id: workspaceId } },
-    },
-  });
-
-  if (allowedDependencies.length > 0) {
-    await prisma.taskDependency.createMany({
-      data: dependencyList
-        .filter((id) => id && id !== task.id)
-        .filter((id) => allowedDependencies.some((allowed: { id: string }) => allowed.id === id))
-        .map((id) => ({
-          taskId: task.id,
-          dependsOnId: id,
-        })),
-      skipDuplicates: true,
-    });
-  }
-
-  await prisma.taskStatusEvent.create({
-    data: {
-      taskId: task.id,
-      fromStatus: null,
-      toStatus: task.status,
-      actorId: userId,
-      source: "mcp",
-      workspaceId,
+      dependencies: dependsOnIds.length
+        ? {
+            createMany: {
+              data: dependsOnIds.map((dependsOnId) => ({ dependsOnId })),
+              skipDuplicates: true,
+            },
+          }
+        : undefined,
+      statusEvents: {
+        create: {
+          fromStatus: null,
+          toStatus: statusValue,
+          actorId: userId,
+          trigger: "API",
+          workspaceId,
+        },
+      },
+      routineRule:
+        input.routineCadence && routineNextAt
+          ? { create: { cadence: input.routineCadence, nextAt: routineNextAt } }
+          : undefined,
     },
   });
 
@@ -332,6 +344,8 @@ export interface UpdateTaskInput {
   assigneeId?: string | null;
   tags?: string[];
   dependencyIds?: string[];
+  routineCadence?: RoutineCadence | null;
+  routineNextAt?: string | null;
 }
 
 export async function updateTask(ctx: ExecutionContext, taskId: string, input: UpdateTaskInput) {
@@ -352,7 +366,7 @@ export async function updateTask(ctx: ExecutionContext, taskId: string, input: U
   if (input.description !== undefined) data.description = input.description;
   if (input.definitionOfDone !== undefined) data.definitionOfDone = input.definitionOfDone;
   if (input.points !== undefined) {
-    if (!isValidPoints(input.points)) {
+    if (!isStoryPoint(input.points)) {
       throw new Error("points must be one of 1,2,3,5,8,13,21,34");
     }
     data.points = input.points;
@@ -387,30 +401,35 @@ export async function updateTask(ctx: ExecutionContext, taskId: string, input: U
       }
     }
 
-    if (statusValue === TASK_STATUS.SPRINT) {
-      const activeSprint = await prisma.sprint.findFirst({
-        where: { workspaceId, status: "ACTIVE" },
-        orderBy: { startedAt: "desc" },
-        select: { id: true, capacityPoints: true },
-      });
-      if (!activeSprint) {
-        throw new Error("active sprint not found");
-      }
-      const current = await prisma.task.aggregate({
-        where: { workspaceId, status: TASK_STATUS.SPRINT, id: { not: taskId } },
-        _sum: { points: true },
-      });
-      const nextPoints =
-        (current._sum.points ?? 0) +
-        (typeof data.points === "number" ? data.points : currentTask.points);
-      if (nextPoints > activeSprint.capacityPoints) {
-        throw new Error("sprint capacity exceeded");
-      }
-      data.sprintId = activeSprint.id;
-    }
-
     if (statusValue === TASK_STATUS.BACKLOG) {
       data.sprintId = null;
+    }
+  }
+
+  const willBeInSprint = (statusValue ?? currentTask.status) === TASK_STATUS.SPRINT;
+  const needsCapacityCheck =
+    willBeInSprint && (statusValue === TASK_STATUS.SPRINT || input.points !== undefined);
+  if (needsCapacityCheck) {
+    const activeSprint = await prisma.sprint.findFirst({
+      where: { workspaceId, status: "ACTIVE" },
+      orderBy: { startedAt: "desc" },
+      select: { id: true, capacityPoints: true },
+    });
+    if (!activeSprint) {
+      throw new Error("active sprint not found");
+    }
+    const current = await prisma.task.aggregate({
+      where: { workspaceId, status: TASK_STATUS.SPRINT, id: { not: taskId } },
+      _sum: { points: true },
+    });
+    const nextPoints =
+      (current._sum.points ?? 0) +
+      (typeof data.points === "number" ? data.points : currentTask.points);
+    if (nextPoints > activeSprint.capacityPoints) {
+      throw new Error("sprint capacity exceeded");
+    }
+    if (statusValue === TASK_STATUS.SPRINT) {
+      data.sprintId = activeSprint.id;
     }
   }
 
@@ -443,6 +462,22 @@ export async function updateTask(ctx: ExecutionContext, taskId: string, input: U
     data,
   });
 
+  if (input.routineCadence === null) {
+    await prisma.routineRule.deleteMany({ where: { taskId } });
+  } else {
+    const cadence = input.routineCadence ?? currentTask.routineRule?.cadence;
+    if (cadence && (input.routineCadence !== undefined || input.routineNextAt !== undefined)) {
+      const nextAt = input.routineNextAt
+        ? new Date(input.routineNextAt)
+        : (currentTask.routineRule?.nextAt ?? nextRoutineAt(cadence, task.dueDate ?? new Date()));
+      await prisma.routineRule.upsert({
+        where: { taskId },
+        update: { cadence, nextAt },
+        create: { taskId, cadence, nextAt },
+      });
+    }
+  }
+
   if (Array.isArray(input.dependencyIds)) {
     const dependencyIds = input.dependencyIds.map(String);
     const allowed = dependencyIds.length
@@ -470,10 +505,53 @@ export async function updateTask(ctx: ExecutionContext, taskId: string, input: U
         fromStatus: currentTask.status,
         toStatus: statusValue,
         actorId: userId,
-        source: "mcp",
+        trigger: "API",
         workspaceId,
       },
     });
+  }
+
+  if (statusValue === TASK_STATUS.DONE && currentTask.status !== TASK_STATUS.DONE) {
+    const rule = await prisma.routineRule.findUnique({ where: { taskId } });
+    if (rule) {
+      await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const dueAt = rule.nextAt > now ? rule.nextAt : now;
+        const nextAt = nextRoutineAt(rule.cadence, dueAt);
+        const nextTask = await tx.task.create({
+          data: {
+            title: task.title,
+            description: task.description,
+            definitionOfDone: task.definitionOfDone,
+            checklist: resetChecklist(task.checklist),
+            points: task.points,
+            urgency: task.urgency,
+            risk: task.risk,
+            status: TASK_STATUS.BACKLOG,
+            type: task.type,
+            dueDate: dueAt,
+            tags: task.tags,
+            assigneeId: task.assigneeId,
+            userId,
+            workspaceId,
+          },
+        });
+        await tx.routineRule.update({
+          where: { taskId },
+          data: { taskId: nextTask.id, nextAt },
+        });
+        await tx.taskStatusEvent.create({
+          data: {
+            taskId: nextTask.id,
+            fromStatus: null,
+            toStatus: TASK_STATUS.BACKLOG,
+            actorId: userId,
+            trigger: "ROUTINE",
+            workspaceId,
+          },
+        });
+      });
+    }
   }
 
   await prisma.auditLog.create({

@@ -61,24 +61,6 @@ export function trackSuggestionAccepted(
 }
 
 /**
- * 提案が修正して適用されたことを記録する
- */
-export function trackSuggestionModified(
-  suggestionId: string | null | undefined,
-  modification: Record<string, unknown>,
-  viewedAt?: string | null,
-): void {
-  if (!suggestionId) return;
-  sendReaction({
-    suggestionId,
-    reaction: "MODIFIED",
-    modification,
-    viewedAt: viewedAt ?? undefined,
-    reactedAt: new Date().toISOString(),
-  });
-}
-
-/**
  * 提案が明示的に却下されたことを記録する
  */
 export function trackSuggestionRejected(
@@ -89,22 +71,6 @@ export function trackSuggestionRejected(
   sendReaction({
     suggestionId,
     reaction: "REJECTED",
-    viewedAt: viewedAt ?? undefined,
-    reactedAt: new Date().toISOString(),
-  });
-}
-
-/**
- * 提案が無視されたことを記録する（モーダルを閉じた、別の操作をした等）
- */
-export function trackSuggestionIgnored(
-  suggestionId: string | null | undefined,
-  viewedAt?: string | null,
-): void {
-  if (!suggestionId) return;
-  sendReaction({
-    suggestionId,
-    reaction: "IGNORED",
     viewedAt: viewedAt ?? undefined,
     reactedAt: new Date().toISOString(),
   });

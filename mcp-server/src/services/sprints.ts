@@ -1,15 +1,6 @@
 import type { ExecutionContext } from "../context.js";
+import { type SprintStatus, TASK_STATUS, type TaskStatus } from "../domain.js";
 import prisma from "../prisma.js";
-
-// Type definitions matching Prisma schema
-type TaskStatus = "BACKLOG" | "SPRINT" | "DONE";
-type SprintStatus = "ACTIVE" | "CLOSED";
-
-const TASK_STATUS = {
-  BACKLOG: "BACKLOG",
-  SPRINT: "SPRINT",
-  DONE: "DONE",
-} as const;
 
 function defaultSprintName(): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -223,7 +214,7 @@ export async function closeSprint(ctx: ExecutionContext) {
         fromStatus: TASK_STATUS.SPRINT,
         toStatus: TASK_STATUS.BACKLOG,
         actorId: userId,
-        source: "SPRINT_END",
+        trigger: "SPRINT_END",
         workspaceId,
       })),
     });

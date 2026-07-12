@@ -38,103 +38,104 @@ export async function POST(request: Request) {
         ? body.focusTasks.map((task: string) => String(task).trim()).filter(Boolean)
         : [];
 
-      const existing = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { onboardingCompletedAt: true },
-      });
-      if (existing?.onboardingCompletedAt) {
-        return ok({ completedAt: existing.onboardingCompletedAt });
-      }
-
-      const workspace = await prisma.workspace.create({
-        data: {
-          name: workspaceName,
-          ownerId: userId,
-          members: { create: { userId, role: "owner" } },
-        },
-      });
-
-      const task = await prisma.task.create({
-        data: {
-          title: goalTitle,
-          description: goalDescription,
-          points: Number.isFinite(points) ? points : 3,
-          urgency: SEVERITY.MEDIUM,
-          risk: SEVERITY.MEDIUM,
-          status: "BACKLOG",
-          type: TASK_TYPE.EPIC,
-          userId,
-          workspaceId: workspace.id,
-        },
-        select: { id: true },
-      });
-      if (routineTitle && routineCadence) {
-        const dueAt = new Date();
-        if (routineCadence === "DAILY") {
-          dueAt.setDate(dueAt.getDate() + 1);
-        } else {
-          dueAt.setDate(dueAt.getDate() + 7);
+      // Claim completion and create every onboarding artifact atomically. The
+      // conditional update also makes concurrent submissions idempotent.
+      const result = await prisma.$transaction(async (tx) => {
+        const completedAt = new Date();
+        const claimed = await tx.user.updateMany({
+          where: { id: userId, onboardingCompletedAt: null },
+          data: { onboardingCompletedAt: completedAt },
+        });
+        if (!claimed.count) {
+          const existing = await tx.user.findUnique({
+            where: { id: userId },
+            select: { onboardingCompletedAt: true },
+          });
+          if (!existing?.onboardingCompletedAt) {
+            throw new Error("authenticated user not found");
+          }
+          return { created: false as const, completedAt: existing.onboardingCompletedAt };
         }
-        const routineTask = await prisma.task.create({
+
+        const workspace = await tx.workspace.create({
           data: {
-            title: routineTitle,
-            description: routineDescription,
-            points: 1,
+            name: workspaceName,
+            ownerId: userId,
+            members: { create: { userId, role: "owner" } },
+          },
+        });
+
+        const task = await tx.task.create({
+          data: {
+            title: goalTitle,
+            description: goalDescription,
+            points: Number.isFinite(points) ? points : 3,
             urgency: SEVERITY.MEDIUM,
-            risk: SEVERITY.LOW,
-            // Recurrence is expressed by the RoutineRule created below, not a type.
+            risk: SEVERITY.MEDIUM,
             status: "BACKLOG",
-            type: TASK_TYPE.TASK,
-            dueDate: dueAt,
+            type: TASK_TYPE.EPIC,
             userId,
             workspaceId: workspace.id,
           },
           select: { id: true },
         });
-        const nextAt = new Date(dueAt);
-        if (routineCadence === "DAILY") {
-          nextAt.setDate(nextAt.getDate() + 1);
-        } else {
-          nextAt.setDate(nextAt.getDate() + 7);
+        if (routineTitle && routineCadence) {
+          const dueAt = new Date();
+          dueAt.setDate(dueAt.getDate() + (routineCadence === "DAILY" ? 1 : 7));
+          const nextAt = new Date(dueAt);
+          nextAt.setDate(nextAt.getDate() + (routineCadence === "DAILY" ? 1 : 7));
+          await tx.task.create({
+            data: {
+              title: routineTitle,
+              description: routineDescription,
+              points: 1,
+              urgency: SEVERITY.MEDIUM,
+              risk: SEVERITY.LOW,
+              status: "BACKLOG",
+              type: TASK_TYPE.TASK,
+              dueDate: dueAt,
+              userId,
+              workspaceId: workspace.id,
+              routineRule: { create: { cadence: routineCadence, nextAt } },
+            },
+          });
         }
-        await prisma.routineRule.create({
-          data: {
-            taskId: routineTask.id,
-            cadence: routineCadence,
-            nextAt,
-          },
-        });
-      }
-      if (focusTasks.length > 0) {
-        await prisma.task.createMany({
-          data: focusTasks.slice(0, 3).map((title) => ({
-            title,
-            description: "",
-            points: 1,
-            urgency: SEVERITY.MEDIUM,
-            risk: SEVERITY.MEDIUM,
-            status: "BACKLOG",
-            type: TASK_TYPE.TASK,
-            userId,
-            workspaceId: workspace.id,
-          })),
-        });
-      }
+        if (focusTasks.length > 0) {
+          await tx.task.createMany({
+            data: focusTasks.slice(0, 3).map((title) => ({
+              title,
+              description: "",
+              points: 1,
+              urgency: SEVERITY.MEDIUM,
+              risk: SEVERITY.MEDIUM,
+              status: "BACKLOG",
+              type: TASK_TYPE.TASK,
+              userId,
+              workspaceId: workspace.id,
+            })),
+          });
+        }
 
-      const completedAt = new Date();
-      await prisma.user.update({
-        where: { id: userId },
-        data: { onboardingCompletedAt: completedAt },
+        return {
+          created: true as const,
+          completedAt,
+          workspaceId: workspace.id,
+          taskId: task.id,
+        };
       });
+
+      if (!result.created) {
+        return ok({ completedAt: result.completedAt });
+      }
 
       await logAudit({
         actorId: userId,
         action: "ONBOARDING_COMPLETE",
-        targetWorkspaceId: workspace.id,
+        targetWorkspaceId: result.workspaceId,
         metadata: {
           intent,
           goalTitle,
-          taskId: task.id,
+          taskId: result.taskId,
           routineTitle,
           routineCadence,
           focusTasks,
@@ -142,10 +143,10 @@ export async function POST(request: Request) {
       });
 
       const response = NextResponse.json({
-        workspaceId: workspace.id,
-        completedAt,
+        workspaceId: result.workspaceId,
+        completedAt: result.completedAt,
       });
-      response.cookies.set("workspaceId", workspace.id, {
+      response.cookies.set("workspaceId", result.workspaceId, {
         path: "/",
         sameSite: "lax",
       });

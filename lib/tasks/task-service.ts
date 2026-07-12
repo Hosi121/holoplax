@@ -7,7 +7,7 @@ import { applyAutomationForTask } from "../automation";
 import type { TaskCreateSchema, TaskUpdateSchema } from "../contracts/task";
 import { AppError, HTTP_STATUS } from "../http/errors";
 import { logger } from "../logger";
-import { badPoints } from "../points";
+import { isStoryPoint } from "../points";
 import prisma from "../prisma";
 import { TASK_STATUS, TASK_TYPE } from "../types";
 import { checkSprintCapacity, findActiveSprint } from "./sprint-capacity";
@@ -98,46 +98,53 @@ export async function createTask(params: {
     checklistType: Array.isArray(checklist) ? "array" : typeof checklist,
     checklistNull: checklist === null,
   });
-  if (badPoints(points)) {
+  if (!isStoryPoint(points)) {
     throw badRequest("points must be one of 1,2,3,5,8,13,21,34");
-  }
-  let safeAssigneeId: string | null = assigneeId ?? null;
-  if (safeAssigneeId) {
-    const member = await prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: safeAssigneeId } },
-      select: { userId: true },
-    });
-    if (!member) {
-      safeAssigneeId = null;
-    }
   }
   const dependencyList = Array.isArray(dependencyIds)
     ? dependencyIds.map((id: string) => String(id))
-    : [];
-  const allowedDependencies = dependencyList.length
-    ? await prisma.task.findMany({
-        where: { id: { in: dependencyList }, workspaceId },
-        select: { id: true, title: true, status: true },
-      })
     : [];
   const statusValue = isTaskStatus(status) ? status : TASK_STATUS.BACKLOG;
   const typeValue = isTaskType(type) ? type : TASK_TYPE.PBI;
   logger.debug("TASK_CREATE narrowed", { statusValue, typeValue });
   const parentCandidate = parentId ? String(parentId) : null;
-  const parent = parentCandidate
-    ? await prisma.task.findFirst({
-        where: { id: parentCandidate, workspaceId },
-        select: { id: true },
-      })
-    : null;
+
+  // These validations are independent. Starting them together avoids up to
+  // four consecutive database round trips on task creation.
+  const [member, allowedDependencies, parent, activeSprint] = await Promise.all([
+    assigneeId
+      ? prisma.workspaceMember.findUnique({
+          where: { workspaceId_userId: { workspaceId, userId: assigneeId } },
+          select: { userId: true },
+        })
+      : Promise.resolve(null),
+    dependencyList.length
+      ? prisma.task.findMany({
+          where: { id: { in: dependencyList }, workspaceId },
+          select: { id: true, title: true, status: true },
+        })
+      : Promise.resolve([]),
+    parentCandidate
+      ? prisma.task.findFirst({
+          where: { id: parentCandidate, workspaceId },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    statusValue === TASK_STATUS.SPRINT
+      ? findActiveSprint(prisma, workspaceId)
+      : Promise.resolve(null),
+  ]);
+  const safeAssigneeId = assigneeId && member ? assigneeId : null;
+
   if (
     statusValue !== TASK_STATUS.BACKLOG &&
     allowedDependencies.some((dep) => dep.status !== TASK_STATUS.DONE)
   ) {
     throw badRequest("dependencies must be done before moving to sprint");
   }
-  const activeSprint =
-    statusValue === TASK_STATUS.SPRINT ? await findActiveSprint(prisma, workspaceId) : null;
+  if (statusValue === TASK_STATUS.SPRINT && !activeSprint) {
+    throw badRequest("active sprint not found");
+  }
   if (activeSprint) {
     const { exceeded } = await checkSprintCapacity(prisma, {
       workspaceId,
@@ -148,6 +155,15 @@ export async function createTask(params: {
       throw badRequest("sprint capacity exceeded");
     }
   }
+  const cadenceValue =
+    routineCadence === "DAILY" || routineCadence === "WEEKLY" ? routineCadence : null;
+  const allowedDependencyIds = new Set(allowedDependencies.map((dependency) => dependency.id));
+  const dependsOnIds = [
+    ...new Set(dependencyList.filter((id: string) => id && allowedDependencyIds.has(id))),
+  ];
+
+  // Nested writes keep the task, its recurrence rule, dependency edges, and
+  // initial status event atomic while still requiring only one create call.
   const task = await prisma.task.create({
     data: {
       title,
@@ -166,35 +182,33 @@ export async function createTask(params: {
       assignee: safeAssigneeId ? { connect: { id: safeAssigneeId } } : undefined,
       user: { connect: { id: userId } },
       workspace: { connect: { id: workspaceId } },
-    },
-  });
-  const cadenceValue =
-    routineCadence === "DAILY" || routineCadence === "WEEKLY" ? routineCadence : null;
-  // A task is recurring iff it carries a cadence — independent of its type.
-  if (cadenceValue) {
-    const baseDate = dueDate ? new Date(dueDate) : new Date();
-    const nextAt = routineNextAt ? new Date(routineNextAt) : nextRoutineAt(cadenceValue, baseDate);
-    await prisma.routineRule.create({
-      data: { taskId: task.id, cadence: cadenceValue, nextAt },
-    });
-  }
-  if (allowedDependencies.length > 0) {
-    await prisma.taskDependency.createMany({
-      data: dependencyList
-        .filter((id: string) => id && id !== task.id)
-        .filter((id: string) => allowedDependencies.some((allowed) => allowed.id === id))
-        .map((id: string) => ({ taskId: task.id, dependsOnId: id })),
-      skipDuplicates: true,
-    });
-  }
-  await prisma.taskStatusEvent.create({
-    data: {
-      taskId: task.id,
-      fromStatus: null,
-      toStatus: task.status,
-      actorId: userId,
-      trigger: "API",
-      workspaceId,
+      routineRule: cadenceValue
+        ? {
+            create: {
+              cadence: cadenceValue,
+              nextAt: routineNextAt
+                ? new Date(routineNextAt)
+                : nextRoutineAt(cadenceValue, dueDate ? new Date(dueDate) : new Date()),
+            },
+          }
+        : undefined,
+      dependencies: dependsOnIds.length
+        ? {
+            createMany: {
+              data: dependsOnIds.map((dependsOnId) => ({ dependsOnId })),
+              skipDuplicates: true,
+            },
+          }
+        : undefined,
+      statusEvents: {
+        create: {
+          fromStatus: null,
+          toStatus: statusValue,
+          actorId: userId,
+          trigger: "API",
+          workspaceId,
+        },
+      },
     },
   });
   await logAudit({
@@ -312,7 +326,9 @@ export async function updateTask(params: {
   // Batch the assignee/parent validation and the sprint capacity read.
   const needsAssigneeCheck = body.assigneeId !== undefined && body.assigneeId;
   const needsParentCheck = body.parentId !== undefined && body.parentId && body.parentId !== id;
-  const needsSprintCheck = statusValue === TASK_STATUS.SPRINT;
+  const willBeInSprint = (statusValue ?? currentTask.status) === TASK_STATUS.SPRINT;
+  const needsSprintCheck =
+    willBeInSprint && (statusValue === TASK_STATUS.SPRINT || body.points !== undefined);
 
   const [memberResult, parentResult, capacity] = await Promise.all([
     needsAssigneeCheck
@@ -345,13 +361,16 @@ export async function updateTask(params: {
     data.parentId = body.parentId && body.parentId !== id && parentResult ? parentResult.id : null;
   }
 
-  if (statusValue === TASK_STATUS.SPRINT) {
+  if (needsSprintCheck) {
     if (!capacity?.activeSprint) {
       throw badRequest("active sprint not found");
     }
     if (capacity.exceeded) {
       throw badRequest("sprint capacity exceeded");
     }
+  }
+
+  if (statusValue === TASK_STATUS.SPRINT && capacity?.activeSprint) {
     data.sprintId = capacity.activeSprint.id;
   }
   if (statusValue === TASK_STATUS.BACKLOG) {

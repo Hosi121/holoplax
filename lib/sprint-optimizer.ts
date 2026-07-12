@@ -46,7 +46,7 @@ export function calculateTaskScore(task: TaskDTO): number {
 /**
  * タスクの絶対価値を計算（スコア×ポイント）
  */
-export function calculateTaskValue(task: TaskDTO): number {
+function calculateTaskValue(task: TaskDTO): number {
   const urgencyW = URGENCY_WEIGHT[task.urgency] ?? 2;
   const riskW = RISK_WEIGHT[task.risk] ?? 1;
   return urgencyW * riskW * task.points;

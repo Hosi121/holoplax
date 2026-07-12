@@ -12,8 +12,6 @@ const publicEndpoint = process.env.MINIO_PUBLIC_URL ?? endpoint;
 const region = process.env.MINIO_REGION ?? "us-east-1";
 const bucket = process.env.MINIO_BUCKET_AVATARS ?? "holoplax-avatars";
 
-export const getAvatarBucket = () => bucket;
-
 export const getPublicObjectUrl = (key: string) =>
   `${publicEndpoint.replace(/\/$/, "")}/${bucket}/${key}`;
 

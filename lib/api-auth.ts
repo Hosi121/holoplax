@@ -21,28 +21,6 @@ const credentialsStale = (dbChangedAt: Date | null, sessionPwAt: unknown): boole
   return dbChangedAt.getTime() > sessionMs;
 };
 
-export async function requireUserId() {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
-  if (!userId) {
-    throw new AuthError();
-  }
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { disabledAt: true, passwordChangedAt: true },
-  });
-  if (!user) {
-    throw new AuthError("user not found");
-  }
-  if (user?.disabledAt) {
-    throw new AuthError("disabled");
-  }
-  if (credentialsStale(user.passwordChangedAt, session?.user?.pwChangedAt)) {
-    throw new AuthError("credentials changed");
-  }
-  return userId;
-}
-
 export async function requireAuth() {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id;

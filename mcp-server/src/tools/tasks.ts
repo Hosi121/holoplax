@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { getContext } from "../context.js";
 import {
+  isStoryPoint,
+  isValidDateString,
+  ROUTINE_CADENCE_VALUES,
+  SEVERITY_VALUES,
+  STORY_POINTS,
+  TASK_STATUS_VALUES,
+  TASK_TYPE_VALUES,
+} from "../domain.js";
+import {
   type CreateTaskInput,
   createTask,
   deleteTask,
@@ -11,11 +20,6 @@ import {
   updateTask,
 } from "../services/tasks.js";
 
-const TASK_STATUS_VALUES = ["BACKLOG", "SPRINT", "DONE"] as const;
-const TASK_TYPE_VALUES = ["EPIC", "PBI", "TASK", "ROUTINE"] as const;
-const SEVERITY_VALUES = ["LOW", "MEDIUM", "HIGH"] as const;
-const POINTS_VALUES = [1, 2, 3, 5, 8, 13, 21, 34] as const;
-
 export const listTasksSchema = z.object({
   status: z.array(z.enum(TASK_STATUS_VALUES)).optional(),
   type: z.array(z.enum(TASK_TYPE_VALUES)).optional(),
@@ -23,8 +27,8 @@ export const listTasksSchema = z.object({
   risk: z.enum(SEVERITY_VALUES).optional(),
   tags: z.array(z.string()).optional(),
   assigneeId: z.string().optional(),
-  dueBefore: z.string().optional(),
-  dueAfter: z.string().optional(),
+  dueBefore: z.string().refine(isValidDateString, "invalid dueBefore").optional(),
+  dueAfter: z.string().refine(isValidDateString, "invalid dueAfter").optional(),
   minPoints: z.number().optional(),
   maxPoints: z.number().optional(),
   search: z.string().optional(),
@@ -40,7 +44,7 @@ export const createTaskSchema = z.object({
   title: z.string().min(1, "title is required"),
   description: z.string().optional(),
   definitionOfDone: z.string().optional(),
-  points: z.number().refine((v) => POINTS_VALUES.includes(v as (typeof POINTS_VALUES)[number]), {
+  points: z.number().refine(isStoryPoint, {
     message: "points must be one of 1,2,3,5,8,13,21,34",
   }),
   urgency: z.enum(SEVERITY_VALUES).optional(),
@@ -48,10 +52,12 @@ export const createTaskSchema = z.object({
   status: z.enum(TASK_STATUS_VALUES).optional(),
   type: z.enum(TASK_TYPE_VALUES).optional(),
   parentId: z.string().optional(),
-  dueDate: z.string().optional(),
+  dueDate: z.string().refine(isValidDateString, "invalid dueDate").optional(),
   assigneeId: z.string().optional(),
   tags: z.array(z.string()).optional(),
   dependencyIds: z.array(z.string()).optional(),
+  routineCadence: z.enum(ROUTINE_CADENCE_VALUES).optional(),
+  routineNextAt: z.string().refine(isValidDateString, "invalid routineNextAt").optional(),
 });
 
 export const updateTaskSchema = z.object({
@@ -61,7 +67,7 @@ export const updateTaskSchema = z.object({
   definitionOfDone: z.string().optional(),
   points: z
     .number()
-    .refine((v) => POINTS_VALUES.includes(v as (typeof POINTS_VALUES)[number]), {
+    .refine(isStoryPoint, {
       message: "points must be one of 1,2,3,5,8,13,21,34",
     })
     .optional(),
@@ -70,10 +76,16 @@ export const updateTaskSchema = z.object({
   status: z.enum(TASK_STATUS_VALUES).optional(),
   type: z.enum(TASK_TYPE_VALUES).optional(),
   parentId: z.string().nullable().optional(),
-  dueDate: z.string().nullable().optional(),
+  dueDate: z.string().refine(isValidDateString, "invalid dueDate").nullable().optional(),
   assigneeId: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
   dependencyIds: z.array(z.string()).optional(),
+  routineCadence: z.enum(ROUTINE_CADENCE_VALUES).nullable().optional(),
+  routineNextAt: z
+    .string()
+    .refine(isValidDateString, "invalid routineNextAt")
+    .nullable()
+    .optional(),
 });
 
 export const deleteTaskSchema = z.object({
@@ -124,6 +136,8 @@ export async function handleCreateTask(args: unknown) {
     assigneeId: parsed.assigneeId,
     tags: parsed.tags,
     dependencyIds: parsed.dependencyIds,
+    routineCadence: parsed.routineCadence,
+    routineNextAt: parsed.routineNextAt,
   };
   return createTask(ctx, input);
 }
@@ -146,6 +160,8 @@ export async function handleUpdateTask(args: unknown) {
     assigneeId: rest.assigneeId,
     tags: rest.tags,
     dependencyIds: rest.dependencyIds,
+    routineCadence: rest.routineCadence,
+    routineNextAt: rest.routineNextAt,
   };
   return updateTask(ctx, taskId, input);
 }
@@ -172,7 +188,7 @@ export const taskTools = [
         type: {
           type: "array",
           items: { type: "string", enum: TASK_TYPE_VALUES },
-          description: "Filter by task type (EPIC, PBI, TASK, ROUTINE)",
+          description: "Filter by task type (EPIC, PBI, TASK)",
         },
         urgency: {
           type: "string",
@@ -243,6 +259,7 @@ export const taskTools = [
         },
         points: {
           type: "number",
+          enum: STORY_POINTS,
           description: "Story points (1,2,3,5,8,13,21,34)",
         },
         urgency: {
@@ -281,6 +298,15 @@ export const taskTools = [
           items: { type: "string" },
           description: "IDs of tasks this task depends on",
         },
+        routineCadence: {
+          type: "string",
+          enum: ROUTINE_CADENCE_VALUES,
+          description: "Optional recurrence cadence",
+        },
+        routineNextAt: {
+          type: "string",
+          description: "First recurrence time (ISO 8601)",
+        },
       },
       required: ["title", "points"],
     },
@@ -299,6 +325,7 @@ export const taskTools = [
         definitionOfDone: { type: "string", description: "New definition of done" },
         points: {
           type: "number",
+          enum: STORY_POINTS,
           description: "New story points (1,2,3,5,8,13,21,34)",
         },
         urgency: {
@@ -342,6 +369,15 @@ export const taskTools = [
           type: "array",
           items: { type: "string" },
           description: "New dependency IDs (replaces existing)",
+        },
+        routineCadence: {
+          type: ["string", "null"],
+          enum: [...ROUTINE_CADENCE_VALUES, null],
+          description: "Recurrence cadence or null to stop recurrence",
+        },
+        routineNextAt: {
+          type: ["string", "null"],
+          description: "Next recurrence time (ISO 8601)",
         },
       },
       required: ["taskId"],

@@ -20,7 +20,7 @@ export const HTTP_STATUS = {
   SERVICE_UNAVAILABLE: 503,
 } as const;
 
-export type ErrorEnvelope = {
+type ErrorEnvelope = {
   error: {
     code: string;
     message: string;
@@ -74,7 +74,7 @@ const buildEnvelope = (
   return envelope;
 };
 
-export const toErrorResult = (
+const toErrorResult = (
   error: unknown,
   fallback?: { code?: string; message?: string; status?: number; requestId?: string },
 ): ErrorResult => {

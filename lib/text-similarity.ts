@@ -1,4 +1,4 @@
-export function normalizeText(input: string) {
+function normalizeText(input: string) {
   return input
     .toLowerCase()
     .replace(/[\s\W]+/g, "")

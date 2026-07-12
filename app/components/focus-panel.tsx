@@ -64,9 +64,9 @@ export function FocusPanel() {
                 <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
                   {task.points}pt
                 </span>
-                {reasons.map((reason, i) => (
+                {reasons.map((reason) => (
                   <span
-                    key={i}
+                    key={reason}
                     className="inline-flex items-center rounded bg-[#2323eb]/10 px-1.5 py-0.5 text-[10px] text-[#2323eb]"
                   >
                     {reason}

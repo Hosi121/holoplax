@@ -78,13 +78,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
   );
 }
 
-export function ToastContainer({
-  toasts,
-  onRemove,
-}: {
-  toasts: Toast[];
-  onRemove: (id: string) => void;
-}) {
+function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) {
   if (toasts.length === 0) return null;
 
   return (

@@ -11,6 +11,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { AUTOMATION_STATE, SEVERITY } from "@/lib/types";
 import { resolveWorkspaceId } from "@/lib/workspace-context";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -127,9 +128,12 @@ export default async function ReviewPage() {
         (1000 * 60 * 60 * 24)
       : null;
 
-  const velocitySeries = velocityEntries.length
-    ? velocityEntries.map((entry) => entry.points).reverse()
-    : [];
+  const velocitySeries = velocityEntries.map((entry) => ({
+    id: entry.id,
+    points: entry.points,
+  }));
+  velocitySeries.reverse();
+  const velocityValues = velocitySeries.map((entry) => entry.points);
 
   const hasBurndown = totalSprintPoints > 0;
   const burndownSeries = (() => {
@@ -155,17 +159,18 @@ export default async function ReviewPage() {
   const backlogTasks = tasks.filter((task) => task.status === "BACKLOG");
   const backlogSnapshot = [
     {
-      label: "高スコア",
-      value: backlogTasks.filter((task) => task.points > splitThreshold).length,
+      label: "高優先度",
+      value: backlogTasks.filter((task) => task.urgency === SEVERITY.HIGH).length,
       accent: "bg-red-100 text-red-700",
     },
     {
       label: "分解待ち",
-      value: backlogTasks.filter((task) => task.points > splitThreshold).length,
+      value: backlogTasks.filter((task) => task.automationState === AUTOMATION_STATE.PENDING_SPLIT)
+        .length,
       accent: "bg-amber-100 text-amber-700",
     },
     {
-      label: "低スコア",
+      label: "小タスク",
       value: backlogTasks.filter((task) => task.points <= 3).length,
       accent: "bg-emerald-100 text-emerald-700",
     },
@@ -173,14 +178,16 @@ export default async function ReviewPage() {
 
   const recentActivity = tasks.length
     ? tasks.slice(0, 4).map((task) => {
-        if (task.status === "DONE") return `完了: ${task.title}`;
-        if (task.status === "SPRINT") return `スプリントに「${task.title}」を追加`;
-        return `バックログ追加: ${task.title}`;
+        if (task.status === "DONE") return { id: task.id, label: `完了: ${task.title}` };
+        if (task.status === "SPRINT") {
+          return { id: task.id, label: `スプリントに「${task.title}」を追加` };
+        }
+        return { id: task.id, label: `バックログ追加: ${task.title}` };
       })
     : [];
 
   const now = new Date();
-  const prevVelocity = velocitySeries.at(-2) ?? velocitySeries.at(-1) ?? 0;
+  const prevVelocity = velocityValues.at(-2) ?? velocityValues.at(-1) ?? 0;
   const reviewDate = sprint?.startedAt ? new Date(sprint.startedAt) : null;
   if (reviewDate) {
     reviewDate.setDate(reviewDate.getDate() + 7);
@@ -239,7 +246,7 @@ export default async function ReviewPage() {
     },
   ];
 
-  const velocityMax = velocitySeries.length ? Math.max(...velocitySeries) : 0;
+  const velocityMax = velocityValues.length ? Math.max(...velocityValues) : 0;
   const burndownMax = burndownSeries.length ? Math.max(...burndownSeries) : 0;
 
   return (
@@ -316,25 +323,25 @@ export default async function ReviewPage() {
           {velocitySeries.length ? (
             <>
               <div className="mt-4 grid grid-cols-7 items-end gap-2">
-                {velocitySeries.map((value, idx) => (
-                  <div key={`velocity-${idx}`} className="flex flex-col items-center gap-2">
+                {velocitySeries.map((entry) => (
+                  <div key={entry.id} className="flex flex-col items-center gap-2">
                     <div
                       className="w-full rounded-sm bg-[#2323eb]/20"
                       style={{
-                        height: `${(value / velocityMax) * 120 + 12}px`,
+                        height: `${velocityMax > 0 ? (entry.points / velocityMax) * 120 + 12 : 12}px`,
                       }}
                     />
-                    <span className="text-[10px] text-slate-500">{value}</span>
+                    <span className="text-[10px] text-slate-500">{entry.points}</span>
                   </div>
                 ))}
               </div>
               <div className="mt-4 flex items-center gap-3 text-xs text-slate-600">
                 <span className="border border-slate-200 bg-slate-50 px-2 py-1">
                   平均{" "}
-                  {Math.round(velocitySeries.reduce((a, b) => a + b, 0) / velocitySeries.length)} pt
+                  {Math.round(velocityValues.reduce((a, b) => a + b, 0) / velocityValues.length)} pt
                 </span>
                 <span className="border border-slate-200 bg-slate-50 px-2 py-1">
-                  最高 {Math.max(...velocitySeries)} pt
+                  最高 {Math.max(...velocityValues)} pt
                 </span>
               </div>
             </>
@@ -468,13 +475,13 @@ export default async function ReviewPage() {
           </div>
           {recentActivity.length ? (
             <div className="mt-4 space-y-3 text-sm text-slate-700">
-              {recentActivity.map((item, idx) => (
+              {recentActivity.map((item) => (
                 <div
-                  key={`${item}-${idx}`}
+                  key={item.id}
                   className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3"
                 >
                   <span className="mt-1 h-2 w-2 rounded-full bg-[#2323eb]" />
-                  <p>{item}</p>
+                  <p>{item.label}</p>
                 </div>
               ))}
             </div>

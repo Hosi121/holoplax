@@ -15,7 +15,7 @@ export type AiUsageContext = {
   source?: string | null;
 };
 
-export type AiUsageMetadata = {
+type AiUsageMetadata = {
   provider: string;
   model: string;
   promptTokens: number | null;
@@ -45,7 +45,7 @@ const loadPricingTableCached = async () => {
   return pricingCache;
 };
 
-export function buildAiUsageMetadata(
+function buildAiUsageMetadata(
   provider: string,
   model: string,
   usage?: OpenAiUsage | null,

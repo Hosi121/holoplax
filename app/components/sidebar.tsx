@@ -337,10 +337,12 @@ const AccountSection = memo(function AccountSection({
           </div>
           <div className="flex items-center gap-3">
             {session.user.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={session.user.image}
                 alt={session.user.name ?? session.user.email ?? "User"}
+                width={40}
+                height={40}
+                unoptimized
                 className="h-10 w-10 border border-[var(--border)] object-cover"
               />
             ) : (

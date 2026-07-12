@@ -1,4 +1,4 @@
-import { TASK_STATUS, type TaskAutomationState, type TaskStatus } from "../types";
+import type { TaskAutomationState, TaskStatus } from "../types";
 
 type DepNode = {
   dependsOnId: string;
@@ -41,6 +41,3 @@ export const mapTaskWithDependencies = (task: TaskWithDeps) => {
     routineNextAt: task.routineRule?.nextAt ?? null,
   };
 };
-
-export const hasOpenDependencies = (task: TaskWithDeps) =>
-  (task.dependencies ?? []).some((dep) => dep.dependsOn?.status !== TASK_STATUS.DONE);

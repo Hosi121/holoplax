@@ -11,7 +11,7 @@ function AuthErrorContent() {
     const error = searchParams.get("error");
     const callbackUrl = searchParams.get("callbackUrl");
 
-    if (callbackUrl && callbackUrl.startsWith("/")) {
+    if (callbackUrl?.startsWith("/") && !callbackUrl.startsWith("//")) {
       const separator = callbackUrl.includes("?") ? "&" : "?";
       router.replace(`${callbackUrl}${separator}error=${error || "Unknown"}`);
     } else {

@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       const limit = Number.isNaN(rawLimit) || rawLimit <= 0 ? 100 : Math.min(rawLimit, 500);
 
       const users = await prisma.user.findMany({
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit + 1, // fetch one extra to know if there's a next page
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         select: {

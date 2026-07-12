@@ -60,10 +60,7 @@ export async function POST(request: Request) {
       // Parse due date
       let dueDate: Date | null = null;
       if (body.dueDate) {
-        const parsed = new Date(body.dueDate);
-        if (!isNaN(parsed.getTime())) {
-          dueDate = parsed;
-        }
+        dueDate = new Date(body.dueDate);
       }
 
       // Map urgency

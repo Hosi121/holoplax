@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getContext } from "../context.js";
+import { isValidDateString, SPRINT_STATUS_VALUES } from "../domain.js";
 import {
   type CreateSprintInput,
   closeSprint,
@@ -8,8 +9,6 @@ import {
   listSprints,
 } from "../services/sprints.js";
 
-const SPRINT_STATUS_VALUES = ["ACTIVE", "CLOSED"] as const;
-
 export const listSprintsSchema = z.object({
   status: z.enum(SPRINT_STATUS_VALUES).optional(),
 });
@@ -17,7 +16,7 @@ export const listSprintsSchema = z.object({
 export const createSprintSchema = z.object({
   name: z.string().optional(),
   capacityPoints: z.number().positive().optional(),
-  plannedEndAt: z.string().optional(),
+  plannedEndAt: z.string().refine(isValidDateString, "invalid plannedEndAt").optional(),
 });
 
 export async function handleListSprints(args: unknown) {

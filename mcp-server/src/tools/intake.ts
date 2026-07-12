@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getContext } from "../context.js";
+import { TASK_TYPE_VALUES } from "../domain.js";
 import {
   type CreateMemoInput,
   createMemo,
@@ -8,7 +9,6 @@ import {
   resolveIntake,
 } from "../services/intake.js";
 
-const TASK_TYPE_VALUES = ["EPIC", "PBI", "TASK", "ROUTINE"] as const;
 const ACTION_VALUES = ["dismiss", "merge", "create"] as const;
 
 export const createMemoSchema = z.object({

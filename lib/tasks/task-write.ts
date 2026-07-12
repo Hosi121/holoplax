@@ -23,7 +23,7 @@ export const toNullableJsonInput = (
 };
 
 /** Reset every checklist item to not-done with a fresh id, dropping blanks. */
-export const normalizeChecklistForReset = (value: unknown) => {
+const normalizeChecklistForReset = (value: unknown) => {
   if (!Array.isArray(value)) return null;
   return value
     .map((item) => {

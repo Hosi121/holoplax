@@ -1,6 +1,7 @@
 "use client";
 
 import { Chrome, Github } from "lucide-react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
@@ -265,8 +266,14 @@ function SettingsContent() {
           <div className="mt-4 flex items-center gap-4">
             <div className="h-12 w-12 border border-slate-200 bg-slate-100">
               {account.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={account.image} alt="avatar" className="h-full w-full object-cover" />
+                <Image
+                  src={account.image}
+                  alt="avatar"
+                  width={48}
+                  height={48}
+                  unoptimized
+                  className="h-full w-full object-cover"
+                />
               ) : null}
             </div>
             <label className="text-xs text-slate-500">

@@ -4,6 +4,7 @@ import { Inbox } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { STORY_POINTS } from "../../lib/points";
 import { SEVERITY, SEVERITY_LABELS, type Severity, TASK_STATUS } from "../../lib/types";
 import { EmptyState } from "../components/empty-state";
 import { HelpTooltip } from "../components/help-tooltip";
@@ -13,8 +14,6 @@ import { useWorkspaceId } from "../components/use-workspace-id";
 import { useSprintManagement } from "./hooks/use-sprint-management";
 import { useSprintOptimizer } from "./hooks/use-sprint-optimizer";
 import { useSprintTasks } from "./hooks/use-sprint-tasks";
-
-const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 
 type MemberRow = {
   id: string;
@@ -274,7 +273,7 @@ export default function SprintPage() {
                 onChange={(e) => setNewItem((p) => ({ ...p, points: Number(e.target.value) || 1 }))}
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
               >
-                {storyPoints.map((pt) => (
+                {STORY_POINTS.map((pt) => (
                   <option key={pt} value={pt}>
                     {pt} pt
                   </option>
@@ -548,7 +547,7 @@ export default function SprintPage() {
                     }
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   >
-                    {storyPoints.map((pt) => (
+                    {STORY_POINTS.map((pt) => (
                       <option key={pt} value={pt}>
                         {pt} pt
                       </option>

@@ -25,7 +25,7 @@ const taskTypeLabels: Record<TaskType, string> = {
 // Types
 // ============================================================
 
-export type SplitSuggestion = {
+type SplitSuggestion = {
   title: string;
   points: number;
   urgency: string;
@@ -33,24 +33,24 @@ export type SplitSuggestion = {
   detail: string;
 };
 
-export type ScoreResult = {
+type ScoreResult = {
   points: number;
   urgency: string;
   risk: string;
   reason?: string;
 };
 
-export type TipResult = {
+type TipResult = {
   text: string;
 };
 
-export type ProactiveSuggestion = {
+type ProactiveSuggestion = {
   type: "TIP" | "SCORE" | "SPLIT";
   reason: string;
   priority: number;
 };
 
-export type MemberInfo = {
+type MemberInfo = {
   id: string;
   name: string | null;
 };
@@ -76,7 +76,7 @@ export type AiSuggestionConfig = {
   onOpenPrepModal?: () => void;
 };
 
-export type TaskCardVariant = "backlog" | "sprint" | "kanban" | "compact";
+type TaskCardVariant = "backlog" | "sprint" | "kanban" | "compact";
 
 export type TaskCardProps = {
   item: TaskDTO;
@@ -146,7 +146,7 @@ const ProactiveLabel = ({ type }: { type: string }) => {
   }
 };
 
-export function Checklist({
+function Checklist({
   items,
   onToggle,
 }: {

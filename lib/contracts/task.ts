@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { isStoryPoint } from "../points";
 import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../types";
+import { OptionalNullableDateSchema } from "./common";
 
 const taskStatusValues = Object.values(TASK_STATUS) as [string, ...string[]];
 const taskTypeValues = Object.values(TASK_TYPE) as [string, ...string[]];
@@ -22,12 +24,9 @@ const nullableId = z
   }, z.string().trim().min(1).nullable())
   .optional();
 
-const pointsAllowed = [1, 2, 3, 5, 8, 13, 21, 34] as const;
-export const TaskPointsSchema = z.coerce
-  .number()
-  .refine((value) => pointsAllowed.includes(value as (typeof pointsAllowed)[number]), {
-    message: "points must be one of 1,2,3,5,8,13,21,34",
-  });
+export const TaskPointsSchema = z.coerce.number().refine(isStoryPoint, {
+  message: "points must be one of 1,2,3,5,8,13,21,34",
+});
 
 export const TaskChecklistItemSchema = z
   .object({
@@ -53,12 +52,12 @@ export const TaskCreateSchema = z
     status: z.preprocess(toEnumInput, TaskStatusSchema.optional()),
     type: z.preprocess(toEnumInput, TaskTypeSchema.optional()),
     parentId: nullableId,
-    dueDate: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
+    dueDate: OptionalNullableDateSchema,
     assigneeId: nullableId,
     tags: z.array(z.string().max(100)).max(50).optional(),
     dependencyIds: z.array(z.string()).max(100).optional(),
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
-    routineNextAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
+    routineNextAt: OptionalNullableDateSchema,
   })
   .strip();
 
@@ -78,11 +77,11 @@ export const TaskUpdateSchema = z
     // users to set SPLIT_PARENT / SPLIT_CHILD / DELEGATED etc. directly would
     // break automation invariants.
     parentId: nullableId,
-    dueDate: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
+    dueDate: OptionalNullableDateSchema,
     assigneeId: nullableId,
     tags: z.array(z.string().max(100)).max(50).optional(),
     dependencyIds: z.array(z.string()).max(100).optional(),
     routineCadence: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
-    routineNextAt: z.preprocess(toStringOrEmpty, z.string().trim()).optional().nullable(),
+    routineNextAt: OptionalNullableDateSchema,
   })
   .strip();

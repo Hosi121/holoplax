@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { apiFetch } from "../api-client";
 
-export interface Workspace {
+interface Workspace {
   id: string;
   name: string;
   role: string;

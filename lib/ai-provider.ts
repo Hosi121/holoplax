@@ -3,7 +3,7 @@ import { safeDecrypt } from "./encryption";
 import { logger } from "./logger";
 import prisma from "./prisma";
 
-export type AiProviderConfig = {
+type AiProviderConfig = {
   model: string;
   apiKey: string;
   baseUrl?: string | null;
@@ -110,7 +110,7 @@ const readEnvConfig = (): AiProviderConfig | null => {
   };
 };
 
-export async function resolveAiProvider(): Promise<AiProviderConfig | null> {
+async function resolveAiProvider(): Promise<AiProviderConfig | null> {
   const setting = await prisma.aiProviderSetting.findUnique({
     where: { id: 1 },
     select: { model: true, apiKey: true, baseUrl: true, enabled: true },

@@ -24,5 +24,3 @@ export const McpKeyCreateSchema = z
       .optional(),
   })
   .strip();
-
-export type McpKeyCreateInput = z.infer<typeof McpKeyCreateSchema>;

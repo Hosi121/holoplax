@@ -1,4 +1,4 @@
-import { normalizePriorityLevel, normalizeStoryPoint } from "../../../../lib/ai-normalization";
+import { normalizeSeverity, normalizeStoryPoint } from "../../../../lib/ai-normalization";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
@@ -71,8 +71,8 @@ export async function POST(request: Request) {
           return errors.badRequest("payload.points/urgency/risk are required");
         }
         const normalizedPoints = normalizeStoryPoint(points);
-        const normalizedUrgency = normalizePriorityLevel(urgency);
-        const normalizedRisk = normalizePriorityLevel(risk);
+        const normalizedUrgency = normalizeSeverity(urgency);
+        const normalizedRisk = normalizeSeverity(risk);
         await prisma.task.update({
           where: { id: taskId },
           data: {

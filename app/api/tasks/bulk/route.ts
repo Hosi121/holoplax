@@ -17,7 +17,7 @@ const BulkActionSchema = z.object({
   taskIds: z.array(z.string()).min(1).max(100),
   status: z.enum(["BACKLOG", "SPRINT", "DONE"]).optional(),
   // TaskPointsSchema enforces the Fibonacci allowlist at parse time,
-  // replacing the runtime badPoints() check.
+  // replacing a redundant runtime story-point check.
   points: TaskPointsSchema.optional(),
 });
 

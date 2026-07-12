@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { STORY_POINTS } from "../../lib/points";
 
 type IntentOption = {
   id: string;
@@ -24,6 +25,7 @@ const prepExamples = {
   EMAIL:
     "件名: 進捗共有\n\n関係者各位\n\n現在の状況を共有します。\n- 進捗\n- 次のアクション\n- 期限\n\nよろしくお願いします。",
 };
+const focusTaskSlots = ["focus-1", "focus-2", "focus-3"] as const;
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -41,8 +43,6 @@ export default function OnboardingPage() {
   const [prepType, setPrepType] = useState<"CHECKLIST" | "IMPLEMENTATION" | "EMAIL">("CHECKLIST");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
-
   const canNext = useMemo(() => {
     if (step === 0) return workspaceName.trim().length > 1 && Boolean(intent);
     if (step === 1) return goalTitle.trim().length > 1 && routineTitle.trim().length > 1;
@@ -177,7 +177,7 @@ export default function OnboardingPage() {
                       onChange={(event) => setPoints(Number(event.target.value) || 1)}
                       className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                     >
-                      {storyPoints.map((pt) => (
+                      {STORY_POINTS.map((pt) => (
                         <option key={pt} value={pt}>
                           {pt} pt
                         </option>
@@ -226,10 +226,10 @@ export default function OnboardingPage() {
                   直近で取り組みたいタスクを3件まで入力します。
                 </p>
                 <div className="grid gap-2">
-                  {focusTasks.map((task, index) => (
+                  {focusTaskSlots.map((slot, index) => (
                     <input
-                      key={index}
-                      value={task}
+                      key={slot}
+                      value={focusTasks[index] ?? ""}
                       onChange={(event) =>
                         setFocusTasks((prev) =>
                           prev.map((item, idx) => (idx === index ? event.target.value : item)),

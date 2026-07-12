@@ -25,12 +25,12 @@ export type UsageBucket = {
 const toNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-export const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
 
-export const startOfUtcDay = (date: Date) =>
+const startOfUtcDay = (date: Date) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
 
-export const endOfUtcDay = (date: Date) =>
+const endOfUtcDay = (date: Date) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
 
 const parseDate = (value: string | null) => {
@@ -157,7 +157,7 @@ export const normalizeUsageRow = (row: UsageRow, pricingTable: PricingTable): Us
   };
 };
 
-export const createBucket = (): UsageBucket => ({
+const createBucket = (): UsageBucket => ({
   totalCostUsd: 0,
   totalTokens: 0,
   logCount: 0,
@@ -165,7 +165,7 @@ export const createBucket = (): UsageBucket => ({
   missingPricingCount: 0,
 });
 
-export const bumpBucket = (bucket: UsageBucket, usage: UsageSummary) => {
+const bumpBucket = (bucket: UsageBucket, usage: UsageSummary) => {
   bucket.logCount += 1;
   if (usage.totalTokens === null) {
     bucket.unknownUsageCount += 1;
@@ -193,7 +193,7 @@ const getMonthStart = (date: Date) =>
 
 export type TrendRow = UsageRow & { createdAt: Date };
 
-export const buildTrendBucketsFromUsage = (
+const buildTrendBucketsFromUsage = (
   logs: TrendRow[],
   pricingTable: PricingTable,
   interval: "week" | "month",

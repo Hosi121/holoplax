@@ -4,7 +4,6 @@
  */
 export {
   Severity,
-  SprintStatus,
   TaskAutomationState,
   TaskStatus,
   TaskType,
@@ -17,6 +16,7 @@ import type {
   TaskStatus as PrismaTaskStatus,
   TaskType as PrismaTaskType,
 } from "@prisma/client";
+import type { StoryPoint } from "./points";
 
 /**
  * Runtime constants for enum values
@@ -49,11 +49,6 @@ export const SEVERITY = {
   HIGH: "HIGH",
 } as const satisfies Record<string, PrismaSeverity>;
 
-export const SPRINT_STATUS = {
-  ACTIVE: "ACTIVE",
-  CLOSED: "CLOSED",
-} as const satisfies Record<string, PrismaSprintStatus>;
-
 /**
  * Labels for display (Japanese)
  */
@@ -82,7 +77,7 @@ export type TaskDTO = {
   description?: string;
   definitionOfDone?: string;
   checklist?: { id: string; text: string; done: boolean }[] | null;
-  points: 1 | 2 | 3 | 5 | 8 | 13 | 21 | 34;
+  points: StoryPoint;
   urgency: PrismaSeverity;
   risk: PrismaSeverity;
   status: PrismaTaskStatus;
@@ -115,16 +110,6 @@ export type AutomationSettingDTO = {
   stage?: number;
   effectiveLow?: number;
   effectiveHigh?: number;
-};
-
-export type AiSuggestionDTO = {
-  id: string;
-  type: "TIP" | "SCORE" | "SPLIT";
-  taskId?: string | null;
-  inputTitle: string;
-  inputDescription: string;
-  output: string;
-  createdAt?: string | Date;
 };
 
 export type SprintDTO = {

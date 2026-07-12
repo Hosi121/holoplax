@@ -87,6 +87,3 @@ export function createCsrfCookieHeader(token: string, secure: boolean): string {
 
   return parts.join("; ");
 }
-
-export const CSRF_COOKIE_NAME_EXPORT = CSRF_COOKIE_NAME;
-export const CSRF_HEADER_NAME_EXPORT = CSRF_HEADER_NAME;

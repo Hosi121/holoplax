@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isStoryPoint } from "../points";
+import { OptionalNullableDateSchema } from "./common";
 
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
 
@@ -14,10 +15,7 @@ export const DiscordIntakeSchema = z
     author: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     channel: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     // Extended fields for rich extraction
-    dueDate: z.preprocess(
-      (v) => (v == null || v === "" ? null : String(v)),
-      z.string().nullable().optional(),
-    ),
+    dueDate: OptionalNullableDateSchema,
     urgency: z.enum(URGENCY_VALUES).optional(),
     points: z.preprocess(
       (v) => (v == null ? null : Number(v)),
@@ -35,10 +33,7 @@ export const DiscordCreateTaskSchema = z
   .object({
     title: z.preprocess(toStringOrEmpty, z.string().trim().min(1)),
     description: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
-    dueDate: z.preprocess(
-      (v) => (v == null || v === "" ? null : String(v)),
-      z.string().nullable().optional(),
-    ),
+    dueDate: OptionalNullableDateSchema,
     urgency: z.enum(URGENCY_VALUES).optional().default("MEDIUM"),
     points: z.preprocess(
       (v) => (v == null ? 3 : Number(v)),

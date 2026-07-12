@@ -16,7 +16,7 @@ const URGENCY_WEIGHT: Record<Severity, number> = {
   [SEVERITY.LOW]: 1,
 };
 
-export type FocusTask = {
+type FocusTask = {
   task: TaskDTO;
   score: number;
   reasons: string[];
@@ -54,7 +54,7 @@ function daysUntilDue(task: TaskDTO): number {
  * - 緊急度が高い → スコア高
  * - ポイントが小さい → スコア高（着手しやすい）
  */
-export function calculateFocusScore(task: TaskDTO): { score: number; reasons: string[] } {
+function calculateFocusScore(task: TaskDTO): { score: number; reasons: string[] } {
   const reasons: string[] = [];
   let score = 0;
 

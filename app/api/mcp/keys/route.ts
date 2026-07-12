@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       // Generate key
       const apiKey = generateApiKey();
       const keyHash = hashApiKey(apiKey);
-      const keyPrefix = apiKey.slice(0, 12) + "...";
+      const keyPrefix = `${apiKey.slice(0, 12)}...`;
 
       // Calculate expiration
       let expiresAt: Date | null = null;

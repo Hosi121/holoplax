@@ -4,6 +4,7 @@ import { CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { STORY_POINTS } from "../../lib/points";
 import {
   AUTOMATION_STATE,
   SEVERITY,
@@ -29,7 +30,6 @@ import { useSuggestionContext } from "./hooks/use-suggestion-context";
 import { useTaskPrep } from "./hooks/use-task-prep";
 import { useTaskSearch } from "./hooks/use-task-search";
 
-const storyPoints = [1, 2, 3, 5, 8, 13, 21, 34];
 const taskTypeLabels: Record<TaskType, string> = {
   [TASK_TYPE.EPIC]: "目標",
   [TASK_TYPE.PBI]: "PBI",
@@ -890,7 +890,7 @@ export default function BacklogPage() {
                     <option value="" disabled>
                       ポイント変更
                     </option>
-                    {storyPoints.map((pt) => (
+                    {STORY_POINTS.map((pt) => (
                       <option key={pt} value={pt}>
                         {pt} pt
                       </option>
@@ -1249,7 +1249,7 @@ export default function BacklogPage() {
                   <div className="mt-3 grid gap-3">
                     {aiQuestions.length ? (
                       aiQuestions.map((question, index) => (
-                        <div key={`${question}-${index}`} className="grid gap-2">
+                        <div key={question} className="grid gap-2">
                           <p className="text-xs text-slate-600">{question}</p>
                           <textarea
                             value={aiAnswers[index] ?? ""}
@@ -1311,7 +1311,7 @@ export default function BacklogPage() {
                       <HelpTooltip text="ストーリーポイントはタスクの相対的な大きさを表します。1が最小、13以上は分解を検討してください。" />
                     </span>
                     <div className="flex flex-wrap gap-2">
-                      {storyPoints.map((pt) => (
+                      {STORY_POINTS.map((pt) => (
                         <button
                           key={pt}
                           type="button"
@@ -1597,7 +1597,7 @@ export default function BacklogPage() {
                   }
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 >
-                  {storyPoints.map((pt) => (
+                  {STORY_POINTS.map((pt) => (
                     <option key={pt} value={pt}>
                       {pt} pt
                     </option>

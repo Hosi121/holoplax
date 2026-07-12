@@ -50,19 +50,3 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
     headers,
   });
 }
-
-/**
- * Helper for JSON API requests
- */
-export async function apiJson<T>(
-  url: string,
-  options: Omit<RequestInit, "body"> & { body?: unknown } = {},
-): Promise<{ data: T; response: Response }> {
-  const response = await apiFetch(url, {
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-
-  const data = await response.json();
-  return { data, response };
-}
