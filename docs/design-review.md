@@ -1,6 +1,6 @@
 # 設計レビュー台帳
 
-最終更新: 2026-07-12
+最終更新: 2026-07-13
 
 この文書は現行実装の負債だけを扱う。過去に指摘された nullable Task ownership、
 `TaskType.ROUTINE`、汎用 `source`、旧 `MemoryType` など、既に解消済みの内容は台帳から除外した。
@@ -18,23 +18,19 @@
 - 未使用の FocusQueue 永続モデル、未参照 UI/フック/request context を削除。
 - 日付入力を Prisma 到達前に検証し、AI reaction の負の latency を拒否。
 - 純粋なドメインテストから jsdom/React の不要なテスト環境を削除。
+- Web/MCP の Task query/application service と入力 contract を単一実装へ統合。
+- Web/MCP の Sprint service を統合し、開始・終了・Velocity 投影・Task 戻しを原子的に実行。
+- workspace 内の ACTIVE Sprint を DB の partial unique index で一件に制約。
+- Velocity の手入力経路を廃止し、Sprint と一対一の read model に一本化。
+- Web/MCP の Intake service を統合し、二重 resolve と merge の lost update を防止。
+- Intake から作る Task に初期 status event と通常の automation を適用。
+- Web/MCP の AI service と入力 contract を統合し、MCP も provider・fallback・監査・利用量記録を利用。
+- MCP を root の application service を含む単一 bundle として構築し、Prisma singleton も共有。
 
 ## 残存負債
 
-### P1: Web と MCP の Task application service が二重化
-
-両者は同じ Task 集約を操作するが、別サービスとして実装されている。今回、主要な不変条件と
-RoutineRule の振る舞いは揃えたものの、将来の変更で再度 drift する可能性がある。
-
-次の方針: transport 非依存の Task application service を共有パッケージへ移し、Web route と
-MCP tool は認証済みコンテキストを渡す adapter に限定する。
-
-### P1: VelocityEntry が手入力と Sprint 終了時投影の二経路を持つ
-
-`POST /api/velocity` は手入力を許し、Sprint 終了処理も VelocityEntry を自動生成する。
-同じ指標に二つの生成規則があり、重複・意味の不一致が起こり得る。
-
-次の方針: product 判断後、Sprint からの read model に一本化するか、手入力値を別モデル・別名称へ分離する。
+新規 VelocityEntry は `sprintId` を持つ。旧手入力行は移行時に Sprint を安全に特定できないため
+nullable の legacy row として保持するが、新たに作る経路は Sprint 終了だけに限定した。
 
 ### P2: nullable ownership の残存
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
+import { TaskCreateSchema, TaskUpdateSchema } from "../../../lib/contracts/task.js";
 import { getContext } from "../context.js";
 import {
-  isStoryPoint,
   isValidDateString,
   ROUTINE_CADENCE_VALUES,
   SEVERITY_VALUES,
@@ -32,7 +32,7 @@ export const listTasksSchema = z.object({
   minPoints: z.number().optional(),
   maxPoints: z.number().optional(),
   search: z.string().optional(),
-  limit: z.number().min(1).max(500).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
   cursor: z.string().optional(),
 });
 
@@ -40,52 +40,10 @@ export const getTaskSchema = z.object({
   taskId: z.string().min(1, "taskId is required"),
 });
 
-export const createTaskSchema = z.object({
-  title: z.string().min(1, "title is required"),
-  description: z.string().optional(),
-  definitionOfDone: z.string().optional(),
-  points: z.number().refine(isStoryPoint, {
-    message: "points must be one of 1,2,3,5,8,13,21,34",
-  }),
-  urgency: z.enum(SEVERITY_VALUES).optional(),
-  risk: z.enum(SEVERITY_VALUES).optional(),
-  status: z.enum(TASK_STATUS_VALUES).optional(),
-  type: z.enum(TASK_TYPE_VALUES).optional(),
-  parentId: z.string().optional(),
-  dueDate: z.string().refine(isValidDateString, "invalid dueDate").optional(),
-  assigneeId: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  dependencyIds: z.array(z.string()).optional(),
-  routineCadence: z.enum(ROUTINE_CADENCE_VALUES).optional(),
-  routineNextAt: z.string().refine(isValidDateString, "invalid routineNextAt").optional(),
-});
+export const createTaskSchema = TaskCreateSchema;
 
-export const updateTaskSchema = z.object({
+export const updateTaskSchema = TaskUpdateSchema.extend({
   taskId: z.string().min(1, "taskId is required"),
-  title: z.string().min(1).optional(),
-  description: z.string().optional(),
-  definitionOfDone: z.string().optional(),
-  points: z
-    .number()
-    .refine(isStoryPoint, {
-      message: "points must be one of 1,2,3,5,8,13,21,34",
-    })
-    .optional(),
-  urgency: z.enum(SEVERITY_VALUES).optional(),
-  risk: z.enum(SEVERITY_VALUES).optional(),
-  status: z.enum(TASK_STATUS_VALUES).optional(),
-  type: z.enum(TASK_TYPE_VALUES).optional(),
-  parentId: z.string().nullable().optional(),
-  dueDate: z.string().refine(isValidDateString, "invalid dueDate").nullable().optional(),
-  assigneeId: z.string().nullable().optional(),
-  tags: z.array(z.string()).optional(),
-  dependencyIds: z.array(z.string()).optional(),
-  routineCadence: z.enum(ROUTINE_CADENCE_VALUES).nullable().optional(),
-  routineNextAt: z
-    .string()
-    .refine(isValidDateString, "invalid routineNextAt")
-    .nullable()
-    .optional(),
 });
 
 export const deleteTaskSchema = z.object({

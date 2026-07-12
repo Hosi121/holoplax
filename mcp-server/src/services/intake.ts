@@ -1,114 +1,20 @@
+import type { TaskType } from "@prisma/client";
+import {
+  createIntakeMemo,
+  listIntakeItems,
+  resolveIntakeItem,
+} from "../../../lib/intake/intake-service.js";
 import type { ExecutionContext } from "../context.js";
-import { SEVERITY, TASK_STATUS, TASK_TYPE, type TaskStatus, type TaskType } from "../domain.js";
-import prisma from "../prisma.js";
 
-function deriveIntakeTitle(text: string): string {
-  const firstLine = text.split("\n")[0] ?? text;
-  return firstLine.slice(0, 80).trim() || "Untitled";
-}
-
-function diceCoefficient(a: string, b: string): number {
-  const bigrams = (str: string): Set<string> => {
-    const result = new Set<string>();
-    const lower = str.toLowerCase();
-    for (let i = 0; i < lower.length - 1; i++) {
-      result.add(lower.slice(i, i + 2));
-    }
-    return result;
-  };
-
-  const set1 = bigrams(a);
-  const set2 = bigrams(b);
-  if (set1.size === 0 || set2.size === 0) return 0;
-
-  let intersection = 0;
-  for (const bigram of set1) {
-    if (set2.has(bigram)) intersection++;
-  }
-
-  return (2 * intersection) / (set1.size + set2.size);
-}
-
-interface TaskSummary {
-  id: string;
-  title: string;
-  status: TaskStatus;
-}
-
-async function findDuplicateTasks(
-  workspaceId: string,
-  title: string,
-  limit = 5,
-): Promise<{ id: string; title: string; status: string; score: number }[]> {
-  const tasks = (await prisma.task.findMany({
-    where: { workspaceId, status: { not: TASK_STATUS.DONE } },
-    select: { id: true, title: true, status: true },
-    take: 200,
-  })) as TaskSummary[];
-
-  const scored = tasks
-    .map((task) => ({
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      score: diceCoefficient(title, task.title),
-    }))
-    .filter((item) => item.score >= 0.35)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-
-  return scored;
-}
-
-export async function listIntake(ctx: ExecutionContext) {
-  const { userId, workspaceId } = ctx;
-
-  const [globalItems, workspaceItems] = await Promise.all([
-    prisma.intakeItem.findMany({
-      where: { userId, workspaceId: null, status: "PENDING" },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.intakeItem.findMany({
-      where: { workspaceId, status: "PENDING" },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
-
-  return {
-    currentWorkspaceId: workspaceId,
-    globalItems,
-    workspaceItems,
-  };
-}
+export const listIntake = (ctx: ExecutionContext) =>
+  listIntakeItems({ userId: ctx.userId, workspaceId: ctx.workspaceId });
 
 export interface CreateMemoInput {
   text: string;
 }
 
-export async function createMemo(ctx: ExecutionContext, input: CreateMemoInput) {
-  const { userId, workspaceId } = ctx;
-
-  if (!input.text?.trim()) {
-    throw new Error("text is required");
-  }
-
-  const title = deriveIntakeTitle(input.text);
-
-  const item = await prisma.intakeItem.create({
-    data: {
-      origin: "MEMO",
-      status: "PENDING",
-      title,
-      body: input.text,
-      user: { connect: { id: userId } },
-      workspace: { connect: { id: workspaceId } },
-    },
-  });
-
-  const duplicates = await findDuplicateTasks(workspaceId, title);
-
-  return { item, duplicates };
-}
+export const createMemo = (ctx: ExecutionContext, input: CreateMemoInput) =>
+  createIntakeMemo({ userId: ctx.userId, workspaceId: ctx.workspaceId, text: input.text });
 
 export interface ResolveIntakeInput {
   intakeId: string;
@@ -117,116 +23,12 @@ export interface ResolveIntakeInput {
   targetTaskId?: string;
 }
 
-export async function resolveIntake(ctx: ExecutionContext, input: ResolveIntakeInput) {
-  const { userId, workspaceId } = ctx;
-
-  const intakeItem = await prisma.intakeItem.findFirst({
-    where: { id: input.intakeId },
+export const resolveIntake = (ctx: ExecutionContext, input: ResolveIntakeInput) =>
+  resolveIntakeItem({
+    userId: ctx.userId,
+    input: {
+      ...input,
+      workspaceId: ctx.workspaceId,
+      taskType: input.taskType as TaskType | undefined,
+    },
   });
-
-  if (!intakeItem) {
-    throw new Error("invalid intakeId");
-  }
-
-  // Authorization: allow only when the caller owns the item OR the item lives
-  // in the caller's authenticated workspace. Deny if EITHER condition fails
-  // (the previous `&&` only denied when BOTH failed, which let foreign items
-  // through whenever one side coincidentally matched).
-  const isOwner = intakeItem.userId === userId;
-  const isSameWorkspace = Boolean(intakeItem.workspaceId) && intakeItem.workspaceId === workspaceId;
-  if (!isOwner && !isSameWorkspace) {
-    throw new Error("not allowed");
-  }
-
-  if (input.action === "dismiss") {
-    await prisma.intakeItem.update({
-      where: { id: input.intakeId },
-      data: { status: "DISMISSED" },
-    });
-    return { status: "DISMISSED" };
-  }
-
-  if (input.action === "merge") {
-    if (!input.targetTaskId) {
-      throw new Error("targetTaskId is required for merge action");
-    }
-
-    const targetTask = await prisma.task.findFirst({
-      where: { id: input.targetTaskId, workspaceId },
-    });
-
-    if (!targetTask) {
-      throw new Error("invalid targetTaskId");
-    }
-
-    const appendix = `\n\n---\nInbox取り込み:\n${intakeItem.body}`;
-    await prisma.task.update({
-      where: { id: input.targetTaskId },
-      data: {
-        description: `${targetTask.description ?? ""}${appendix}`,
-      },
-    });
-
-    await prisma.intakeItem.update({
-      where: { id: input.intakeId },
-      data: {
-        status: "CONVERTED",
-        workspaceId,
-        taskId: input.targetTaskId,
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        actorId: userId,
-        action: "INTAKE_MERGE",
-        targetWorkspaceId: workspaceId,
-        metadata: { intakeId: input.intakeId, taskId: input.targetTaskId, source: "mcp" },
-      },
-    });
-
-    return { taskId: input.targetTaskId };
-  }
-
-  if (input.action === "create") {
-    const typeValue: TaskType = Object.values(TASK_TYPE).includes(input.taskType as TaskType)
-      ? (input.taskType as TaskType)
-      : TASK_TYPE.PBI;
-
-    const task = await prisma.task.create({
-      data: {
-        title: intakeItem.title,
-        description: intakeItem.body,
-        points: 3,
-        urgency: SEVERITY.MEDIUM,
-        risk: SEVERITY.MEDIUM,
-        status: TASK_STATUS.BACKLOG,
-        type: typeValue,
-        user: { connect: { id: userId } },
-        workspace: { connect: { id: workspaceId } },
-      },
-    });
-
-    await prisma.intakeItem.update({
-      where: { id: input.intakeId },
-      data: {
-        status: "CONVERTED",
-        workspaceId,
-        taskId: task.id,
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        actorId: userId,
-        action: "INTAKE_CREATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { intakeId: input.intakeId, taskId: task.id, source: "mcp" },
-      },
-    });
-
-    return { taskId: task.id };
-  }
-
-  throw new Error("invalid action");
-}

@@ -1,136 +1,35 @@
-import { requestAiChat } from "../../../../lib/ai-provider";
+import { generateAiSuggestion, getLatestAiSuggestion } from "../../../../lib/ai/ai-service";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
-import { logAudit } from "../../../../lib/audit";
 import { AiSuggestSchema } from "../../../../lib/contracts/ai";
-import { createDomainErrors } from "../../../../lib/http/errors";
+import { AppError, HTTP_STATUS } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import prisma from "../../../../lib/prisma";
 
-const canned = [
-  "小さく分けて今日30分以内に終わる粒度にしてください。",
-  "外部依存を先に洗い出し、リスクを下げるタスクを先頭に置きましょう。",
-  "完了条件を1文で定義し、レビュー手順を添えましょう。",
-];
-const errors = createDomainErrors("AI");
+const options = (method: string, message: string) => ({
+  logLabel: `${method} /api/ai/suggest`,
+  errorFallback: { code: "AI_INTERNAL", message, status: 500 },
+});
 
 export async function GET(request: Request) {
-  return withApiHandler(
-    {
-      logLabel: "GET /api/ai/suggest",
-      errorFallback: {
-        code: "AI_INTERNAL",
-        message: "failed to load suggestion",
-        status: 500,
-      },
-    },
-    async () => {
-      const { workspaceId } = await requireWorkspaceAuth();
-      if (!workspaceId) {
-        return ok({ suggestion: null });
-      }
-      const { searchParams } = new URL(request.url);
-      const taskId = searchParams.get("taskId");
-      if (!taskId) {
-        return errors.badRequest("taskId is required");
-      }
-      const latest = await prisma.aiSuggestion.findFirst({
-        where: { taskId, workspaceId, type: "TIP" },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, output: true },
-      });
-      return ok({ suggestion: latest?.output ?? null, suggestionId: latest?.id ?? null });
-    },
-  );
+  return withApiHandler(options("GET", "failed to load suggestion"), async () => {
+    const { workspaceId } = await requireWorkspaceAuth();
+    if (!workspaceId) return ok({ suggestion: null, suggestionId: null });
+    const taskId = new URL(request.url).searchParams.get("taskId");
+    if (!taskId) {
+      throw new AppError("AI_BAD_REQUEST", "taskId is required", HTTP_STATUS.BAD_REQUEST);
+    }
+    return ok(await getLatestAiSuggestion(workspaceId, taskId));
+  });
 }
 
 export async function POST(request: Request) {
-  return withApiHandler(
-    {
-      logLabel: "POST /api/ai/suggest",
-      errorFallback: {
-        code: "AI_INTERNAL",
-        message: "failed to generate suggestion",
-        status: 500,
-      },
-    },
-    async () => {
-      const { userId, workspaceId } = await requireWorkspaceAuth({
-        domain: "AI",
-        requireWorkspace: true,
-      });
-      const body = await parseBody(request, AiSuggestSchema, { code: "AI_VALIDATION" });
-      const title = body.title ?? "タスク";
-      const description = body.description ?? "";
-      const taskId = body.taskId ?? null;
-
-      if (taskId) {
-        const task = await prisma.task.findFirst({
-          where: { id: taskId, workspaceId },
-          select: { id: true },
-        });
-        if (!task) {
-          return errors.badRequest("invalid taskId");
-        }
-      }
-
-      try {
-        const result = await requestAiChat({
-          system: "あなたはアジャイルなタスク分解のアシスタントです。",
-          user: `タスクを短く分解し、緊急度や依存を意識した提案を1文でください: ${title}`,
-          maxTokens: 80,
-          context: {
-            action: "AI_SUGGEST",
-            userId,
-            workspaceId,
-            taskId,
-            source: "ai-suggest",
-          },
-        });
-        if (result?.content) {
-          const saved = await prisma.aiSuggestion.create({
-            data: {
-              type: "TIP",
-              taskId,
-              inputTitle: title,
-              inputDescription: description,
-              output: result.content,
-              userId,
-              workspaceId,
-            },
-          });
-          await logAudit({
-            actorId: userId,
-            action: "AI_TIP_GENERATE",
-            targetWorkspaceId: workspaceId,
-            metadata: { suggestionId: saved.id, taskId, source: "ai" },
-          });
-          return ok({ suggestion: result.content, suggestionId: saved.id });
-        }
-      } catch {
-        // fall back to canned
-      }
-
-      const pick = canned[Math.floor(Math.random() * canned.length)];
-      const saved = await prisma.aiSuggestion.create({
-        data: {
-          type: "TIP",
-          taskId,
-          inputTitle: title,
-          inputDescription: description,
-          output: pick,
-          userId,
-          workspaceId,
-        },
-      });
-      await logAudit({
-        actorId: userId,
-        action: "AI_TIP_GENERATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { suggestionId: saved.id, taskId, source: "canned" },
-      });
-      return ok({ suggestion: `${title} のAI提案: ${pick}`, suggestionId: saved.id });
-    },
-  );
+  return withApiHandler(options("POST", "failed to generate suggestion"), async () => {
+    const { userId, workspaceId } = await requireWorkspaceAuth({
+      domain: "AI",
+      requireWorkspace: true,
+    });
+    const input = await parseBody(request, AiSuggestSchema, { code: "AI_VALIDATION" });
+    return ok(await generateAiSuggestion({ userId, workspaceId, input }));
+  });
 }

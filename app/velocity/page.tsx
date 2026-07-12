@@ -21,7 +21,6 @@ export default function VelocityPage() {
     totalCount: number;
     completionRate: number;
   } | null>(null);
-  const [form, setForm] = useState({ name: "Sprint-1", points: 22, range: "20-26" });
 
   const fetchVelocity = useCallback(async () => {
     if (!ready) return;
@@ -34,24 +33,12 @@ export default function VelocityPage() {
     setHistory(data.velocity ?? []);
     setSummary(data.summary ?? null);
     setPbiSummary(data.pbi ?? null);
-    const nextNum = (data.velocity?.length ?? 0) + 1;
-    setForm((p) => ({ ...p, name: `Sprint-${nextNum}` }));
   }, [ready, workspaceId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchVelocity();
   }, [fetchVelocity]);
-
-  const addEntry = async () => {
-    if (!form.name.trim()) return;
-    await apiFetch("/api/velocity", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, points: Number(form.points) }),
-    });
-    void fetchVelocity();
-  };
 
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
@@ -60,7 +47,9 @@ export default function VelocityPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Velocity</p>
             <h1 className="text-3xl font-semibold text-slate-900">ベロシティ</h1>
-            <p className="text-sm text-slate-600">スプリント履歴のポイントとレンジを記録。</p>
+            <p className="text-sm text-slate-600">
+              Sprint 終了時に確定したポイントとレンジを自動集計。
+            </p>
           </div>
         </div>
       </header>
@@ -99,33 +88,6 @@ export default function VelocityPage() {
               <p className="text-xs text-slate-500">レンジ: {item.range}</p>
             </div>
           ))}
-        </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-4">
-          <input
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-            placeholder="Sprint-13"
-          />
-          <input
-            type="number"
-            value={form.points}
-            onChange={(e) => setForm((p) => ({ ...p, points: Number(e.target.value) || 0 }))}
-            className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-          />
-          <input
-            value={form.range}
-            onChange={(e) => setForm((p) => ({ ...p, range: e.target.value }))}
-            className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-            placeholder="20-26"
-          />
-          <button
-            onClick={addEntry}
-            className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-          >
-            追加
-          </button>
         </div>
       </section>
     </main>

@@ -1,13 +1,9 @@
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
-import { logAudit } from "../../../../lib/audit";
 import { SprintUpdateSchema } from "../../../../lib/contracts/sprint";
-import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import prisma from "../../../../lib/prisma";
-
-const errors = createDomainErrors("SPRINT");
+import { updateSprint } from "../../../../lib/sprints/sprint-service";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApiHandler(
@@ -24,45 +20,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         domain: "SPRINT",
         requireWorkspace: true,
       });
-      const { id } = await params;
-      const body = await parseBody(request, SprintUpdateSchema, {
+      const { id: sprintId } = await params;
+      const input = await parseBody(request, SprintUpdateSchema, {
         code: "SPRINT_VALIDATION",
       });
-      const data: Record<string, unknown> = {};
-      if (body.name !== undefined) {
-        const name = String(body.name ?? "").trim();
-        if (!name) return errors.badRequest("name is required");
-        data.name = name;
-      }
-      if (body.capacityPoints !== undefined) {
-        const capacity = Number(body.capacityPoints);
-        if (!Number.isFinite(capacity) || capacity <= 0) {
-          return errors.badRequest("capacityPoints must be positive");
-        }
-        data.capacityPoints = capacity;
-      }
-      if (body.startedAt !== undefined) {
-        data.startedAt = body.startedAt ? new Date(body.startedAt) : undefined;
-      }
-      if (body.plannedEndAt !== undefined) {
-        data.plannedEndAt = body.plannedEndAt ? new Date(body.plannedEndAt) : null;
-      }
-
-      const updated = await prisma.sprint.updateMany({
-        where: { id, workspaceId },
-        data,
+      return ok({
+        sprint: await updateSprint({ userId, workspaceId, sprintId, input }),
       });
-      if (!updated.count) {
-        return errors.notFound("sprint not found");
-      }
-      const sprint = await prisma.sprint.findFirst({ where: { id, workspaceId } });
-      await logAudit({
-        actorId: userId,
-        action: "SPRINT_UPDATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { sprintId: id },
-      });
-      return ok({ sprint });
     },
   );
 }

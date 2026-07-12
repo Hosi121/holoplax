@@ -40,7 +40,7 @@ export const IntakeAnalyzeSchema = z
 export const IntakeResolveSchema = z
   .object({
     intakeId: nonEmptyString("intakeId is required"),
-    action: nonEmptyString("action is required"),
+    action: z.enum(["dismiss", "merge", "create"]),
     workspaceId: nullableId,
     taskType: nullableTaskType,
     targetTaskId: nullableId,

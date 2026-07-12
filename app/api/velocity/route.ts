@@ -1,9 +1,6 @@
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import { logAudit } from "../../../lib/audit";
-import { VelocityCreateSchema } from "../../../lib/contracts/velocity";
-import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 
 export async function GET() {
@@ -80,45 +77,6 @@ export async function GET() {
           completionRate: pbiCompletionRate,
         },
       });
-    },
-  );
-}
-
-export async function POST(request: Request) {
-  return withApiHandler(
-    {
-      logLabel: "POST /api/velocity",
-      errorFallback: {
-        code: "VELOCITY_INTERNAL",
-        message: "failed to create entry",
-        status: 500,
-      },
-    },
-    async () => {
-      const { userId, workspaceId } = await requireWorkspaceAuth({
-        domain: "VELOCITY",
-        requireWorkspace: true,
-      });
-      const body = await parseBody(request, VelocityCreateSchema, {
-        code: "VELOCITY_VALIDATION",
-      });
-      const { name, points, range } = body;
-      const entry = await prisma.velocityEntry.create({
-        data: {
-          name,
-          points: Number(points),
-          range,
-          userId,
-          workspaceId,
-        },
-      });
-      await logAudit({
-        actorId: userId,
-        action: "VELOCITY_CREATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { entryId: entry.id, points: entry.points },
-      });
-      return ok({ entry });
     },
   );
 }

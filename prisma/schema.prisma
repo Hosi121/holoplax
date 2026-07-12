@@ -398,6 +398,12 @@ model VelocityEntry {
   user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String?
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // New velocity measurements are projections of a closed sprint. Null is
+  // retained only for legacy manually entered rows.
+  sprintId    String?    @unique
+  sprint      Sprint?    @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 model AiProviderSetting {
@@ -571,6 +577,7 @@ model Sprint {
   workspaceId    String
   workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks          Task[]
+  velocityEntry  VelocityEntry?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }

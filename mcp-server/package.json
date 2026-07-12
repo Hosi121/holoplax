@@ -6,9 +6,10 @@
   "main": "dist/index.js",
   "scripts": {
     "prisma:generate": "../node_modules/.bin/prisma generate --schema=../prisma/schema.prisma",
-    "build": "npm run prisma:generate && tsc",
+    "typecheck": "tsc",
+    "build": "npm run prisma:generate && npm run typecheck && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/index.js",
     "start": "node dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/index.js --watch"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^20",
+    "esbuild": "0.27.2",
     "typescript": "^5"
   }
 }

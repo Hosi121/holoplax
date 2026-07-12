@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { SprintStartSchema } from "../../../lib/contracts/sprint.js";
 import { getContext } from "../context.js";
-import { isValidDateString, SPRINT_STATUS_VALUES } from "../domain.js";
+import { SPRINT_STATUS_VALUES } from "../domain.js";
 import {
   type CreateSprintInput,
   closeSprint,
@@ -13,11 +14,7 @@ export const listSprintsSchema = z.object({
   status: z.enum(SPRINT_STATUS_VALUES).optional(),
 });
 
-export const createSprintSchema = z.object({
-  name: z.string().optional(),
-  capacityPoints: z.number().positive().optional(),
-  plannedEndAt: z.string().refine(isValidDateString, "invalid plannedEndAt").optional(),
-});
+export const createSprintSchema = SprintStartSchema;
 
 export async function handleListSprints(args: unknown) {
   const parsed = listSprintsSchema.parse(args ?? {});
@@ -76,7 +73,7 @@ export const sprintTools = [
   {
     name: "create_sprint",
     description:
-      "Start a new sprint. Automatically closes any existing active sprint. Tasks in SPRINT status are assigned to the new sprint.",
+      "Start a new sprint. Fails if another sprint is active; close it first so velocity is recorded. Tasks in SPRINT status are assigned to the new sprint.",
     inputSchema: {
       type: "object",
       properties: {

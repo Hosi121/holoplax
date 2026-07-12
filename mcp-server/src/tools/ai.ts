@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { AiScoreSchema, AiSplitSchema, AiSuggestSchema } from "../../../lib/contracts/ai.js";
 import { getContext } from "../context.js";
 import {
   type AiScoreInput,
@@ -10,24 +10,11 @@ import {
   type SplitItem,
 } from "../services/ai.js";
 
-export const aiScoreSchema = z.object({
-  title: z.string().min(1, "title is required"),
-  description: z.string().optional(),
-  taskId: z.string().optional(),
-});
+export const aiScoreSchema = AiScoreSchema;
 
-export const aiSplitSchema = z.object({
-  title: z.string().min(1, "title is required"),
-  description: z.string().optional(),
-  points: z.number().positive("points must be positive"),
-  taskId: z.string().optional(),
-});
+export const aiSplitSchema = AiSplitSchema;
 
-export const aiSuggestSchema = z.object({
-  title: z.string().optional(),
-  description: z.string().optional(),
-  taskId: z.string().optional(),
-});
+export const aiSuggestSchema = AiSuggestSchema;
 
 export async function handleAiScore(args: unknown) {
   const parsed = aiScoreSchema.parse(args);

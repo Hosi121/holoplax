@@ -1,4 +1,4 @@
-import type { Task, TaskStatus, TaskType } from "@prisma/client";
+import type { Task, TaskStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import type { z } from "zod";
 import { normalizeSeverity } from "../ai-normalization";
@@ -11,6 +11,7 @@ import { isStoryPoint } from "../points";
 import prisma from "../prisma";
 import { TASK_STATUS, TASK_TYPE } from "../types";
 import { checkSprintCapacity, findActiveSprint } from "./sprint-capacity";
+import { isTaskStatus, isTaskType } from "./task-values";
 import {
   createNextRoutineOccurrence,
   nextRoutineAt,
@@ -28,15 +29,6 @@ const badRequest = (message: string) =>
   new AppError("TASK_BAD_REQUEST", message, HTTP_STATUS.BAD_REQUEST);
 const notFound = (message = "not found") =>
   new AppError("TASK_NOT_FOUND", message, HTTP_STATUS.NOT_FOUND);
-
-export const isTaskStatus = (value: unknown): value is TaskStatus =>
-  Object.values(TASK_STATUS).includes(value as TaskStatus);
-
-export const isTaskType = (value: unknown): value is TaskType =>
-  Object.values(TASK_TYPE).includes(value as TaskType);
-
-export const isSeverity = (value: unknown): value is "LOW" | "MEDIUM" | "HIGH" =>
-  ["LOW", "MEDIUM", "HIGH"].includes(value as string);
 
 // On create, an absent/invalid checklist is normalized to null (cleared).
 const toChecklistForCreate = (value: unknown) => {

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { IntakeMemoSchema, IntakeResolveSchema } from "../../../lib/contracts/intake.js";
 import { getContext } from "../context.js";
 import { TASK_TYPE_VALUES } from "../domain.js";
 import {
@@ -11,15 +11,13 @@ import {
 
 const ACTION_VALUES = ["dismiss", "merge", "create"] as const;
 
-export const createMemoSchema = z.object({
-  text: z.string().min(1, "text is required"),
+export const createMemoSchema = IntakeMemoSchema.omit({
+  workspaceId: true,
+  assignToCurrentWorkspace: true,
 });
 
-export const resolveIntakeSchema = z.object({
-  intakeId: z.string().min(1, "intakeId is required"),
-  action: z.enum(ACTION_VALUES),
-  taskType: z.enum(TASK_TYPE_VALUES).optional(),
-  targetTaskId: z.string().optional(),
+export const resolveIntakeSchema = IntakeResolveSchema.omit({
+  workspaceId: true,
 });
 
 export async function handleListIntake() {
@@ -42,8 +40,8 @@ export async function handleResolveIntake(args: unknown) {
   const input: ResolveIntakeInput = {
     intakeId: parsed.intakeId,
     action: parsed.action,
-    taskType: parsed.taskType,
-    targetTaskId: parsed.targetTaskId,
+    taskType: parsed.taskType ?? undefined,
+    targetTaskId: parsed.targetTaskId ?? undefined,
   };
   return resolveIntake(ctx, input);
 }

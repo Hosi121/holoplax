@@ -1,11 +1,10 @@
 import { requireAuth } from "../../../../lib/api-auth";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
-import { logAudit } from "../../../../lib/audit";
 import { IntakeMemoSchema } from "../../../../lib/contracts/intake";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import { deriveIntakeTitle, findDuplicateTasks } from "../../../../lib/intake-helpers";
+import { createIntakeMemo } from "../../../../lib/intake/intake-service";
 import prisma from "../../../../lib/prisma";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
@@ -44,27 +43,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const title = deriveIntakeTitle(text);
-      const item = await prisma.intakeItem.create({
-        data: {
-          origin: "MEMO",
-          status: "PENDING",
-          title,
-          body: text,
-          user: { connect: { id: userId } },
-          workspace: workspaceId ? { connect: { id: workspaceId } } : undefined,
-        },
-      });
-
-      const duplicates = workspaceId ? await findDuplicateTasks({ workspaceId, title }) : [];
-
-      await logAudit({
-        actorId: userId,
-        action: "INTAKE_MEMO_CREATE",
-        targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { itemId: item.id },
-      });
-      return ok({ item, duplicates });
+      return ok(await createIntakeMemo({ userId, workspaceId, text }));
     },
   );
 }
