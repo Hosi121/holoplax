@@ -201,10 +201,14 @@ export default async function proxy(request: NextRequest) {
   if (!token) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/signin";
-    url.searchParams.set("callbackUrl", request.nextUrl.pathname);
+    url.searchParams.set("callbackUrl", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
-  if (!token.onboardingCompletedAt && !pathname.startsWith("/onboarding")) {
+  if (
+    !token.onboardingCompletedAt &&
+    !pathname.startsWith("/onboarding") &&
+    !pathname.startsWith("/workspaces/invite")
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/onboarding";
     return NextResponse.redirect(url);

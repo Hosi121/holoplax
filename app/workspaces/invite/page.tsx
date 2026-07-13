@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Suspense, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 
 function InviteContent() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
+  const { update } = useSession();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
 
   useEffect(() => {
@@ -21,10 +23,15 @@ function InviteContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      setStatus(res.ok ? "success" : "error");
+      if (res.ok) {
+        await update({ user: { onboardingCompletedAt: new Date().toISOString() } });
+        setStatus("success");
+      } else {
+        setStatus("error");
+      }
     };
     void accept();
-  }, [token]);
+  }, [token, update]);
 
   return (
     <div className="border border-slate-200 bg-white p-8 text-center shadow-sm">

@@ -1,14 +1,13 @@
 import { hash } from "bcryptjs";
-import { randomBytes } from "crypto";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { sendVerificationEmail } from "../../../../lib/auth-verification";
 import { getBaseUrl } from "../../../../lib/base-url";
 import { AuthRegisterSchema } from "../../../../lib/contracts/auth";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { logger } from "../../../../lib/logger";
-import { sendEmail } from "../../../../lib/mailer";
 import prisma from "../../../../lib/prisma";
 
 const errors = createDomainErrors("AUTH");
@@ -57,22 +56,15 @@ export async function POST(request: Request) {
         },
       });
 
+      let verificationEmailSent = false;
       if (shouldVerify) {
         try {
-          const token = randomBytes(32).toString("hex");
-          await prisma.emailVerificationToken.create({
-            data: {
-              userId: user.id,
-              token,
-              expiresAt: new Date(Date.now() + 1000 * 60 * 60),
-            },
+          await sendVerificationEmail({
+            userId: user.id,
+            email: user.email ?? email,
+            callbackUrl: body.callbackUrl,
           });
-          const verifyUrl = `${baseUrl}/auth/verify?token=${token}`;
-          await sendEmail({
-            to: user.email ?? email,
-            subject: "Holoplax メール認証",
-            html: `<p>以下のリンクからメール認証を完了してください。</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
-          });
+          verificationEmailSent = true;
         } catch (mailError) {
           logger.error("Email verification send failed", {}, mailError);
         }
@@ -83,7 +75,12 @@ export async function POST(request: Request) {
         action: "AUTH_REGISTER",
         metadata: { requiresEmailVerification: shouldVerify },
       });
-      return ok({ id: user.id, email: user.email });
+      return ok({
+        id: user.id,
+        email: user.email,
+        requiresEmailVerification: shouldVerify,
+        verificationEmailSent,
+      });
     },
   );
 }

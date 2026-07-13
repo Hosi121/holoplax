@@ -8,6 +8,9 @@ import { apiFetch } from "@/lib/api-client";
 function VerifyContent() {
   const params = useSearchParams();
   const token = params.get("token");
+  const rawCallbackUrl = params.get("callbackUrl");
+  const callbackUrl =
+    rawCallbackUrl?.startsWith("/") && !rawCallbackUrl.startsWith("//") ? rawCallbackUrl : "/";
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
 
   useEffect(() => {
@@ -36,7 +39,7 @@ function VerifyContent() {
       </p>
       <div className="mt-6">
         <Link
-          href="/auth/signin"
+          href={`/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`}
           className="border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
         >
           ログインへ

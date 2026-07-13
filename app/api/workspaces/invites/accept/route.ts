@@ -48,6 +48,9 @@ export async function POST(request: Request) {
             if (found.expiresAt < new Date()) return null;
             // Reject tokens that have already been consumed
             if (found.acceptedAt !== null) return null;
+            // Ownership is transferred explicitly through the member endpoint;
+            // accepting an old owner-role invite must not create split-brain ownership.
+            if (found.role === "owner") return null;
 
             if (!user?.email || user.email.toLowerCase() !== found.email.toLowerCase()) {
               // Throw a sentinel so we can distinguish email-mismatch from
@@ -71,6 +74,12 @@ export async function POST(request: Request) {
             await tx.workspaceInvite.update({
               where: { token },
               data: { acceptedAt: new Date() },
+            });
+
+            const completedAt = new Date();
+            await tx.user.updateMany({
+              where: { id: userId, onboardingCompletedAt: null },
+              data: { onboardingCompletedAt: completedAt },
             });
 
             return {
@@ -99,7 +108,12 @@ export async function POST(request: Request) {
         metadata: { email: invite.email, role: invite.role },
       });
 
-      return ok({ ok: true });
+      const response = ok({ ok: true, workspaceId: invite.workspaceId });
+      response.cookies.set("workspaceId", invite.workspaceId, {
+        path: "/",
+        sameSite: "lax",
+      });
+      return response;
     },
   );
 }

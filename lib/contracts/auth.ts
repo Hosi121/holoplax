@@ -3,6 +3,12 @@ import { z } from "zod";
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
 const normalizeEmail = (value: string) => value.toLowerCase();
 
+export const SafeCallbackUrlSchema = z
+  .preprocess(toStringOrEmpty, z.string().trim().max(2048))
+  .refine((value) => value === "" || (value.startsWith("/") && !value.startsWith("//")), {
+    message: "callbackUrl must be a relative application URL",
+  });
+
 export const EmailSchema = z
   .preprocess(
     toStringOrEmpty,
@@ -30,6 +36,14 @@ export const AuthRegisterSchema = z
     email: EmailSchema,
     password: PasswordSchema,
     name: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
+    callbackUrl: SafeCallbackUrlSchema.optional(),
+  })
+  .strip();
+
+export const AuthResendVerificationSchema = z
+  .object({
+    email: EmailSchema,
+    callbackUrl: SafeCallbackUrlSchema.optional(),
   })
   .strip();
 

@@ -28,21 +28,21 @@ function SignInContent() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [error, setError] = useState<string | null>(null);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
+  const rawCallbackUrl = searchParams.get("callbackUrl");
+  const callbackUrl =
+    rawCallbackUrl?.startsWith("/") && !rawCallbackUrl.startsWith("//") ? rawCallbackUrl : "/";
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
-    const callbackUrl = searchParams.get("callbackUrl");
+    const callback = searchParams.get("callbackUrl");
 
-    if (errorParam && callbackUrl) {
-      try {
-        const url = new URL(callbackUrl);
-        if (url.pathname.startsWith("/settings")) {
-          const separator = url.search ? "&" : "?";
-          router.replace(`${url.pathname}${url.search}${separator}error=${errorParam}`);
-          return;
-        }
-      } catch {
-        // Invalid URL, ignore
+    if (errorParam && callback?.startsWith("/") && !callback.startsWith("//")) {
+      const parsed = new URL(callback, window.location.origin);
+      if (parsed.pathname.startsWith("/settings")) {
+        const separator = parsed.search ? "&" : "?";
+        router.replace(`${parsed.pathname}${parsed.search}${separator}error=${errorParam}`);
       }
     }
   }, [searchParams, router]);
@@ -101,6 +101,7 @@ function SignInContent() {
                   onClick={() => {
                     setMode("login");
                     setError(null);
+                    setVerificationPending(false);
                   }}
                   className={`w-1/2 px-3 py-2 text-xs font-semibold ${
                     mode === "login" ? "bg-[#2323eb] text-white" : "bg-white text-slate-600"
@@ -113,6 +114,7 @@ function SignInContent() {
                   onClick={() => {
                     setMode("signup");
                     setError(null);
+                    setVerificationPending(false);
                   }}
                   className={`w-1/2 px-3 py-2 text-xs font-semibold ${
                     mode === "signup" ? "bg-[#2323eb] text-white" : "bg-white text-slate-600"
@@ -122,7 +124,51 @@ function SignInContent() {
                 </button>
               </div>
 
-              {showCredentials ? (
+              {showCredentials && verificationPending ? (
+                <div className="space-y-4" role="status">
+                  <div className="border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                    <p className="font-semibold">確認メールを送信しました</p>
+                    <p className="mt-2 text-xs leading-5">
+                      {verificationEmailSent
+                        ? `${email} に届いたリンクを開いてからログインしてください。`
+                        : "メールを送信できませんでした。下のボタンから再送してください。"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      setLoading(true);
+                      setError(null);
+                      const res = await apiFetch("/api/auth/resend-verification", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email, callbackUrl }),
+                      });
+                      setLoading(false);
+                      if (res.ok) {
+                        setVerificationEmailSent(true);
+                      } else {
+                        setError("確認メールを再送できませんでした。時間をおいてお試しください。");
+                      }
+                    }}
+                    className="w-full border border-slate-300 bg-white py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                  >
+                    {loading ? "送信中..." : "確認メールを再送"}
+                  </button>
+                  {error ? <p className="text-xs text-red-700">{error}</p> : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("login");
+                      setVerificationPending(false);
+                    }}
+                    className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white"
+                  >
+                    認証後にログイン
+                  </button>
+                </div>
+              ) : showCredentials ? (
                 <form
                   onSubmit={async (event) => {
                     event.preventDefault();
@@ -132,7 +178,7 @@ function SignInContent() {
                       const res = await apiFetch("/api/auth/register", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email, password, name }),
+                        body: JSON.stringify({ email, password, name, callbackUrl }),
                       });
                       if (!res.ok) {
                         const data = await res.json().catch(() => ({}));
@@ -140,11 +186,18 @@ function SignInContent() {
                         setLoading(false);
                         return;
                       }
+                      const registration = await res.json();
+                      if (registration.requiresEmailVerification) {
+                        setVerificationEmailSent(Boolean(registration.verificationEmailSent));
+                        setVerificationPending(true);
+                        setLoading(false);
+                        return;
+                      }
                     }
                     const result = await signIn("credentials", {
                       email,
                       password,
-                      callbackUrl: "/",
+                      callbackUrl,
                       redirect: false,
                     });
                     if (result?.error) {
@@ -224,7 +277,7 @@ function SignInContent() {
                     {showGoogle ? (
                       <button
                         type="button"
-                        onClick={() => signIn("google", { callbackUrl: "/" })}
+                        onClick={() => signIn("google", { callbackUrl })}
                         aria-label="Googleでログイン"
                         className="flex size-11 items-center justify-center border border-slate-200 bg-white text-slate-700 transition hover:border-[#2323eb]/40 hover:text-[#2323eb]"
                       >
@@ -234,7 +287,7 @@ function SignInContent() {
                     {showGithub ? (
                       <button
                         type="button"
-                        onClick={() => signIn("github", { callbackUrl: "/" })}
+                        onClick={() => signIn("github", { callbackUrl })}
                         aria-label="GitHubでログイン"
                         className="flex size-11 items-center justify-center border border-slate-200 bg-white text-slate-700 transition hover:border-[#2323eb]/40 hover:text-[#2323eb]"
                       >
