@@ -22,12 +22,14 @@ const main = async () => {
       role: "ADMIN",
       emailVerified: new Date(),
       disabledAt: null,
+      onboardingCompletedAt: new Date(),
     },
     create: {
       name: "Admin",
       email: adminEmail,
       role: "ADMIN",
       emailVerified: new Date(),
+      onboardingCompletedAt: new Date(),
     },
   });
 
@@ -37,12 +39,14 @@ const main = async () => {
       role: "USER",
       emailVerified: new Date(),
       disabledAt: null,
+      onboardingCompletedAt: new Date(),
     },
     create: {
       name: "Test User",
       email: testEmail,
       role: "USER",
       emailVerified: new Date(),
+      onboardingCompletedAt: new Date(),
     },
   });
 
@@ -74,6 +78,22 @@ const main = async () => {
     create: { workspaceId: workspace.id, userId: adminUser.id, role: "admin" },
   });
 
+  const seedTaskTitles = [
+    "LPのヒーローコピー確定",
+    "オンボーディングの質問設計",
+    "ベロシティ可視化の文言調整",
+    "インボックス取り込みの仕様ドラフト",
+    "通知設計のたたき台",
+    "スプリント完了レビューのテンプレ作成",
+  ];
+  // Keep the development seed repeatable without deleting unrelated user data.
+  await prisma.task.deleteMany({
+    where: { workspaceId: workspace.id, title: { in: seedTaskTitles } },
+  });
+  await prisma.sprint.deleteMany({
+    where: { workspaceId: workspace.id, name: "Sprint-Launch" },
+  });
+
   const sprint = await prisma.sprint.create({
     data: {
       name: "Sprint-Launch",
@@ -90,8 +110,8 @@ const main = async () => {
       title: "LPのヒーローコピー確定",
       description: "価値訴求を3案出し、社内レビューで決定。",
       points: 3,
-      urgency: "中",
-      risk: "低",
+      urgency: "MEDIUM",
+      risk: "LOW",
       status: "SPRINT",
       type: "TASK",
       sprintId: sprint.id,
@@ -107,8 +127,8 @@ const main = async () => {
       title: "オンボーディングの質問設計",
       description: "初回セットアップの質問項目と順序を決める。",
       points: 5,
-      urgency: "中",
-      risk: "中",
+      urgency: "MEDIUM",
+      risk: "MEDIUM",
       status: "SPRINT",
       type: "TASK",
       sprintId: sprint.id,
@@ -124,8 +144,8 @@ const main = async () => {
       title: "ベロシティ可視化の文言調整",
       description: "KPIカードの説明文と単位を見直す。",
       points: 2,
-      urgency: "低",
-      risk: "低",
+      urgency: "LOW",
+      risk: "LOW",
       status: "DONE",
       type: "TASK",
       sprintId: sprint.id,
@@ -141,8 +161,8 @@ const main = async () => {
       title: "インボックス取り込みの仕様ドラフト",
       description: "メモ/カレンダーから取り込む粒度を定義。",
       points: 8,
-      urgency: "中",
-      risk: "高",
+      urgency: "MEDIUM",
+      risk: "HIGH",
       status: "BACKLOG",
       type: "PBI",
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 10),
@@ -157,8 +177,8 @@ const main = async () => {
       title: "通知設計のたたき台",
       description: "Slack/メールの通知条件を整理して下書き。",
       points: 5,
-      urgency: "低",
-      risk: "中",
+      urgency: "LOW",
+      risk: "MEDIUM",
       status: "BACKLOG",
       type: "PBI",
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 12),
@@ -173,8 +193,8 @@ const main = async () => {
       title: "スプリント完了レビューのテンプレ作成",
       description: "振り返りの質問項目を整える。",
       points: 3,
-      urgency: "中",
-      risk: "低",
+      urgency: "MEDIUM",
+      risk: "LOW",
       status: "BACKLOG",
       type: "PBI",
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 8),
@@ -191,6 +211,18 @@ const main = async () => {
       { taskId: notifyDesign.id, dependsOnId: inboxSpec.id },
     ],
     skipDuplicates: true,
+  });
+  await prisma.taskStatusEvent.createMany({
+    data: [heroCopy, onboarding, velocityCopy, inboxSpec, notifyDesign, reviewTemplate].map(
+      (task) => ({
+        taskId: task.id,
+        fromStatus: null,
+        toStatus: task.status,
+        actorId: testUser.id,
+        trigger: "API",
+        workspaceId: workspace.id,
+      }),
+    ),
   });
 
   const existingVelocity = await prisma.velocityEntry.count({ where: { userId: testUser.id } });
