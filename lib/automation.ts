@@ -1,8 +1,9 @@
-import { generateAndSaveAiPrep } from "./ai-prep";
+import { generateAiPrep } from "../modules/ai/index.server";
+import { splitTaskIntoChildren } from "../modules/tasks/infrastructure/prisma-task-split";
 import { generateSplitSuggestions } from "./ai-suggestions";
 import { hasNoDelegateTag } from "./automation-constants";
 import prisma from "./prisma";
-import { AUTOMATION_STATE, SEVERITY, TASK_STATUS, TASK_TYPE } from "./types";
+import { AUTOMATION_STATE, TASK_STATUS } from "./types";
 
 const scoreFromPoints = (points: number) => Math.min(100, Math.max(0, Math.round(points * 9)));
 const MAX_AUTOMATION_STAGE = 3;
@@ -81,12 +82,13 @@ export async function applyAutomationForTask(params: {
     try {
       // Delegation means producing useful work, not merely moving a card to an
       // actionless state. A provider failure still saves a template fallback.
-      const prepOutput = await generateAndSaveAiPrep({
+      const prepOutput = await generateAiPrep({
         type: "CHECKLIST",
-        task: current,
+        taskId: current.id,
         userId,
         workspaceId,
         source: "automation:delegate",
+        audit: false,
       });
       prepOutputId = prepOutput.id;
       await prisma.aiSuggestion.create({
@@ -193,46 +195,15 @@ export async function applyAutomationForTask(params: {
 
   // Auto-split without approval
   await prisma.$transaction(async (tx) => {
-    const claimed = await tx.task.updateMany({
-      where: {
-        id: current.id,
-        workspaceId,
-        automationState: AUTOMATION_STATE.NONE,
-      },
-      data: {
-        automationState: AUTOMATION_STATE.SPLIT_PARENT,
-      },
+    const split = await splitTaskIntoChildren(tx, {
+      taskId: current.id,
+      workspaceId,
+      userId,
+      expectedStates: [AUTOMATION_STATE.NONE],
+      status: TASK_STATUS.BACKLOG,
+      suggestions,
     });
-    if (claimed.count !== 1) return;
-
-    await Promise.all(
-      suggestions.map((item) =>
-        tx.task.create({
-          data: {
-            title: item.title,
-            description: item.detail ?? "",
-            points: Number(item.points) || 1,
-            urgency: item.urgency ?? SEVERITY.MEDIUM,
-            risk: item.risk ?? SEVERITY.MEDIUM,
-            status: TASK_STATUS.BACKLOG,
-            automationState: AUTOMATION_STATE.SPLIT_CHILD,
-            type: TASK_TYPE.TASK,
-            parentId: current.id,
-            workspaceId,
-            userId,
-            statusEvents: {
-              create: {
-                fromStatus: null,
-                toStatus: TASK_STATUS.BACKLOG,
-                actorId: userId,
-                trigger: "API",
-                workspaceId,
-              },
-            },
-          },
-        }),
-      ),
-    );
+    if (!split.applied) return;
 
     await tx.aiSuggestion.create({
       data: {

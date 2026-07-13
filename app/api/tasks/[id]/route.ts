@@ -4,7 +4,7 @@ import { ok } from "../../../../lib/api-response";
 import { TaskUpdateSchema } from "../../../../lib/contracts/task";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import { deleteTask, updateTask } from "../../../../lib/tasks/task-service";
+import { deleteTask, updateTask } from "../../../../modules/tasks/index.server";
 
 const errors = createDomainErrors("TASK");
 
@@ -25,7 +25,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!workspaceId) {
         return errors.notFound("workspace not selected");
       }
-      const task = await updateTask({ userId, workspaceId, taskId: id, input });
+      const task = await updateTask({ userId, workspaceId }, id, input);
       return ok({ task });
     },
   );
@@ -47,7 +47,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       if (!workspaceId) {
         return errors.notFound("workspace not selected");
       }
-      await deleteTask({ userId, workspaceId, taskId: id });
+      await deleteTask({ userId, workspaceId }, id);
       return ok({ ok: true });
     },
   );

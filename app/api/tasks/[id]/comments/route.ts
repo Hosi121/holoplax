@@ -1,13 +1,9 @@
 import { requireWorkspaceAuth } from "../../../../../lib/api-guards";
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
-import { logAudit } from "../../../../../lib/audit";
 import { CommentCreateSchema } from "../../../../../lib/contracts/comment";
-import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
-import prisma from "../../../../../lib/prisma";
-
-const errors = createDomainErrors("COMMENT");
+import { createTaskComment, listTaskComments } from "../../../../../modules/tasks/index.server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApiHandler(
@@ -23,28 +19,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       const { id: taskId } = await params;
       const { workspaceId } = await requireWorkspaceAuth();
       if (!workspaceId) {
-        return errors.unauthorized("workspace not selected");
+        return ok({ comments: [] });
       }
-
-      const task = await prisma.task.findFirst({
-        where: { id: taskId, workspaceId },
-        select: { id: true },
-      });
-      if (!task) {
-        return errors.notFound("task not found");
-      }
-
-      const comments = await prisma.taskComment.findMany({
-        where: { taskId, workspaceId },
-        orderBy: { createdAt: "asc" },
-        take: 200,
-        include: {
-          author: {
-            select: { id: true, name: true, email: true, image: true },
-          },
-        },
-      });
-
+      const comments = await listTaskComments(workspaceId, taskId);
       return ok({ comments });
     },
   );
@@ -71,34 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         code: "COMMENT_VALIDATION",
       });
 
-      const task = await prisma.task.findFirst({
-        where: { id: taskId, workspaceId },
-        select: { id: true },
-      });
-      if (!task) {
-        return errors.notFound("task not found");
-      }
-
-      const comment = await prisma.taskComment.create({
-        data: {
-          taskId,
-          authorId: userId,
-          workspaceId,
-          content: body.content.trim(),
-        },
-        include: {
-          author: {
-            select: { id: true, name: true, email: true, image: true },
-          },
-        },
-      });
-
-      await logAudit({
-        actorId: userId,
-        action: "TASK_COMMENT_CREATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { commentId: comment.id, taskId },
-      });
+      const comment = await createTaskComment({ userId, workspaceId }, taskId, body.content);
       return ok({ comment });
     },
   );

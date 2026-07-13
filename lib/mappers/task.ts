@@ -1,4 +1,5 @@
-import type { TaskAutomationState, TaskDTO, TaskStatus } from "../types";
+import type { TaskView } from "../../modules/tasks/application/task-view";
+import type { TaskAutomationState, TaskStatus } from "../types";
 
 type DepNode = {
   dependsOnId: string;
@@ -28,7 +29,7 @@ type TaskWithDeps<T extends DepNode = DepNode> = {
   updatedAt?: Date;
 };
 
-export const mapTaskWithDependencies = (task: TaskWithDeps): TaskDTO => {
+export const mapTaskWithDependencies = (task: TaskWithDeps): TaskView => {
   const dependencyIds = task.dependencies.map((dep) => dep.dependsOnId);
   const dependencies = task.dependencies
     .map((dep) => dep.dependsOn)
@@ -38,13 +39,13 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskDTO => {
     title: task.title,
     description: task.description,
     definitionOfDone: task.definitionOfDone ?? undefined,
-    checklist: task.checklist as TaskDTO["checklist"],
-    points: task.points as TaskDTO["points"],
-    urgency: task.urgency as TaskDTO["urgency"],
-    risk: task.risk as TaskDTO["risk"],
+    checklist: task.checklist as TaskView["checklist"],
+    points: task.points as TaskView["points"],
+    urgency: task.urgency as TaskView["urgency"],
+    risk: task.risk as TaskView["risk"],
     status: task.status,
-    type: (task.type ?? undefined) as TaskDTO["type"],
-    automationState: (task.automationState ?? undefined) as TaskDTO["automationState"],
+    type: (task.type ?? undefined) as TaskView["type"],
+    automationState: (task.automationState ?? undefined) as TaskView["automationState"],
     parentId: task.parentId,
     dueDate: task.dueDate,
     assigneeId: task.assigneeId,
@@ -54,7 +55,7 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskDTO => {
     updatedAt: task.updatedAt,
     dependencyIds,
     dependencies,
-    routineCadence: (task.routineRule?.cadence ?? null) as TaskDTO["routineCadence"],
+    routineCadence: (task.routineRule?.cadence ?? null) as TaskView["routineCadence"],
     routineNextAt: task.routineRule?.nextAt ?? null,
   };
 };

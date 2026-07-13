@@ -1,10 +1,10 @@
-import { generateAiSuggestion, getLatestAiSuggestion } from "../../../../lib/ai/ai-service";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { AiSuggestSchema } from "../../../../lib/contracts/ai";
 import { AppError, HTTP_STATUS } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
+import { generateAiSuggestion, getLatestAiSuggestion } from "../../../../modules/ai/index.server";
 
 const options = (method: string, message: string) => ({
   logLabel: `${method} /api/ai/suggest`,
@@ -30,6 +30,6 @@ export async function POST(request: Request) {
       requireWorkspace: true,
     });
     const input = await parseBody(request, AiSuggestSchema, { code: "AI_VALIDATION" });
-    return ok(await generateAiSuggestion({ userId, workspaceId, input }));
+    return ok(await generateAiSuggestion({ userId, workspaceId }, input));
   });
 }

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkSprintCapacity, findActiveSprint, sumSprintPoints } from "../tasks/sprint-capacity";
+import {
+  checkSprintCapacity,
+  findActiveSprint,
+  sumSprintPoints,
+} from "../../modules/tasks/infrastructure/prisma-sprint-capacity";
 
 // Minimal fake of the Prisma delegates the helpers touch.
 const makeClient = (opts: {

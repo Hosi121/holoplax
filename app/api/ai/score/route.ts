@@ -1,9 +1,9 @@
-import { generateAiScore } from "../../../../lib/ai/ai-service";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { AiScoreSchema } from "../../../../lib/contracts/ai";
 import { parseBody } from "../../../../lib/http/validation";
+import { generateAiScore } from "../../../../modules/ai/index.server";
 
 export async function POST(request: Request) {
   return withApiHandler(
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
         requireWorkspace: true,
       });
       const input = await parseBody(request, AiScoreSchema, { code: "AI_VALIDATION" });
-      return ok(await generateAiScore({ userId, workspaceId, input }));
+      return ok(await generateAiScore({ userId, workspaceId }, input));
     },
   );
 }

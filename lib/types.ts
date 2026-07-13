@@ -16,7 +16,7 @@ import type {
   TaskStatus as PrismaTaskStatus,
   TaskType as PrismaTaskType,
 } from "@prisma/client";
-import type { StoryPoint } from "./points";
+import type { TaskView } from "../modules/tasks/application/task-view";
 
 /**
  * Runtime constants for enum values
@@ -71,30 +71,7 @@ export const SEVERITY_FROM_LABEL: Record<string, PrismaSeverity> = {
  * DTO types for API responses
  * These represent the shape of data sent to/from the API
  */
-export type TaskDTO = {
-  id: string;
-  title: string;
-  description?: string;
-  definitionOfDone?: string;
-  checklist?: { id: string; text: string; done: boolean }[] | null;
-  points: StoryPoint;
-  urgency: PrismaSeverity;
-  risk: PrismaSeverity;
-  status: PrismaTaskStatus;
-  type?: PrismaTaskType;
-  automationState?: PrismaTaskAutomationState;
-  routineCadence?: "DAILY" | "WEEKLY" | null;
-  routineNextAt?: string | Date | null;
-  parentId?: string | null;
-  dueDate?: string | Date | null;
-  assigneeId?: string | null;
-  sprintId?: string | null;
-  tags?: string[];
-  dependencyIds?: string[];
-  dependencies?: { id: string; title: string; status: PrismaTaskStatus }[];
-  createdAt?: string | Date;
-  updatedAt?: string | Date;
-};
+export type TaskDTO = TaskView;
 
 export type VelocityEntryDTO = {
   id: string;

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { isStoryPoint } from "../points";
+import { isStoryPoint, type StoryPoint } from "../points";
 import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../types";
 import { OptionalNullableDateSchema } from "./common";
 
-const taskStatusValues = Object.values(TASK_STATUS) as [string, ...string[]];
-const taskTypeValues = Object.values(TASK_TYPE) as [string, ...string[]];
-const severityValues = Object.values(SEVERITY) as [string, ...string[]];
+const taskStatusValues = [TASK_STATUS.BACKLOG, TASK_STATUS.SPRINT, TASK_STATUS.DONE] as const;
+const taskTypeValues = [TASK_TYPE.EPIC, TASK_TYPE.PBI, TASK_TYPE.TASK] as const;
+const severityValues = [SEVERITY.LOW, SEVERITY.MEDIUM, SEVERITY.HIGH] as const;
 
 export const TaskStatusSchema = z.enum(taskStatusValues);
 export const TaskTypeSchema = z.enum(taskTypeValues);
@@ -24,9 +24,12 @@ const nullableId = z
   }, z.string().trim().min(1).nullable())
   .optional();
 
-export const TaskPointsSchema = z.coerce.number().refine(isStoryPoint, {
-  message: "points must be one of 1,2,3,5,8,13,21,34",
-});
+export const TaskPointsSchema = z.coerce
+  .number()
+  .refine(isStoryPoint, {
+    message: "points must be one of 1,2,3,5,8,13,21,34",
+  })
+  .transform((value) => value as StoryPoint);
 
 export const TaskChecklistItemSchema = z
   .object({

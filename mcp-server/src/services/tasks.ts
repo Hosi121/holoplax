@@ -1,14 +1,12 @@
 import {
-  getTask as getSharedTask,
-  listTasks as listSharedTasks,
-} from "../../../lib/tasks/task-query.js";
-import {
   createTask as createSharedTask,
   deleteTask as deleteSharedTask,
-  type TaskCreateInput,
-  type TaskUpdateInput,
+  getTask as getSharedTask,
+  listTasks as listSharedTasks,
+  type CreateTaskInput as TaskCreateInput,
+  type UpdateTaskInput as TaskUpdateInput,
   updateTask as updateSharedTask,
-} from "../../../lib/tasks/task-service.js";
+} from "../../../modules/tasks/index.server.js";
 import type { ExecutionContext } from "../context.js";
 import {
   SEVERITY_VALUES,
@@ -71,12 +69,12 @@ export async function getTask(ctx: ExecutionContext, taskId: string) {
 }
 
 export const createTask = (ctx: ExecutionContext, input: CreateTaskInput) =>
-  createSharedTask({ userId: ctx.userId, workspaceId: ctx.workspaceId, input });
+  createSharedTask({ userId: ctx.userId, workspaceId: ctx.workspaceId }, input);
 
 export const updateTask = (ctx: ExecutionContext, taskId: string, input: UpdateTaskInput) =>
-  updateSharedTask({ userId: ctx.userId, workspaceId: ctx.workspaceId, taskId, input });
+  updateSharedTask({ userId: ctx.userId, workspaceId: ctx.workspaceId }, taskId, input);
 
 export async function deleteTask(ctx: ExecutionContext, taskId: string) {
-  await deleteSharedTask({ userId: ctx.userId, workspaceId: ctx.workspaceId, taskId });
+  await deleteSharedTask({ userId: ctx.userId, workspaceId: ctx.workspaceId }, taskId);
   return { ok: true };
 }

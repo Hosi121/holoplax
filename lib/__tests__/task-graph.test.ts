@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { graphHasCycleFrom, hasIncompleteChecklist } from "../tasks/task-write";
+import {
+  graphHasCycleFrom,
+  hasIncompleteChecklist,
+} from "../../modules/tasks/infrastructure/prisma-task-write";
 
 describe("task graph invariants", () => {
   it("detects direct and transitive cycles", () => {

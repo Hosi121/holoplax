@@ -3,9 +3,8 @@ import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
 import { TaskCreateSchema } from "../../../lib/contracts/task";
 import { parseBody } from "../../../lib/http/validation";
-import { listTasks } from "../../../lib/tasks/task-query";
-import { createTask } from "../../../lib/tasks/task-service";
 import { isSeverity, isTaskStatus, isTaskType } from "../../../lib/tasks/task-values";
+import { createTask, listTasks } from "../../../modules/tasks/index.server";
 
 const parseDate = (value: string | null): Date | undefined => {
   if (!value) return undefined;
@@ -77,7 +76,7 @@ export async function POST(request: Request) {
         requireWorkspace: true,
       });
       const input = await parseBody(request, TaskCreateSchema, { code: "TASK_VALIDATION" });
-      const task = await createTask({ userId, workspaceId, input });
+      const task = await createTask({ userId, workspaceId }, input);
       return ok({ task });
     },
   );

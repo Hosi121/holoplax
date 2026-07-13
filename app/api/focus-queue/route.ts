@@ -2,8 +2,8 @@ import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
 import { selectDailyFocus } from "../../../lib/daily-focus";
-import { listTasks } from "../../../lib/tasks/task-query";
 import { TASK_STATUS } from "../../../lib/types";
+import { listTasks } from "../../../modules/tasks/index.server";
 
 export async function GET() {
   return withApiHandler(

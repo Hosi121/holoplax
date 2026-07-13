@@ -9,7 +9,7 @@ vi.mock("../prisma", () => ({
   default: { task: { findMany: mocks.findMany, findFirst: mocks.findFirst } },
 }));
 
-import { getTask, listTasks } from "../tasks/task-query";
+import { getTask, listTasks } from "../../modules/tasks/infrastructure/prisma-task-query";
 
 describe("task query boundary", () => {
   beforeEach(() => {
