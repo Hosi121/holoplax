@@ -1,3 +1,4 @@
+import { ApplicationError } from "../modules/shared/application/application-error";
 import { handleAuthError } from "./api-response";
 import { AppError, errorResponse } from "./http/errors";
 import { logger } from "./logger";
@@ -26,7 +27,8 @@ export const withApiHandler = async (
     // Thrown 4xx domain errors are expected client outcomes (mirroring the
     // createDomainErrors paths that return them without logging) — only log
     // genuine server failures at error level.
-    const isExpectedClientError = error instanceof AppError && error.status < 500;
+    const isExpectedClientError =
+      error instanceof ApplicationError || (error instanceof AppError && error.status < 500);
     if (!isExpectedClientError) {
       logger.error(
         `${options.logLabel} failed`,

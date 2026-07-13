@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import {
+  ApplicationError,
+  type ApplicationErrorKind,
+} from "../../modules/shared/application/application-error";
 
 /**
  * Standard HTTP status codes
@@ -78,6 +82,21 @@ const toErrorResult = (
   error: unknown,
   fallback?: { code?: string; message?: string; status?: number; requestId?: string },
 ): ErrorResult => {
+  if (error instanceof ApplicationError) {
+    const statusByKind: Record<ApplicationErrorKind, number> = {
+      bad_request: HTTP_STATUS.BAD_REQUEST,
+      unauthorized: HTTP_STATUS.UNAUTHORIZED,
+      forbidden: HTTP_STATUS.FORBIDDEN,
+      not_found: HTTP_STATUS.NOT_FOUND,
+      conflict: HTTP_STATUS.CONFLICT,
+      unprocessable: HTTP_STATUS.UNPROCESSABLE_ENTITY,
+      rate_limited: HTTP_STATUS.TOO_MANY_REQUESTS,
+    };
+    return {
+      status: statusByKind[error.kind],
+      envelope: buildEnvelope(error.code, error.message, error.details, fallback?.requestId),
+    };
+  }
   if (error instanceof AppError) {
     return {
       status: error.status,
