@@ -64,14 +64,8 @@ function SignInContent() {
   const showGithub = Boolean(providers.github);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-white">
-      <div className="absolute inset-0">
-        <div className="absolute left-[-20%] top-[-20%] h-96 w-96 rounded-full bg-[#2323eb]/10 blur-[160px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] h-80 w-80 rounded-full bg-slate-200/60 blur-[140px]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(255,255,255,0.95))]" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4 py-12">
+    <div className="min-h-dvh bg-slate-50">
+      <div className="mx-auto flex min-h-dvh max-w-6xl items-center justify-center px-4 py-12">
         <div className="grid w-full max-w-4xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-5 text-slate-900 pt-15">
             <Image
@@ -89,18 +83,15 @@ function SignInContent() {
               人生に導入する。
             </h1>
             <p className="text-sm text-slate-600">
-              Backlog・Sprint・AI提案をあなた専用の空間に。チーム化の拡張も見据えた設計です。
+              やること・スプリント・AI提案を、ひとつの場所で整理できます。
             </p>
           </div>
 
           <div className="border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
+            <div>
               <h2 className="text-lg font-semibold text-slate-900">
                 {mode === "signup" ? "新規登録" : "ログイン"}
               </h2>
-              <Link href="/backlog" className="text-xs text-slate-500 hover:text-slate-900">
-                バックログへ
-              </Link>
             </div>
 
             <div className="mt-6 space-y-4">
@@ -219,7 +210,7 @@ function SignInContent() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/20 disabled:opacity-60"
+                    className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white transition disabled:opacity-60"
                   >
                     {loading ? "処理中..." : mode === "signup" ? "登録して続行" : "ログイン"}
                   </button>
@@ -235,7 +226,7 @@ function SignInContent() {
                         type="button"
                         onClick={() => signIn("google", { callbackUrl: "/" })}
                         aria-label="Googleでログイン"
-                        className="flex h-11 w-11 items-center justify-center border border-slate-200 bg-white text-slate-700 transition hover:-translate-y-0.5 hover:border-[#2323eb]/40 hover:text-[#2323eb]"
+                        className="flex size-11 items-center justify-center border border-slate-200 bg-white text-slate-700 transition hover:border-[#2323eb]/40 hover:text-[#2323eb]"
                       >
                         <Chrome size={18} />
                       </button>
@@ -245,7 +236,7 @@ function SignInContent() {
                         type="button"
                         onClick={() => signIn("github", { callbackUrl: "/" })}
                         aria-label="GitHubでログイン"
-                        className="flex h-11 w-11 items-center justify-center border border-slate-200 bg-white text-slate-700 transition hover:-translate-y-0.5 hover:border-[#2323eb]/40 hover:text-[#2323eb]"
+                        className="flex size-11 items-center justify-center border border-slate-200 bg-white text-slate-700 transition hover:border-[#2323eb]/40 hover:text-[#2323eb]"
                       >
                         <Github size={18} />
                       </button>
@@ -254,10 +245,6 @@ function SignInContent() {
                 </div>
               )}
             </div>
-
-            <p className="mt-6 text-xs text-slate-500">
-              ログインすることで利用規約とプライバシーポリシーに同意したものとみなします。
-            </p>
           </div>
         </div>
       </div>

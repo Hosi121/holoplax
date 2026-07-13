@@ -83,7 +83,7 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-50 flex flex-col items-end justify-start gap-2 p-4"
+      className="pointer-events-none fixed inset-0 z-50 flex flex-col items-end justify-start gap-2 p-4 [padding-top:max(1rem,env(safe-area-inset-top))]"
       aria-label="通知"
     >
       {toasts.map((toast) => (

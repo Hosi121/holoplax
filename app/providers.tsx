@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { cn } from "../lib/cn";
 import { Sidebar } from "./components/sidebar";
 import { ToastProvider } from "./components/toast";
 
@@ -83,15 +84,24 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ConditionalSidebar() {
+function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const hideSidebar =
     pathname.startsWith("/auth") ||
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/workspaces/invite");
 
-  if (hideSidebar) return null;
-  return <Sidebar />;
+  return (
+    <div
+      className={cn(
+        "relative min-h-dvh bg-[var(--background)]",
+        !hideSidebar && "pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0",
+      )}
+    >
+      {hideSidebar ? null : <Sidebar />}
+      {children}
+    </div>
+  );
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -99,10 +109,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <SessionProvider>
       <ThemeProvider>
         <ToastProvider>
-          <div className="relative min-h-screen bg-[var(--background)]">
-            <ConditionalSidebar />
-            {children}
-          </div>
+          <AppFrame>{children}</AppFrame>
         </ToastProvider>
       </ThemeProvider>
     </SessionProvider>

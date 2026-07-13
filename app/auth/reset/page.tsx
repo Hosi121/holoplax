@@ -36,7 +36,7 @@ function ResetPasswordForm() {
         />
         <button
           type="submit"
-          className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/20"
+          className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white transition"
         >
           再設定する
         </button>
@@ -59,8 +59,8 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-4">
-      <Suspense fallback={<div>Loading...</div>}>
+    <div className="mx-auto flex min-h-dvh max-w-3xl items-center justify-center px-4">
+      <Suspense fallback={<div>読み込み中...</div>}>
         <ResetPasswordForm />
       </Suspense>
     </div>

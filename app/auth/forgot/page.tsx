@@ -9,7 +9,7 @@ export default function ForgotPasswordPage() {
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-4">
+    <div className="mx-auto flex min-h-dvh max-w-3xl items-center justify-center px-4">
       <div className="border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-slate-900">パスワード再設定</h1>
         <p className="mt-2 text-sm text-slate-600">
@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
           />
           <button
             type="submit"
-            className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/20"
+            className="w-full bg-[#2323eb] py-2 text-sm font-semibold text-white transition"
           >
             送信する
           </button>

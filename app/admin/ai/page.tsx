@@ -79,7 +79,7 @@ export default function AdminAiSettingsPage() {
       <header className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Admin</p>
+            <p className="text-xs uppercase text-slate-500">Admin</p>
             <h1 className="text-3xl font-semibold text-slate-900">AI設定</h1>
             <p className="text-sm text-slate-600">
               LiteLLM/OpenAI互換ゲートウェイのモデルとAPIキーを設定します。

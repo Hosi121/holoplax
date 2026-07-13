@@ -47,8 +47,7 @@ export function EmptyState({
       {actionLabel && actionHref && (
         <Link
           href={actionHref}
-          style={{ color: "#fff" }}
-          className="mt-4 rounded-lg bg-[#2323eb] px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30"
+          className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
         >
           {actionLabel}
         </Link>
@@ -56,7 +55,7 @@ export function EmptyState({
       {actionLabel && onAction && !actionHref && (
         <button
           onClick={onAction}
-          className="mt-4 rounded-lg bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30"
+          className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
         >
           {actionLabel}
         </button>

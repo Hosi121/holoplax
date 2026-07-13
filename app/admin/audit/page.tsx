@@ -85,9 +85,7 @@ const TrendChart = ({ title, data }: { title: string; data: TrendPoint[] }) => {
     <div className="border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-slate-800">{title}</p>
-        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-          {hasCost ? "Cost" : "Tokens"}
-        </span>
+        <span className="text-[11px] uppercase text-slate-400">{hasCost ? "Cost" : "Tokens"}</span>
       </div>
       {data.length ? (
         <div className="mt-3 grid gap-2">
@@ -180,7 +178,7 @@ export default function AdminAuditPage() {
       <header className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Admin</p>
+            <p className="text-xs uppercase text-slate-500">Admin</p>
             <h1 className="text-3xl font-semibold text-slate-900">監査ログ</h1>
             <p className="text-sm text-slate-600">管理者操作とAI使用履歴を記録します。</p>
           </div>
@@ -270,49 +268,47 @@ export default function AdminAuditPage() {
         <section className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">AI Usage</p>
+              <p className="text-xs uppercase text-slate-500">AI Usage</p>
               <h2 className="text-lg font-semibold text-slate-900">集計</h2>
               <p className="text-xs text-slate-500">期間: {stats.range.label}</p>
             </div>
-            <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
+            <span className="text-[11px] uppercase text-slate-400">
               Pricing: {stats.pricingSource}
             </span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Total Cost</p>
+              <p className="text-[11px] uppercase text-slate-500">Total Cost</p>
               <p className="text-sm font-semibold text-slate-900">
                 {formatUsd(stats.totals.totalCostUsd)}
               </p>
             </div>
             <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Tokens Total</p>
+              <p className="text-[11px] uppercase text-slate-500">Tokens Total</p>
               <p className="text-sm font-semibold text-slate-900">
                 {stats.totals.totalTokens.toLocaleString()}
               </p>
             </div>
             <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Prompt</p>
+              <p className="text-[11px] uppercase text-slate-500">Prompt</p>
               <p className="text-sm font-semibold text-slate-900">
                 {stats.totals.promptTokens.toLocaleString()}
               </p>
             </div>
             <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Completion</p>
+              <p className="text-[11px] uppercase text-slate-500">Completion</p>
               <p className="text-sm font-semibold text-slate-900">
                 {stats.totals.completionTokens.toLocaleString()}
               </p>
             </div>
             <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Unknown Usage</p>
+              <p className="text-[11px] uppercase text-slate-500">Unknown Usage</p>
               <p className="text-sm font-semibold text-slate-900">
                 {stats.totals.unknownUsageCount.toLocaleString()}
               </p>
             </div>
             <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                Missing Pricing
-              </p>
+              <p className="text-[11px] uppercase text-slate-500">Missing Pricing</p>
               <p className="text-sm font-semibold text-slate-900">
                 {stats.totals.missingPricingCount.toLocaleString()}
               </p>
@@ -366,7 +362,7 @@ export default function AdminAuditPage() {
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-800">Workspaces</p>
+              <p className="text-sm font-semibold text-slate-800">ワークスペース</p>
               <div className="mt-3 grid gap-2 text-xs text-slate-600">
                 {stats && Object.keys(stats.byWorkspace).length ? (
                   sortBuckets(

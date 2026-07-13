@@ -1,5 +1,7 @@
 "use client";
 
+import { Collapsible } from "@base-ui/react/collapsible";
+import { Dialog } from "@base-ui/react/dialog";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -7,6 +9,7 @@ import {
   Inbox,
   KanbanSquare,
   LayoutDashboard,
+  Menu as MenuIcon,
   Settings,
   Users,
   Zap,
@@ -15,8 +18,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
+import { cn } from "../../lib/cn";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
+import { NAV_LABELS } from "../../lib/ui-language";
 import { ThemeToggle } from "./theme-toggle";
 
 type NavItem = {
@@ -34,24 +39,24 @@ const STORAGE_KEY = "holoplax-sidebar-collapsed";
 /* ── Primary workflow items (always visible) ── */
 const primaryItems: NavItem[] = [
   {
-    label: "バックログ",
+    label: NAV_LABELS.backlog,
     href: "/backlog",
     icon: Inbox,
-    tooltip: "TODOを整理して次に着手する候補を決める",
+    tooltip: "これから取り組む候補を整理する",
     step: 1,
   },
   {
-    label: "スプリント",
+    label: NAV_LABELS.sprint,
     href: "/sprint",
     icon: KanbanSquare,
-    tooltip: "今週のスプリントと容量管理",
+    tooltip: "今回進める内容と上限ポイントを管理する",
     step: 2,
   },
   {
-    label: "レビュー",
+    label: NAV_LABELS.review,
     href: "/review",
     icon: LayoutDashboard,
-    tooltip: "ベロシティや完了タスクを振り返る",
+    tooltip: "完了ペースと進み方を振り返る",
     step: 3,
   },
 ];
@@ -62,18 +67,7 @@ const secondarySections: {
   items: NavItem[];
 }[] = [
   {
-    heading: "タスク管理",
-    items: [
-      {
-        label: "カンバン",
-        href: "/kanban",
-        icon: KanbanSquare,
-        tooltip: "ステータスをドラッグして進捗を動かす",
-      },
-    ],
-  },
-  {
-    heading: "ワークスペースと分析",
+    heading: "ワークスペース",
     items: [
       {
         label: "ワークスペース",
@@ -81,22 +75,16 @@ const secondarySections: {
         icon: Users,
         tooltip: "参加中ワークスペースを管理",
       },
-      {
-        label: "ベロシティ",
-        href: "/velocity",
-        icon: BarChart3,
-        tooltip: "過去スプリントのベロシティを確認",
-      },
     ],
   },
   {
     heading: "自動化",
     items: [
       {
-        label: "自動化",
+        label: NAV_LABELS.automation,
         href: "/automation",
         icon: Zap,
-        tooltip: "スコアに応じた自動化ポリシーを見る",
+        tooltip: "AIに任せる範囲と分割の境界値を設定する",
       },
     ],
   },
@@ -165,9 +153,7 @@ const PrimaryNav = memo(function PrimaryNav({ pathname }: { pathname: string }) 
   return (
     <div className="space-y-1 border-b border-[var(--border)] pb-3">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
-          ワークフロー
-        </div>
+        <div className="text-[11px] uppercase text-[var(--text-muted)]">ワークフロー</div>
         <span className="text-[10px] text-[var(--text-muted)]">
           {"\u2460\u2192\u2461\u2192\u2462"}
         </span>
@@ -193,40 +179,17 @@ const SecondaryNav = memo(function SecondaryNav({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | undefined>(undefined);
-
-  // Measure content height for animation
-  useEffect(() => {
-    if (contentRef.current) {
-      const observer = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setHeight(entry.contentRect.height);
-        }
-      });
-      observer.observe(contentRef.current);
-      return () => observer.disconnect();
-    }
-  }, []);
-
   return (
-    <div className="mt-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-1 py-1 text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)] transition hover:text-[var(--text-secondary)]"
-      >
+    <Collapsible.Root open={!collapsed} onOpenChange={onToggle} className="mt-1">
+      <Collapsible.Trigger className="flex w-full items-center gap-1 py-1 text-[11px] uppercase text-[var(--text-muted)] transition hover:text-[var(--text-secondary)]">
         <ChevronDown
           size={12}
           className={`transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`}
         />
         <span>その他</span>
-      </button>
-      <div
-        className="overflow-hidden transition-[max-height] duration-200 ease-in-out"
-        style={{ maxHeight: collapsed ? 0 : height != null ? height + 8 : "none" }}
-      >
-        <div ref={contentRef}>
+      </Collapsible.Trigger>
+      <Collapsible.Panel>
+        <div>
           {secondarySections.map((section) => {
             const visibleItems = section.items.filter((item) => !item.adminOnly || isAdmin);
             if (visibleItems.length === 0) return null;
@@ -235,7 +198,7 @@ const SecondaryNav = memo(function SecondaryNav({
                 key={section.heading}
                 className="space-y-1 border-b border-[var(--border)] pb-3 last:border-none last:pb-0"
               >
-                <div className="text-[11px] uppercase tracking-[0.3em] text-[var(--text-muted)]">
+                <div className="text-[11px] uppercase text-[var(--text-muted)]">
                   {section.heading}
                 </div>
                 <div className="mt-1 flex flex-col gap-1">
@@ -247,8 +210,8 @@ const SecondaryNav = memo(function SecondaryNav({
             );
           })}
         </div>
-      </div>
-    </div>
+      </Collapsible.Panel>
+    </Collapsible.Root>
   );
 });
 
@@ -314,9 +277,7 @@ const AccountSection = memo(function AccountSection({
   return (
     <div className="border-t border-[var(--border)] pt-4 text-xs text-[var(--text-secondary)]">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-          Theme
-        </span>
+        <span className="text-[11px] uppercase text-[var(--text-muted)]">Theme</span>
         <ThemeToggle />
       </div>
       {status === "loading" ? (
@@ -324,9 +285,7 @@ const AccountSection = memo(function AccountSection({
       ) : session?.user ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">
-              Account
-            </div>
+            <div className="text-[11px] uppercase text-[var(--text-muted)]">Account</div>
             <Link
               href="/settings#account"
               className="text-[var(--text-muted)] transition hover:text-[var(--accent)]"
@@ -343,10 +302,10 @@ const AccountSection = memo(function AccountSection({
                 width={40}
                 height={40}
                 unoptimized
-                className="h-10 w-10 border border-[var(--border)] object-cover"
+                className="size-10 border border-[var(--border)] object-cover"
               />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center border border-[var(--border)] bg-[var(--muted)] text-sm font-semibold text-[var(--text-secondary)]">
+              <div className="flex size-10 items-center justify-center border border-[var(--border)] bg-[var(--muted)] text-sm font-semibold text-[var(--text-secondary)]">
                 {(session.user.name ?? session.user.email ?? "U").slice(0, 1)}
               </div>
             )}
@@ -392,9 +351,7 @@ function WorkspaceSelector() {
 
   return (
     <div className="mt-4 border-b border-[var(--border)] pb-4">
-      <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">
-        Workspace
-      </div>
+      <div className="mb-2 text-[11px] text-[var(--text-muted)]">ワークスペース</div>
       {loading ? (
         <div className="text-xs text-[var(--text-muted)]">読み込み中...</div>
       ) : workspaces.length > 0 ? (
@@ -445,7 +402,7 @@ export function Sidebar() {
   return (
     <>
       <div className="hidden w-60 lg:block" aria-hidden />
-      <aside className="fixed left-0 top-0 hidden h-screen w-60 flex-col border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm lg:flex overflow-hidden">
+      <aside className="fixed left-0 top-0 hidden h-dvh w-60 flex-col overflow-hidden border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm lg:flex">
         <div className="shrink-0 border-b border-[var(--border)] pb-4">
           <Image
             src="/logo_holoplax.webp"
@@ -467,6 +424,101 @@ export function Sidebar() {
           <AccountSection session={session} status={status} />
         </div>
       </aside>
+      <MobileNavigation
+        pathname={pathname}
+        session={session}
+        status={status}
+        isAdmin={session?.user?.role === "ADMIN"}
+      />
     </>
+  );
+}
+
+function MobileNavigation({
+  pathname,
+  session,
+  status,
+  isAdmin,
+}: {
+  pathname: string;
+  session: ReturnType<typeof useSession>["data"];
+  status: ReturnType<typeof useSession>["status"];
+  isAdmin: boolean;
+}) {
+  return (
+    <Dialog.Root>
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-[var(--border)] bg-[var(--surface)] [padding-bottom:env(safe-area-inset-bottom)] lg:hidden">
+        {primaryItems.map((item) => {
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] text-[var(--text-muted)]",
+                active && "text-[var(--accent)]",
+              )}
+              aria-current={active ? "page" : undefined}
+            >
+              <item.icon className="size-5" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+        <Dialog.Trigger className="flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] text-[var(--text-muted)]">
+          <MenuIcon className="size-5" />
+          <span>その他</span>
+        </Dialog.Trigger>
+      </nav>
+
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-40 bg-slate-950/45 lg:hidden" />
+        <Dialog.Viewport className="fixed inset-0 z-50 flex justify-end lg:hidden">
+          <Dialog.Popup className="h-dvh w-[min(22rem,88vw)] overflow-y-auto border-l border-[var(--border)] bg-[var(--surface)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] text-[var(--text-primary)] shadow-xl outline-none">
+            <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-4">
+              <Dialog.Title className="text-balance font-semibold">メニュー</Dialog.Title>
+              <Dialog.Close className="border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                閉じる
+              </Dialog.Close>
+            </div>
+            <WorkspaceSelector />
+            <nav className="mt-4 grid gap-4">
+              {secondarySections.map((section) => {
+                const visible = section.items.filter((item) => !item.adminOnly || isAdmin);
+                if (!visible.length) return null;
+                return (
+                  <section key={section.heading} className="grid gap-1">
+                    <h2 className="text-xs font-semibold text-[var(--text-muted)]">
+                      {section.heading}
+                    </h2>
+                    {visible.map((item) => (
+                      <Dialog.Close
+                        key={item.href}
+                        render={
+                          <Link
+                            href={item.href}
+                            className={cn(
+                              "flex items-center gap-3 border border-transparent px-3 py-2 text-sm text-[var(--text-secondary)]",
+                              pathname === item.href &&
+                                "border-[var(--border)] bg-[var(--muted)] text-[var(--accent)]",
+                            )}
+                          >
+                            <item.icon className="size-4" />
+                            {item.label}
+                          </Link>
+                        }
+                      />
+                    ))}
+                  </section>
+                );
+              })}
+            </nav>
+            <div className="mt-6">
+              <AccountSection session={session} status={status} />
+            </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

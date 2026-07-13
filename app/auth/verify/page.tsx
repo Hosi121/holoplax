@@ -48,8 +48,8 @@ function VerifyContent() {
 
 export default function VerifyPage() {
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-4">
-      <Suspense fallback={<div>Loading...</div>}>
+    <div className="mx-auto flex min-h-dvh max-w-3xl items-center justify-center px-4">
+      <Suspense fallback={<div>読み込み中...</div>}>
         <VerifyContent />
       </Suspense>
     </div>

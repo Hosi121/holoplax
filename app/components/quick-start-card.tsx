@@ -74,7 +74,7 @@ export function QuickStartCard() {
             href={step.href}
             className="flex flex-1 items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 transition hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/5"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
               <step.icon size={20} />
             </div>
             <div className="min-w-0">

@@ -59,7 +59,7 @@ export default function AdminUsersPage() {
       <header className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Admin</p>
+            <p className="text-xs uppercase text-slate-500">Admin</p>
             <h1 className="text-3xl font-semibold text-slate-900">ユーザー管理</h1>
             <p className="text-sm text-slate-600">管理者のみ閲覧できます。</p>
           </div>
@@ -196,7 +196,7 @@ export default function AdminUsersPage() {
               return (
                 <div key={user.id} className="grid gap-2">
                   <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.8fr_0.8fr_0.9fr_0.7fr] items-center gap-3 border border-slate-200 px-3 py-2 text-sm text-slate-800">
-                    <span className="truncate">{user.name ?? "Unnamed"}</span>
+                    <span className="truncate">{user.name ?? "名前未設定"}</span>
                     <span className="truncate text-slate-600">{user.email ?? "-"}</span>
                     <div className="text-xs uppercase text-slate-500">
                       <select

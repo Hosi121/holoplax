@@ -42,16 +42,27 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), "SF Pro Text", "Helvetica Neue", system-ui,
     -apple-system, sans-serif;
-  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
-a {
-  color: var(--accent);
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 ::selection {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--foreground);
+}
+
+:where(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Toast animation */
@@ -67,5 +78,43 @@ a {
 }
 
 .animate-slide-in {
-  animation: slide-in 0.3s ease-out;
+  animation: slide-in 0.2s ease-out;
+}
+
+/* Compatibility layer while legacy screens move to semantic color tokens. */
+.dark .bg-white {
+  background-color: var(--surface);
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: var(--muted);
+}
+
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: var(--border);
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700 {
+  color: var(--text-primary);
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
