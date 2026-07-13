@@ -1,6 +1,8 @@
 // Discord slash command definitions for Holoplax integration
 // These commands are registered via deploy-discord-commands.js
 
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const { SlashCommandBuilder } = require("discord.js");
 
 // /task command - Create a task directly in backlog

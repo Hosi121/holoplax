@@ -13,7 +13,7 @@ export async function register() {
     const { logger } = await import("./lib/logger");
 
     // Handle unhandled promise rejections
-    process.on("unhandledRejection", (reason, _promise) => {
+    process.on("unhandledRejection", (reason) => {
       logger.error(
         "Unhandled Promise Rejection",
         {

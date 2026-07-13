@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: holoplax
+          POSTGRES_PASSWORD: holoplax
+          POSTGRES_DB: holoplax_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U holoplax"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://holoplax:holoplax@127.0.0.1:5432/holoplax_test
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-nextauth-secret-at-least-32-chars
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      MINIO_ENDPOINT: http://localhost:9000
+      MINIO_PUBLIC_URL: http://localhost:9000
+      MINIO_BUCKET_AVATARS: holoplax-avatars
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive infra/terraform
+      - run: terraform -chdir=infra/terraform/envs/prod init -backend=false -input=false
+      - run: terraform -chdir=infra/terraform/envs/prod validate
+      - run: terraform -chdir=infra/terraform/envs/staging init -backend=false -input=false
+      - run: terraform -chdir=infra/terraform/envs/staging validate
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run lint
+      - run: npm run test:run
+      - run: npm run build
+      - run: npm run build --prefix mcp-server
+      - run: python3 -m py_compile scripts/metrics/metrics_job.py
+      - name: Start MinIO for upload tests
+        run: >-
+          docker run -d --name minio -p 9000:9000
+          -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin
+          minio/minio:RELEASE.2024-08-17T01-24-54Z server /data
+      - name: Wait for MinIO
+        run: timeout 30 sh -c 'until curl -fsS http://localhost:9000/minio/health/ready; do sleep 1; done'
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

@@ -70,15 +70,12 @@ const write = (entry: LogEntry): void => {
   switch (entry.level) {
     case "debug":
     case "info":
-      // eslint-disable-next-line no-console
       console.log(output);
       break;
     case "warn":
-      // eslint-disable-next-line no-console
       console.warn(output);
       break;
     case "error":
-      // eslint-disable-next-line no-console
       console.error(output);
       break;
   }
