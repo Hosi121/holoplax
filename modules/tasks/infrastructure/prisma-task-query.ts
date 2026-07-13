@@ -10,6 +10,7 @@ type PrismaTaskListFilters = {
   risk?: Severity;
   tags?: string[];
   assigneeId?: string;
+  sprintId?: string;
   dueBefore?: Date;
   dueAfter?: Date;
   minPoints?: number;
@@ -63,6 +64,7 @@ export async function listTasks(workspaceId: string, filters: PrismaTaskListFilt
     ...(filters.urgency ? { urgency: filters.urgency } : {}),
     ...(filters.risk ? { risk: filters.risk } : {}),
     ...(filters.assigneeId ? { assigneeId: filters.assigneeId } : {}),
+    ...(filters.sprintId ? { sprintId: filters.sprintId } : {}),
     ...(filters.tags?.length ? { tags: { hasSome: filters.tags } } : {}),
     ...(filters.dueBefore || filters.dueAfter
       ? {

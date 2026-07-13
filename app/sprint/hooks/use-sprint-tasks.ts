@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { fetchAllTasks } from "@/lib/task-client";
 import {
   SEVERITY,
   type Severity,
@@ -103,31 +104,27 @@ export function useSprintTasks({
       setTasksLoading(false);
       return;
     }
-    // Completed tasks retain their sprintId and belong in the current sprint's
-    // completed section, so fetch both states before filtering by sprintId.
     setTasksLoading(true);
     setTasksError(null);
     try {
-      const res = await apiFetch("/api/tasks?status=SPRINT&status=DONE&limit=500");
-      if (!res.ok) {
-        setTasksError("スプリントのタスクを読み込めませんでした。");
-        return;
+      const params = new URLSearchParams();
+      if (sprintId) {
+        params.set("sprintId", sprintId);
+      } else {
+        params.append("status", "SPRINT");
       }
-      const data = await res.json();
-      setItems(data.tasks ?? []);
+      for (const workflowState of ["READY", "IN_PROGRESS", "BLOCKED", "DONE"]) {
+        params.append("workflowState", workflowState);
+      }
+      setItems(await fetchAllTasks(params));
     } catch {
       setTasksError("スプリントのタスクを読み込めませんでした。");
     } finally {
       setTasksLoading(false);
     }
-  }, [ready, workspaceId]);
+  }, [ready, workspaceId, sprintId]);
 
-  const displayedItems = useMemo(() => {
-    if (sprintId) {
-      return items.filter((item) => item.sprintId === sprintId);
-    }
-    return items.filter((item) => item.status === TASK_STATUS.SPRINT);
-  }, [items, sprintId]);
+  const displayedItems = items;
 
   const used = useMemo(
     () =>

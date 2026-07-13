@@ -57,6 +57,7 @@ export async function GET(request: Request) {
         risk: isSeverity(risk) ? risk : undefined,
         tags: searchParams.get("tags")?.split(",").filter(Boolean),
         assigneeId: searchParams.get("assigneeId") ?? undefined,
+        sprintId: searchParams.get("sprintId") ?? undefined,
         dueBefore: parseDate(searchParams.get("dueBefore")),
         dueAfter: parseDate(searchParams.get("dueAfter")),
         minPoints: Number(searchParams.get("minPoints")),

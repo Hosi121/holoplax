@@ -9,6 +9,7 @@ export type TaskListFilters = {
   risk?: Severity;
   tags?: string[];
   assigneeId?: string;
+  sprintId?: string;
   dueBefore?: Date;
   dueAfter?: Date;
   minPoints?: number;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { fetchAllTasks } from "@/lib/task-client";
 import { type DailyFocusResult, getFocusSummary, selectDailyFocus } from "../../lib/daily-focus";
 import { TASK_STATUS, type TaskDTO } from "../../lib/types";
 import { useWorkspaceId } from "./use-workspace-id";
@@ -28,16 +29,13 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
     setLoading(true);
     setError(null);
     try {
-      const statuses = includeBacklog
-        ? `status=${TASK_STATUS.SPRINT}&status=${TASK_STATUS.BACKLOG}`
-        : `status=${TASK_STATUS.SPRINT}`;
-      const res = await apiFetch(`/api/tasks?${statuses}&limit=100`);
-      if (!res.ok) {
-        setError("今やることを読み込めませんでした。");
-        return;
+      const params = new URLSearchParams();
+      params.append("status", TASK_STATUS.SPRINT);
+      if (includeBacklog) params.append("status", TASK_STATUS.BACKLOG);
+      for (const workflowState of ["READY", "IN_PROGRESS", "BLOCKED"]) {
+        params.append("workflowState", workflowState);
       }
-      const data = await res.json();
-      setTasks(data.tasks ?? []);
+      setTasks(await fetchAllTasks(params));
     } catch {
       setError("今やることを読み込めませんでした。");
     } finally {

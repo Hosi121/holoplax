@@ -4,6 +4,7 @@ import { CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { fetchAllTasks } from "@/lib/task-client";
 import { STORY_POINTS } from "../../lib/points";
 import {
   AUTOMATION_STATUS,
@@ -108,12 +109,12 @@ export default function BacklogPage() {
 
   // Fetch functions need to be defined before useAiSuggestions
   const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[], searchParams?: string) => {
-    const params = statuses.map((status) => `status=${encodeURIComponent(status)}`).join("&");
-    const searchQuery = searchParams ? `&${searchParams}` : "";
-    const res = await apiFetch(`/api/tasks?${params}&limit=200${searchQuery}`);
-    if (!res.ok) throw new Error("tasks");
-    const data = await res.json();
-    return data.tasks ?? [];
+    const params = new URLSearchParams(searchParams);
+    for (const status of statuses) params.append("status", status);
+    for (const workflowState of ["READY", "IN_PROGRESS", "BLOCKED"]) {
+      params.append("workflowState", workflowState);
+    }
+    return fetchAllTasks(params);
   }, []);
 
   const fetchTasks = useCallback(async () => {

@@ -3,6 +3,7 @@
 import { Ban, CheckCircle2, CirclePause, CirclePlay, Inbox } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { fetchAllTasks } from "@/lib/task-client";
 import {
   AUTOMATION_STATUS,
   TASK_WORKFLOW_STATE,
@@ -77,13 +78,11 @@ export default function KanbanPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/tasks?status=BACKLOG&status=SPRINT&status=DONE&limit=400");
-      if (!res.ok) {
-        setError("進捗を読み込めませんでした。");
-        return;
-      }
-      const data = await res.json();
-      setItems(data.tasks ?? []);
+      const params = new URLSearchParams();
+      for (const status of ["BACKLOG", "SPRINT", "DONE"]) params.append("status", status);
+      setItems(await fetchAllTasks(params));
+    } catch {
+      setError("進捗を読み込めませんでした。");
     } finally {
       setLoading(false);
     }

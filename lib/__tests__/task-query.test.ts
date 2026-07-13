@@ -36,6 +36,20 @@ describe("task query boundary", () => {
     expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 13, skip: 24 }));
   });
 
+  it("applies sprint scope on the server", async () => {
+    await listTasks("workspace-1", { sprintId: "sprint-1", workflowStates: ["READY", "DONE"] });
+
+    expect(mocks.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "workspace-1",
+          sprintId: "sprint-1",
+          workflowState: { in: ["READY", "DONE"] },
+        },
+      }),
+    );
+  });
+
   it("always scopes a task lookup to its workspace", async () => {
     await expect(getTask("workspace-1", "task-1")).resolves.toBeNull();
 

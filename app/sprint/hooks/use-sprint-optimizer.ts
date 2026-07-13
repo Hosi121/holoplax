@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { fetchAllTasks } from "@/lib/task-client";
 import {
   calculateTaskScore,
   getOptimizationSummary,
@@ -38,13 +39,9 @@ export function useSprintOptimizer({
     }
     setLoading(true);
     try {
-      const res = await apiFetch("/api/tasks?status=BACKLOG&limit=200");
-      if (!res.ok) {
-        onError?.("やること候補を読み込めませんでした。");
-        return;
-      }
-      const data = await res.json();
-      setBacklogTasks(data.tasks ?? []);
+      setBacklogTasks(await fetchAllTasks("status=BACKLOG&workflowState=READY"));
+    } catch {
+      onError?.("やること候補を読み込めませんでした。");
     } finally {
       setLoading(false);
     }
@@ -56,19 +53,15 @@ export function useSprintOptimizer({
     setLoading(true);
     try {
       // 最新の候補タスクを取得
-      const res = await apiFetch("/api/tasks?status=BACKLOG&limit=200");
-      if (!res.ok) {
-        onError?.("おすすめを計算できませんでした。");
-        return;
-      }
-      const data = await res.json();
-      const tasks: TaskDTO[] = data.tasks ?? [];
+      const tasks: TaskDTO[] = await fetchAllTasks("status=BACKLOG&workflowState=READY");
       setBacklogTasks(tasks);
 
       // 最適化を実行
       const result = optimizeSprint(tasks, capacity);
       setOptimizationResult(result);
       setShowPanel(true);
+    } catch {
+      onError?.("おすすめを計算できませんでした。");
     } finally {
       setLoading(false);
     }
