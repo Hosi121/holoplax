@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const tx = {
     sprint: {
+      findFirst: vi.fn(),
       updateMany: vi.fn(),
       create: vi.fn(),
       findUniqueOrThrow: vi.fn(),
@@ -14,28 +15,25 @@ const mocks = vi.hoisted(() => {
     },
     velocityEntry: { create: vi.fn() },
     taskStatusEvent: { createMany: vi.fn() },
+    auditLog: { create: vi.fn(), createMany: vi.fn() },
   };
   return {
     tx,
-    sprintFindFirst: vi.fn(),
     sprintFindMany: vi.fn(),
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    logAudit: vi.fn(),
   };
 });
 
 vi.mock("../prisma", () => ({
   default: {
     sprint: {
-      findFirst: mocks.sprintFindFirst,
       findMany: mocks.sprintFindMany,
     },
     $transaction: mocks.transaction,
   },
 }));
-vi.mock("../audit", () => ({ logAudit: mocks.logAudit }));
 
-import { closeCurrentSprint, createSprint, listSprints } from "../sprints/sprint-service";
+import { closeCurrentSprint, createSprint, listSprints } from "../../modules/sprints/index.server";
 
 const closedSprint = {
   id: "sprint-1",
@@ -50,7 +48,8 @@ const closedSprint = {
 describe("sprint application service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.logAudit.mockResolvedValue(undefined);
+    mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
+    mocks.tx.auditLog.createMany.mockResolvedValue({ count: 2 });
   });
 
   it("computes sprint summaries in one query", async () => {
@@ -71,7 +70,7 @@ describe("sprint application service", () => {
   });
 
   it("closes, projects velocity, and resets tasks in one transaction", async () => {
-    mocks.sprintFindFirst.mockResolvedValue({ id: "sprint-1" });
+    mocks.tx.sprint.findFirst.mockResolvedValue({ id: "sprint-1" });
     mocks.tx.sprint.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.sprint.findUniqueOrThrow.mockResolvedValue(closedSprint);
     mocks.tx.task.aggregate.mockResolvedValue({ _sum: { points: 8 } });
@@ -91,26 +90,26 @@ describe("sprint application service", () => {
     expect(mocks.tx.taskStatusEvent.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ trigger: "SPRINT_END", taskId: "task-1" })],
     });
-    expect(mocks.logAudit).toHaveBeenCalledTimes(2);
+    expect(mocks.tx.auditLog.createMany).toHaveBeenCalledTimes(1);
   });
 
   it("does not create duplicate velocity when another close wins", async () => {
-    mocks.sprintFindFirst.mockResolvedValue({ id: "sprint-1" });
+    mocks.tx.sprint.findFirst.mockResolvedValue({ id: "sprint-1" });
     mocks.tx.sprint.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
       closeCurrentSprint({ userId: "user-1", workspaceId: "workspace-1" }),
-    ).rejects.toMatchObject({ code: "SPRINT_CONFLICT", status: 409 });
+    ).rejects.toMatchObject({ code: "SPRINT_CONFLICT", kind: "conflict" });
     expect(mocks.tx.velocityEntry.create).not.toHaveBeenCalled();
-    expect(mocks.logAudit).not.toHaveBeenCalled();
+    expect(mocks.tx.auditLog.createMany).not.toHaveBeenCalled();
   });
 
   it("requires the active sprint to be closed through the normal projection path", async () => {
-    mocks.sprintFindFirst.mockResolvedValue({ id: "sprint-1" });
+    mocks.tx.sprint.findFirst.mockResolvedValue({ id: "sprint-1" });
 
     await expect(
       createSprint({ userId: "user-1", workspaceId: "workspace-1" }),
-    ).rejects.toMatchObject({ code: "SPRINT_CONFLICT", status: 409 });
-    expect(mocks.transaction).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ code: "SPRINT_CONFLICT", kind: "conflict" });
+    expect(mocks.transaction).toHaveBeenCalledOnce();
   });
 });

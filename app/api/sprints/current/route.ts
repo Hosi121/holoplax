@@ -7,7 +7,7 @@ import {
   closeCurrentSprint,
   createSprint,
   getCurrentSprint,
-} from "../../../../lib/sprints/sprint-service";
+} from "../../../../modules/sprints/index.server";
 
 const handlerOptions = (method: string, message: string) => ({
   logLabel: `${method} /api/sprints/current`,
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       code: "SPRINT_VALIDATION",
       allowEmpty: true,
     });
-    return ok({ sprint: await createSprint({ userId, workspaceId, input }) });
+    return ok({ sprint: await createSprint({ userId, workspaceId }, input) });
   });
 }
 

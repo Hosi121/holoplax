@@ -1,11 +1,11 @@
-import type { SprintStatus } from "@prisma/client";
 import {
   closeCurrentSprint,
   createSprint as createSharedSprint,
   getCurrentSprint as getSharedCurrentSprint,
   listSprints as listSharedSprints,
   type SprintStartInput,
-} from "../../../lib/sprints/sprint-service.js";
+  type SprintStatus,
+} from "../../../modules/sprints/index.server.js";
 import type { ExecutionContext } from "../context.js";
 
 export type CreateSprintInput = SprintStartInput;
@@ -16,7 +16,7 @@ export const listSprints = (ctx: ExecutionContext, status?: string) =>
 export const getCurrentSprint = (ctx: ExecutionContext) => getSharedCurrentSprint(ctx.workspaceId);
 
 export const createSprint = (ctx: ExecutionContext, input: CreateSprintInput = {}) =>
-  createSharedSprint({ userId: ctx.userId, workspaceId: ctx.workspaceId, input });
+  createSharedSprint({ userId: ctx.userId, workspaceId: ctx.workspaceId }, input);
 
 export const closeSprint = (ctx: ExecutionContext) =>
   closeCurrentSprint({ userId: ctx.userId, workspaceId: ctx.workspaceId });

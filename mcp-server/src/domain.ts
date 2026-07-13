@@ -1,4 +1,5 @@
-import { RoutineCadence, Severity, SprintStatus, TaskStatus, TaskType } from "@prisma/client";
+import { SprintStatus } from "../../modules/sprints/index.js";
+import { RoutineCadence, Severity, TaskStatus, TaskType } from "../../modules/tasks/index.js";
 
 // Prisma is the source of truth for enum values. Keeping these aliases in one
 // module prevents MCP input schemas and services from drifting from the DB.

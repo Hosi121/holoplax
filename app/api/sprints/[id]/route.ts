@@ -3,7 +3,7 @@ import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { SprintUpdateSchema } from "../../../../lib/contracts/sprint";
 import { parseBody } from "../../../../lib/http/validation";
-import { updateSprint } from "../../../../lib/sprints/sprint-service";
+import { updateSprint } from "../../../../modules/sprints/index.server";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApiHandler(
@@ -25,7 +25,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         code: "SPRINT_VALIDATION",
       });
       return ok({
-        sprint: await updateSprint({ userId, workspaceId, sprintId, input }),
+        sprint: await updateSprint({ userId, workspaceId }, sprintId, input),
       });
     },
   );

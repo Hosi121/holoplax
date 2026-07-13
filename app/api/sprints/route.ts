@@ -1,8 +1,7 @@
-import type { SprintStatus } from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import { listSprints } from "../../../lib/sprints/sprint-service";
+import { listSprints, type SprintStatus } from "../../../modules/sprints/index.server";
 
 const isSprintStatus = (value: string | null): value is SprintStatus =>
   value === "ACTIVE" || value === "CLOSED";
