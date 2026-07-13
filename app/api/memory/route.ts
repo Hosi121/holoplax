@@ -87,7 +87,7 @@ const defaultMemoryDefinitions = [
     granularity: "static",
     updatePolicy: "manual",
     decayDays: null,
-    description: "Definition of Done",
+    description: "完了の条件",
   },
   {
     key: "team_workflow_schema",

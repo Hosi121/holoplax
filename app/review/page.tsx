@@ -182,7 +182,7 @@ export default async function ReviewPage() {
         if (task.status === "SPRINT") {
           return { id: task.id, label: `スプリントに「${task.title}」を追加` };
         }
-        return { id: task.id, label: `バックログ追加: ${task.title}` };
+        return { id: task.id, label: `やること追加: ${task.title}` };
       })
     : [];
 
@@ -208,7 +208,7 @@ export default async function ReviewPage() {
     arrowDir: "positive" | "negative";
   }[] = [
     {
-      label: "今週のコミット",
+      label: "計画ポイント",
       value: `${committedPoints} pt`,
       delta: `${committedPoints - (prevVelocity ?? 0) >= 0 ? "+" : ""}${
         committedPoints - (prevVelocity ?? 0)
@@ -224,21 +224,21 @@ export default async function ReviewPage() {
       arrowDir: "positive",
     },
     {
-      label: "平均リードタイム",
+      label: "平均完了日数",
       value: leadTimeDays !== null ? formatDays(leadTimeDays) : "—",
       delta: null,
       icon: Timer,
       arrowDir: "positive",
     },
     {
-      label: "次のレビュー",
+      label: "次の振り返り",
       value: reviewLabel,
       delta: reviewEta,
       icon: CalendarDays,
       arrowDir: "positive",
     },
     {
-      label: "PBI消化",
+      label: "やること完了",
       value: `${sprintPbiDone.length}/${sprintPbis.length}`,
       delta: `${Math.round(pbiCompletionRate)}%`,
       icon: CheckCircle2,
@@ -251,29 +251,24 @@ export default async function ReviewPage() {
 
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
-      <header className="border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50 p-6 shadow-sm">
+      <header className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-              Dashboard
-            </p>
-            <h1 className="text-3xl font-semibold text-slate-900">スプリントの今が一目でわかる</h1>
+            <p className="text-xs font-semibold text-slate-500">振り返り</p>
+            <h1 className="text-3xl font-semibold text-slate-900">今回の進み方を振り返る</h1>
             <p className="text-sm text-slate-600">
-              タスクの流れ、ベロシティ、消化ペースを集約。次の一手を迷わない。
+              完了したことと残ったことを確認し、次に進める内容を決めます。
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-semibold">
             <span className="border border-slate-200 bg-white px-3 py-1 text-slate-700">
               スプリント: {sprint?.name ?? "未開始"}
             </span>
-            <span className="border border-[#2323eb]/40 bg-[#2323eb]/10 px-3 py-1 text-[#2323eb]">
-              AI ready
-            </span>
             <Link
               href="/backlog"
               className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
             >
-              Planへ戻る
+              やることへ
             </Link>
           </div>
         </div>
@@ -285,7 +280,7 @@ export default async function ReviewPage() {
         {kpis.map((kpi) => (
           <div key={kpi.label} className="border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{kpi.label}</p>
+              <p className="text-xs uppercase text-slate-500">{kpi.label}</p>
               <kpi.icon size={16} className="text-slate-400" />
             </div>
             <div className="mt-3 flex items-baseline gap-2">
@@ -312,13 +307,13 @@ export default async function ReviewPage() {
       <FocusQueue />
 
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="border border-slate-200 bg-white p-6 shadow-sm">
+        <div id="completion-pace" className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-slate-900">ベロシティ推移</h2>
+              <h2 className="text-lg font-semibold text-slate-900">完了ペース</h2>
               <HelpTooltip text="過去のスプリントで完了したポイント数の推移です。安定するほど計画精度が上がります。" />
             </span>
-            <span className="text-xs text-slate-500">直近7スプリント</span>
+            <span className="text-xs text-slate-500">直近7回</span>
           </div>
           {velocitySeries.length ? (
             <>
@@ -348,10 +343,10 @@ export default async function ReviewPage() {
           ) : (
             <EmptyState
               icon="BarChart3"
-              title="ベロシティデータがありません"
+              title="完了ペースの記録がありません"
               description={
                 sprint
-                  ? "スプリントを完了するとベロシティが記録されます。"
+                  ? "スプリントを完了すると完了ポイントが記録されます。"
                   : "スプリントを開始して完了すると自動で記録されます。"
               }
               actionLabel={sprint ? "スプリントを確認" : "スプリントを始める"}
@@ -362,19 +357,13 @@ export default async function ReviewPage() {
 
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">バーンダウン</h2>
+            <h2 className="text-lg font-semibold text-slate-900">残りポイント</h2>
             <span className="text-xs text-slate-500">7日間</span>
           </div>
           {burndownSeries.length ? (
             <>
               <div className="mt-4">
                 <svg viewBox="0 0 240 120" className="h-32 w-full">
-                  <defs>
-                    <linearGradient id="burn-gradient" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#2323eb" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#2323eb" stopOpacity="0.02" />
-                    </linearGradient>
-                  </defs>
                   <polyline
                     fill="none"
                     stroke="#2323eb"
@@ -387,16 +376,6 @@ export default async function ReviewPage() {
                       })
                       .join(" ")}
                   />
-                  <polygon
-                    fill="url(#burn-gradient)"
-                    points={`10,110 ${burndownSeries
-                      .map((value, idx) => {
-                        const x = (idx / (burndownSeries.length - 1)) * 220 + 10;
-                        const y = 110 - (value / burndownMax) * 90;
-                        return `${x},${y}`;
-                      })
-                      .join(" ")} 230,110`}
-                  />
                 </svg>
               </div>
               <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
@@ -407,10 +386,10 @@ export default async function ReviewPage() {
           ) : (
             <EmptyState
               icon="TrendingDown"
-              title="バーンダウンはまだありません"
+              title="残りポイントの記録はまだありません"
               description={
                 sprint
-                  ? "タスクを完了していくとバーンダウンが表示されます。"
+                  ? "タスクを完了していくと、残りポイントの推移が表示されます。"
                   : "スプリントを開始し、タスクの進行が蓄積されると表示されます。"
               }
               actionLabel={sprint ? "スプリントを確認" : "スプリントを始める"}
@@ -423,7 +402,7 @@ export default async function ReviewPage() {
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">バックログ状況</h2>
+            <h2 className="text-lg font-semibold text-slate-900">やることの状況</h2>
             <span className="text-xs text-slate-500">分解しきい値 {splitThreshold} pt</span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -442,7 +421,7 @@ export default async function ReviewPage() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <p className="text-xs text-slate-500">キャパ使用率</p>
+              <p className="text-xs text-slate-500">上限ポイントの使用率</p>
               <p className="mt-2 text-2xl font-semibold text-slate-900">
                 {sprint?.capacityPoints
                   ? `${Math.min(
@@ -463,9 +442,6 @@ export default async function ReviewPage() {
               <p className="mt-1 text-[11px] text-slate-500">依存が残るタスク数の目安</p>
             </div>
           </div>
-          <p className="mt-3 text-xs text-slate-500">
-            直近は高スコアが増加。分解提案の優先度を上げると回転が速くなります。
-          </p>
         </div>
 
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
@@ -480,7 +456,7 @@ export default async function ReviewPage() {
                   key={item.id}
                   className="flex items-start gap-3 border border-slate-200 bg-slate-50 px-4 py-3"
                 >
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#2323eb]" />
+                  <span className="mt-1 size-2 rounded-full bg-[#2323eb]" />
                   <p>{item.label}</p>
                 </div>
               ))}

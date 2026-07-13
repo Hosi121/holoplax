@@ -14,9 +14,16 @@ export type UseAccountOptions = {
     image: string | null;
   }) => Promise<void>;
   onRouterRefresh?: () => void;
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
 };
 
-export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptions = {}) {
+export function useAccount({
+  onSessionUpdate,
+  onRouterRefresh,
+  onError,
+  onSuccess,
+}: UseAccountOptions = {}) {
   const [account, setAccount] = useState<AccountForm>({ name: "", email: "", image: "" });
   const [accountDirty, setAccountDirty] = useState(false);
   const [linkedProviders, setLinkedProviders] = useState<string[]>([]);
@@ -24,7 +31,10 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
 
   const fetchAccount = useCallback(async () => {
     const res = await apiFetch("/api/account");
-    if (!res.ok) return;
+    if (!res.ok) {
+      onError?.("アカウント情報を読み込めませんでした。");
+      return;
+    }
     const data = await res.json();
     setAccount({
       name: data.user?.name ?? "",
@@ -33,7 +43,7 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
     });
     setLinkedProviders(data.linkedProviders ?? []);
     setAccountDirty(false);
-  }, []);
+  }, [onError]);
 
   const updateAccountField = (field: keyof AccountForm, value: string) => {
     setAccount((p) => ({ ...p, [field]: value }));
@@ -53,8 +63,11 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
         image: account.image || null,
       });
       onRouterRefresh?.();
+      setAccountDirty(false);
+      onSuccess?.("アカウント情報を保存しました。");
+    } else {
+      onError?.("アカウント情報を保存できませんでした。");
     }
-    setAccountDirty(false);
   };
 
   const uploadAvatar = async (file: File) => {
@@ -66,7 +79,10 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
         contentType: file.type || "image/png",
       }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      onError?.("画像をアップロードする準備ができませんでした。");
+      return;
+    }
     const data = await res.json();
     // Only mark the new image URL if the storage PUT actually succeeded —
     // otherwise we'd save a URL pointing at an object that was never uploaded.
@@ -75,7 +91,10 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
       headers: { "Content-Type": file.type || "image/png" },
       body: file,
     });
-    if (!putRes.ok) return;
+    if (!putRes.ok) {
+      onError?.("画像をアップロードできませんでした。");
+      return;
+    }
     setAccount((p) => ({ ...p, image: data.publicUrl }));
     setAccountDirty(true);
   };
@@ -90,6 +109,9 @@ export function useAccount({ onSessionUpdate, onRouterRefresh }: UseAccountOptio
       });
       if (res.ok) {
         setLinkedProviders((prev) => prev.filter((p) => p !== provider));
+        onSuccess?.("アカウント連携を解除しました。");
+      } else {
+        onError?.("アカウント連携を解除できませんでした。");
       }
     } finally {
       setUnlinking(null);

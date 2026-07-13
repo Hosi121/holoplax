@@ -55,9 +55,11 @@ export type UseMemoryOptions = {
   ready: boolean;
   workspaceId: string | null;
   onWarning?: (message: string) => void;
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
 };
 
-export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
+export function useMemory({ ready, workspaceId, onWarning, onError, onSuccess }: UseMemoryOptions) {
   const [memoryDefinitions, setMemoryDefinitions] = useState<MemoryDefinitionRow[]>([]);
   const [memoryClaims, setMemoryClaims] = useState<Record<string, MemoryClaimRow>>({});
   const [memoryDrafts, setMemoryDrafts] = useState<Record<string, string>>({});
@@ -73,7 +75,10 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
       // workspaceId is used to trigger refetch when workspace changes
       void workspaceId;
       const res = await apiFetch("/api/memory");
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("AIが覚えている情報を読み込めませんでした。");
+        return;
+      }
       const data = await res.json();
       const types: MemoryDefinitionRow[] = data.definitions ?? [];
       const claimMap: Record<string, MemoryClaimRow> = {};
@@ -93,7 +98,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
     } finally {
       setMemoryLoading(false);
     }
-  }, [ready, workspaceId]);
+  }, [ready, workspaceId, onError]);
 
   const userMemoryDefinitions = useMemo(
     () => memoryDefinitions.filter((type) => type.scope === "USER"),
@@ -122,7 +127,10 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ definitionId: type.id, value }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("情報を保存できませんでした。");
+        return;
+      }
       const data = await res.json();
       if (data.claim) {
         setMemoryClaims((prev) => ({ ...prev, [type.id]: data.claim }));
@@ -131,6 +139,7 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
           [type.id]: formatClaimValue(type, data.claim),
         }));
       }
+      onSuccess?.("AIが覚える情報を保存しました。");
     } finally {
       setMemorySavingId(null);
     }
@@ -146,13 +155,17 @@ export function useMemory({ ready, workspaceId, onWarning }: UseMemoryOptions) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ claimId: claim.id }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("情報を削除できませんでした。");
+        return;
+      }
       setMemoryClaims((prev) => {
         const next = { ...prev };
         delete next[type.id];
         return next;
       });
       setMemoryDrafts((prev) => ({ ...prev, [type.id]: "" }));
+      onSuccess?.("AIが覚えていた情報を削除しました。");
     } finally {
       setMemoryRemovingId(null);
     }

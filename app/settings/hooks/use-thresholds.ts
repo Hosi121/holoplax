@@ -4,9 +4,10 @@ import { apiFetch } from "@/lib/api-client";
 export type UseThresholdsOptions = {
   ready: boolean;
   workspaceId: string | null;
+  onError?: (message: string) => void;
 };
 
-export function useThresholds({ ready, workspaceId }: UseThresholdsOptions) {
+export function useThresholds({ ready, workspaceId, onError }: UseThresholdsOptions) {
   const [low, setLow] = useState(35);
   const [high, setHigh] = useState(70);
   const [dirty, setDirty] = useState(false);
@@ -19,13 +20,20 @@ export function useThresholds({ ready, workspaceId }: UseThresholdsOptions) {
       setDirty(false);
       return;
     }
-    const res = await apiFetch("/api/automation");
-    if (!res.ok) return;
-    const data = await res.json();
-    setLow(data.low ?? 35);
-    setHigh(data.high ?? 70);
-    setDirty(false);
-  }, [ready, workspaceId]);
+    try {
+      const res = await apiFetch("/api/automation");
+      if (!res.ok) {
+        onError?.("AI自動化の設定を読み込めませんでした。");
+        return;
+      }
+      const data = await res.json();
+      setLow(data.low ?? 35);
+      setHigh(data.high ?? 70);
+      setDirty(false);
+    } catch {
+      onError?.("AI自動化の設定を読み込めませんでした。");
+    }
+  }, [ready, workspaceId, onError]);
 
   const updateLow = (value: number) => {
     setLow(value);

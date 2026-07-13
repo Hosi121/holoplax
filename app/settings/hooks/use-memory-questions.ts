@@ -49,9 +49,10 @@ export const formatQuestionValue = (question: MemoryQuestionRow) => {
 export type UseMemoryQuestionsOptions = {
   ready: boolean;
   onAccept?: () => void;
+  onError?: (message: string) => void;
 };
 
-export function useMemoryQuestions({ ready, onAccept }: UseMemoryQuestionsOptions) {
+export function useMemoryQuestions({ ready, onAccept, onError }: UseMemoryQuestionsOptions) {
   const [memoryQuestions, setMemoryQuestions] = useState<MemoryQuestionRow[]>([]);
   const [memoryQuestionLoading, setMemoryQuestionLoading] = useState(false);
   const [memoryQuestionActionId, setMemoryQuestionActionId] = useState<string | null>(null);
@@ -61,13 +62,16 @@ export function useMemoryQuestions({ ready, onAccept }: UseMemoryQuestionsOption
     setMemoryQuestionLoading(true);
     try {
       const res = await apiFetch("/api/memory/questions");
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("AIからの確認事項を読み込めませんでした。");
+        return;
+      }
       const data = await res.json();
       setMemoryQuestions(data.questions ?? []);
     } finally {
       setMemoryQuestionLoading(false);
     }
-  }, [ready]);
+  }, [ready, onError]);
 
   const activeQuestion = useMemo(() => memoryQuestions[0] ?? null, [memoryQuestions]);
 
@@ -82,7 +86,10 @@ export function useMemoryQuestions({ ready, onAccept }: UseMemoryQuestionsOption
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("回答を保存できませんでした。");
+        return;
+      }
       setMemoryQuestions((prev) => prev.filter((item) => item.id !== question.id));
       if (action === "accept") {
         onAccept?.();

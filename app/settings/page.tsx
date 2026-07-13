@@ -4,8 +4,10 @@ import { Chrome, Github } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useToast } from "../components/toast";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Modal } from "../components/ui/dialog";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { useAccount } from "./hooks/use-account";
 import {
@@ -26,13 +28,11 @@ export default function SettingsPage() {
 }
 
 function SettingsContent() {
-  const { data: session, update } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const { update } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { workspaceId, ready } = useWorkspaceId();
   const toast = useToast();
-  const [notifications, setNotifications] = useState(false);
   const errorHandled = useRef(false);
 
   useEffect(() => {
@@ -63,10 +63,12 @@ function SettingsContent() {
       await update({ user });
     },
     onRouterRefresh: () => router.refresh(),
+    onError: toast.error,
+    onSuccess: toast.success,
   });
 
   const { low, high, dirty, fetchThresholds, updateLow, updateHigh, saveThresholds } =
-    useThresholds({ ready, workspaceId });
+    useThresholds({ ready, workspaceId, onError: toast.error });
 
   const {
     memoryClaims,
@@ -83,7 +85,13 @@ function SettingsContent() {
     removeMemory,
     setEditingMemoryId,
     cancelEdit,
-  } = useMemory({ ready, workspaceId, onWarning: toast.warning });
+  } = useMemory({
+    ready,
+    workspaceId,
+    onWarning: toast.warning,
+    onError: toast.error,
+    onSuccess: toast.success,
+  });
 
   const {
     memoryQuestionLoading,
@@ -94,6 +102,7 @@ function SettingsContent() {
   } = useMemoryQuestions({
     ready,
     onAccept: () => void fetchMemory(),
+    onError: toast.error,
   });
 
   useEffect(() => {
@@ -102,6 +111,14 @@ function SettingsContent() {
     void fetchMemory();
     void fetchMemoryQuestions();
   }, [fetchThresholds, fetchAccount, fetchMemory, fetchMemoryQuestions]);
+
+  const handleSaveThresholds = async () => {
+    if (await saveThresholds()) {
+      toast.success("AI自動化の境界値を保存しました。");
+    } else {
+      toast.error("AI自動化の境界値を保存できませんでした。");
+    }
+  };
 
   const renderMemoryInput = (type: MemoryDefinitionRow) => {
     const value = memoryDrafts[type.id] ?? "";
@@ -183,13 +200,21 @@ function SettingsContent() {
         <div className="flex gap-2 text-xs">
           {isEditing ? (
             <>
-              <button
-                onClick={onRemove}
-                disabled={Boolean(removing)}
-                className="border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] text-rose-700 transition hover:border-rose-300 disabled:opacity-50"
-              >
-                削除
-              </button>
+              <ConfirmDialog
+                title="この情報を削除しますか？"
+                description={`「${type.key}」に保存した情報を削除します。`}
+                confirmLabel="削除する"
+                onConfirm={onRemove}
+                trigger={
+                  <button
+                    type="button"
+                    disabled={Boolean(removing)}
+                    className="border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] text-rose-700 hover:border-rose-300 disabled:opacity-50"
+                  >
+                    削除
+                  </button>
+                }
+              />
               <button
                 onClick={onSave}
                 disabled={saving}
@@ -224,17 +249,14 @@ function SettingsContent() {
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
       <header className="border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Settings</p>
+            <p className="text-xs uppercase text-slate-500">Settings</p>
             <h1 className="text-3xl font-semibold text-slate-900">設定</h1>
             <p className="text-sm text-slate-600">
-              しきい値、通知、ストレージなどの設定（モック）。
+              アカウント、AI自動化、AIが覚えている情報を管理します。
             </p>
           </div>
-          <span className="border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
-            coming soon
-          </span>
         </div>
       </header>
 
@@ -264,7 +286,7 @@ function SettingsContent() {
             </label>
           </div>
           <div className="mt-4 flex items-center gap-4">
-            <div className="h-12 w-12 border border-slate-200 bg-slate-100">
+            <div className="size-12 border border-slate-200 bg-slate-100">
               {account.image ? (
                 <Image
                   src={account.image}
@@ -324,13 +346,21 @@ function SettingsContent() {
                 </div>
               </div>
               {linkedProviders.includes("google") ? (
-                <button
-                  onClick={() => unlinkProvider("google")}
-                  disabled={unlinking === "google"}
-                  className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-                >
-                  {unlinking === "google" ? "解除中..." : "連携解除"}
-                </button>
+                <ConfirmDialog
+                  title="Googleとの連携を解除しますか？"
+                  description="別のログイン方法を利用できることを確認してから解除してください。"
+                  confirmLabel="連携を解除"
+                  onConfirm={() => unlinkProvider("google")}
+                  trigger={
+                    <button
+                      type="button"
+                      disabled={unlinking === "google"}
+                      className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                    >
+                      {unlinking === "google" ? "解除中..." : "連携解除"}
+                    </button>
+                  }
+                />
               ) : (
                 <button
                   onClick={() => signIn("google", { callbackUrl: "/settings" })}
@@ -351,13 +381,21 @@ function SettingsContent() {
                 </div>
               </div>
               {linkedProviders.includes("github") ? (
-                <button
-                  onClick={() => unlinkProvider("github")}
-                  disabled={unlinking === "github"}
-                  className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
-                >
-                  {unlinking === "github" ? "解除中..." : "連携解除"}
-                </button>
+                <ConfirmDialog
+                  title="GitHubとの連携を解除しますか？"
+                  description="別のログイン方法を利用できることを確認してから解除してください。"
+                  confirmLabel="連携を解除"
+                  onConfirm={() => unlinkProvider("github")}
+                  trigger={
+                    <button
+                      type="button"
+                      disabled={unlinking === "github"}
+                      className="border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                    >
+                      {unlinking === "github" ? "解除中..." : "連携解除"}
+                    </button>
+                  }
+                />
               ) : (
                 <button
                   onClick={() => signIn("github", { callbackUrl: "/settings" })}
@@ -371,9 +409,9 @@ function SettingsContent() {
         </div>
 
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">AI しきい値</h3>
+          <h3 className="text-lg font-semibold text-slate-900">AI自動化の境界値</h3>
           <p className="text-sm text-slate-600">
-            低・中・高の分岐ポイントを設定（現在: {low} / {high}）。
+            AIに任せる範囲と、分割を提案する範囲を設定します（現在: {low} / {high}）。
           </p>
           <div className="mt-3 flex items-center gap-2 text-sm">
             <input
@@ -389,7 +427,7 @@ function SettingsContent() {
               className="w-20 border border-slate-200 px-3 py-2 text-slate-800 outline-none focus:border-[#2323eb]"
             />
             <button
-              onClick={saveThresholds}
+              onClick={() => void handleSaveThresholds()}
               disabled={!dirty}
               className="border border-slate-200 bg-slate-50 px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
             >
@@ -401,9 +439,9 @@ function SettingsContent() {
         <div className="border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Memory</h3>
+              <h3 className="text-lg font-semibold text-slate-900">AIが覚えている情報</h3>
               <p className="text-sm text-slate-600">
-                ユーザー/ワークスペースの前提情報を管理します。
+                AIの提案で考慮してほしい前提情報を管理します。
               </p>
             </div>
             {memoryLoading || memoryQuestionLoading ? (
@@ -412,9 +450,7 @@ function SettingsContent() {
           </div>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <div className="grid gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                User
-              </p>
+              <p className="text-xs font-semibold uppercase text-slate-400">自分について</p>
               {userMemoryDefinitions.length ? (
                 userMemoryDefinitions.map((type) => (
                   <MemoryCard
@@ -432,12 +468,12 @@ function SettingsContent() {
                   />
                 ))
               ) : (
-                <p className="text-xs text-slate-500">ユーザー向けMemoryは未設定です。</p>
+                <p className="text-xs text-slate-500">自分について保存した情報はありません。</p>
               )}
             </div>
             <div className="grid gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Workspace
+              <p className="text-xs font-semibold uppercase text-slate-400">
+                ワークスペースについて
               </p>
               {workspaceId ? (
                 workspaceMemoryDefinitions.length ? (
@@ -457,7 +493,9 @@ function SettingsContent() {
                     />
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500">ワークスペース向けMemoryは未設定です。</p>
+                  <p className="text-xs text-slate-500">
+                    ワークスペースについて保存した情報はありません。
+                  </p>
                 )
               ) : (
                 <p className="text-xs text-slate-500">ワークスペースを選択すると表示されます。</p>
@@ -465,92 +503,56 @@ function SettingsContent() {
             </div>
           </div>
         </div>
-
-        {isAdmin && (
-          <div className="border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">通知</h3>
-            <p className="text-sm text-slate-600">MVPでは通知オフ。後で Slack/メールを追加。</p>
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <button
-                onClick={() => setNotifications((v) => !v)}
-                className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-              >
-                通知を{notifications ? "無効化" : "有効化"}
-              </button>
-              <span className="text-xs text-slate-600">
-                現在: {notifications ? "オン" : "オフ"}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {isAdmin && (
-          <div className="border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">ストレージ</h3>
-            <p className="text-sm text-slate-600">
-              MinIO (S3互換) を利用中。後で AWS S3 に切替可。
-            </p>
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <button className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
-                バケットを確認
-              </button>
-              <button className="border border-slate-200 bg-white px-4 py-2 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]">
-                接続情報を更新
-              </button>
-            </div>
-          </div>
-        )}
       </section>
 
       {activeQuestion ? (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-4">
-          <div className="w-full max-w-lg border border-slate-200 bg-white p-6 shadow-lg">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Memory 確認</p>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  {activeQuestion.definition.key}
-                </h3>
-                {activeQuestion.definition.description ? (
-                  <p className="text-xs text-slate-500">{activeQuestion.definition.description}</p>
-                ) : null}
-              </div>
-              <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-                信頼度 {Math.round(activeQuestion.confidence * 100)}%
-              </span>
-            </div>
-            <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">候補値</p>
-              <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                {formatQuestionValue(activeQuestion) || "値が未設定です"}
-              </pre>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">この内容をMemoryとして保存しますか？</p>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-              <button
-                onClick={() => respondMemoryQuestion(activeQuestion, "accept")}
-                disabled={memoryQuestionActionId === activeQuestion.id}
-                className="border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50"
-              >
-                採用
-              </button>
-              <button
-                onClick={() => respondMemoryQuestion(activeQuestion, "reject")}
-                disabled={memoryQuestionActionId === activeQuestion.id}
-                className="border border-rose-200 bg-rose-50 px-3 py-1 text-rose-700 transition hover:border-rose-300 disabled:opacity-50"
-              >
-                却下
-              </button>
-              <button
-                onClick={() => respondMemoryQuestion(activeQuestion, "hold")}
-                disabled={memoryQuestionActionId === activeQuestion.id}
-                className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
-              >
-                保留して閉じる
-              </button>
-            </div>
+        <Modal
+          open={Boolean(activeQuestion)}
+          onOpenChange={(open) => {
+            if (!open) void respondMemoryQuestion(activeQuestion, "hold");
+          }}
+          title={activeQuestion.definition.key}
+          description={
+            activeQuestion.definition.description ?? "AIが推測した情報を確認してください。"
+          }
+        >
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm text-slate-600">AIが覚える候補</p>
+            <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+              信頼度 {Math.round(activeQuestion.confidence * 100)}%
+            </span>
           </div>
-        </div>
+          <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            <p className="text-[11px] text-slate-500">候補の内容</p>
+            <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+              {formatQuestionValue(activeQuestion) || "値が未設定です"}
+            </pre>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">この内容をAIが覚えてよいですか？</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+            <button
+              onClick={() => respondMemoryQuestion(activeQuestion, "accept")}
+              disabled={memoryQuestionActionId === activeQuestion.id}
+              className="border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50"
+            >
+              採用
+            </button>
+            <button
+              onClick={() => respondMemoryQuestion(activeQuestion, "reject")}
+              disabled={memoryQuestionActionId === activeQuestion.id}
+              className="border border-rose-200 bg-rose-50 px-3 py-1 text-rose-700 transition hover:border-rose-300 disabled:opacity-50"
+            >
+              却下
+            </button>
+            <button
+              onClick={() => respondMemoryQuestion(activeQuestion, "hold")}
+              disabled={memoryQuestionActionId === activeQuestion.id}
+              className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-50"
+            >
+              保留して閉じる
+            </button>
+          </div>
+        </Modal>
       ) : null}
     </main>
   );
