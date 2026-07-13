@@ -5,7 +5,7 @@
 
 import { createHash } from "crypto";
 import { jwtDecrypt } from "jose";
-import prisma from "./prisma.js";
+import prisma from "./infrastructure/prisma.js";
 
 // NextAuth.js uses HKDF to derive encryption key
 async function getDerivedEncryptionKey(secret: string): Promise<Uint8Array> {

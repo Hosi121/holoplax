@@ -7,7 +7,7 @@ import express from "express";
 import { verifyAuth } from "./auth.js";
 import { getConfig, validateConfig } from "./config.js";
 import { type ExecutionContext, runWithContext } from "./context.js";
-import prisma from "./prisma.js";
+import prisma from "./infrastructure/prisma.js";
 import { getToolByName, listToolDefinitions } from "./tools/index.js";
 
 // Session to auth context mapping for HTTP mode
