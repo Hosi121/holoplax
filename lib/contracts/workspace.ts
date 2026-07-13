@@ -4,11 +4,17 @@ import { EmailSchema } from "./auth";
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
 
 export const WorkspaceRoleSchema = z.enum(["owner", "admin", "member"]);
+const WorkspaceAssignableRoleSchema = z.enum(["admin", "member"]);
 
 const WorkspaceRoleInputSchema = z
   .preprocess(toStringOrEmpty, z.string().trim())
   .transform((value) => value.toLowerCase())
   .pipe(WorkspaceRoleSchema);
+
+const WorkspaceAssignableRoleInputSchema = z
+  .preprocess(toStringOrEmpty, z.string().trim())
+  .transform((value) => value.toLowerCase())
+  .pipe(WorkspaceAssignableRoleSchema);
 
 export const WorkspaceCreateSchema = z
   .object({
@@ -25,7 +31,7 @@ export const WorkspaceCurrentSchema = z
 export const WorkspaceInviteCreateSchema = z
   .object({
     email: EmailSchema,
-    role: WorkspaceRoleInputSchema.optional(),
+    role: WorkspaceAssignableRoleInputSchema.optional(),
   })
   .strip();
 
@@ -38,7 +44,7 @@ export const WorkspaceInviteAcceptSchema = z
 export const WorkspaceMemberAddSchema = z
   .object({
     email: EmailSchema,
-    role: WorkspaceRoleInputSchema.optional(),
+    role: WorkspaceAssignableRoleInputSchema.optional(),
   })
   .strip();
 

@@ -26,34 +26,55 @@ export async function PATCH(
     async () => {
       const { userId } = await requireAuth();
       const { id, userId: targetUserId } = await params;
-      const callerMembership = await requireWorkspaceManager("WORKSPACE", id, userId);
+      await requireWorkspaceManager("WORKSPACE", id, userId);
       const body = await parseBody(request, WorkspaceMemberRoleUpdateSchema, {
         code: "WORKSPACE_VALIDATION",
       });
       const role = body.role;
 
-      // Only an owner may grant the owner role.
-      if (role === "owner" && callerMembership?.role !== "owner") {
-        return errors.forbidden("only the workspace owner can assign the owner role");
-      }
-
-      const target = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
-        select: { role: true },
-      });
+      const [target, workspace] = await Promise.all([
+        prisma.workspaceMember.findUnique({
+          where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
+          select: { role: true },
+        }),
+        prisma.workspace.findUnique({ where: { id }, select: { ownerId: true } }),
+      ]);
       if (!target) {
         return errors.notFound("member not found");
       }
+      if (!workspace) return errors.notFound("workspace not found");
 
-      // Prevent demoting the last remaining owner (which would orphan the
-      // workspace with no owner).
-      if (target.role === "owner" && role !== "owner") {
-        const ownerCount = await prisma.workspaceMember.count({
-          where: { workspaceId: id, role: "owner" },
-        });
-        if (ownerCount <= 1) {
-          return errors.conflict("cannot demote the last remaining owner");
+      if (role === "owner") {
+        if (workspace.ownerId !== userId) {
+          return errors.forbidden("only the current workspace owner can transfer ownership");
         }
+        const updated = await prisma.$transaction(async (tx) => {
+          await tx.workspace.update({ where: { id }, data: { ownerId: targetUserId } });
+          await tx.workspaceMember.updateMany({
+            where: { workspaceId: id, role: "owner", userId: { not: targetUserId } },
+            data: { role: "admin" },
+          });
+          return tx.workspaceMember.update({
+            where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
+            data: { role: "owner" },
+            select: { userId: true, workspaceId: true, role: true },
+          });
+        });
+        await logAudit({
+          actorId: userId,
+          action: "WORKSPACE_OWNERSHIP_TRANSFER",
+          targetWorkspaceId: id,
+          targetUserId,
+          metadata: { previousOwnerId: workspace.ownerId },
+        });
+        return ok({ member: updated });
+      }
+
+      if (workspace.ownerId === targetUserId) {
+        return errors.conflict("transfer ownership before changing the owner's role");
+      }
+      if (target.role === "owner" && workspace.ownerId !== userId) {
+        return errors.forbidden("only the current workspace owner can change an owner role");
       }
 
       const updated = await prisma.workspaceMember.update({
@@ -91,22 +112,19 @@ export async function DELETE(
       const { id, userId: targetUserId } = await params;
       await requireWorkspaceManager("WORKSPACE", id, userId);
 
-      const target = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
-        select: { role: true },
-      });
+      const [target, workspace] = await Promise.all([
+        prisma.workspaceMember.findUnique({
+          where: { workspaceId_userId: { workspaceId: id, userId: targetUserId } },
+          select: { role: true },
+        }),
+        prisma.workspace.findUnique({ where: { id }, select: { ownerId: true } }),
+      ]);
       if (!target) {
         return errors.notFound("member not found");
       }
 
-      // Prevent removing the last remaining owner.
-      if (target.role === "owner") {
-        const ownerCount = await prisma.workspaceMember.count({
-          where: { workspaceId: id, role: "owner" },
-        });
-        if (ownerCount <= 1) {
-          return errors.conflict("cannot remove the last remaining owner");
-        }
+      if (workspace?.ownerId === targetUserId) {
+        return errors.conflict("transfer ownership before removing the owner");
       }
 
       await prisma.workspaceMember.delete({

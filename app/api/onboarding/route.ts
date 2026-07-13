@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireAuth } from "../../../lib/api-auth";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
 import { logAudit } from "../../../lib/audit";
+import { applyAutomationForTask } from "../../../lib/automation";
 import { OnboardingSchema } from "../../../lib/contracts/onboarding";
 import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
@@ -78,15 +79,22 @@ export async function POST(request: Request) {
                 userId,
                 workspaceId: workspace.id,
               },
-              select: { id: true },
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                points: true,
+                status: true,
+              },
             })
           : null;
+        const createdTasks = task ? [task] : [];
         if (routineTitle && routineCadence) {
           const dueAt = new Date();
           dueAt.setDate(dueAt.getDate() + (routineCadence === "DAILY" ? 1 : 7));
           const nextAt = new Date(dueAt);
           nextAt.setDate(nextAt.getDate() + (routineCadence === "DAILY" ? 1 : 7));
-          await tx.task.create({
+          const routineTask = await tx.task.create({
             data: {
               title: routineTitle,
               description: routineDescription,
@@ -101,10 +109,11 @@ export async function POST(request: Request) {
               routineRule: { create: { cadence: routineCadence, nextAt } },
             },
           });
+          createdTasks.push(routineTask);
         }
-        if (focusTasks.length > 0) {
-          await tx.task.createMany({
-            data: focusTasks.slice(0, 3).map((title) => ({
+        for (const title of focusTasks.slice(0, 3)) {
+          const focusTask = await tx.task.create({
+            data: {
               title,
               description: "",
               points: 1,
@@ -113,6 +122,19 @@ export async function POST(request: Request) {
               status: "BACKLOG",
               type: TASK_TYPE.TASK,
               userId,
+              workspaceId: workspace.id,
+            },
+          });
+          createdTasks.push(focusTask);
+        }
+        if (createdTasks.length > 0) {
+          await tx.taskStatusEvent.createMany({
+            data: createdTasks.map((createdTask) => ({
+              taskId: createdTask.id,
+              fromStatus: null,
+              toStatus: "BACKLOG" as const,
+              actorId: userId,
+              trigger: "API" as const,
               workspaceId: workspace.id,
             })),
           });
@@ -123,6 +145,7 @@ export async function POST(request: Request) {
           completedAt,
           workspaceId: workspace.id,
           taskId: task?.id ?? null,
+          createdTasks,
         };
       });
 
@@ -143,6 +166,16 @@ export async function POST(request: Request) {
           focusTasks,
         },
       });
+      // AI/provider latency must not hold the onboarding response open. `after`
+      // keeps this work within the framework-managed request lifetime while the
+      // user can proceed immediately.
+      after(() =>
+        Promise.all(
+          result.createdTasks.map((task) =>
+            applyAutomationForTask({ userId, workspaceId: result.workspaceId, task }),
+          ),
+        ),
+      );
 
       const response = NextResponse.json({
         workspaceId: result.workspaceId,

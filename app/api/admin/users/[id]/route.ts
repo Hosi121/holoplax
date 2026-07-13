@@ -56,6 +56,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           return errors.conflict("cannot demote or disable the last active admin");
         }
       }
+      if (disabled === true) {
+        const ownedWorkspaceCount = await prisma.workspace.count({ where: { ownerId: id } });
+        if (ownedWorkspaceCount > 0) {
+          return errors.conflict("transfer owned workspaces before disabling this user");
+        }
+      }
 
       const updated = await prisma.user.update({
         where: { id },

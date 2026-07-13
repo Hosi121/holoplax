@@ -4,6 +4,69 @@ import { TASK_STATUS } from "../types";
 
 type Tx = Prisma.TransactionClient;
 
+export const hasIncompleteChecklist = (value: unknown): boolean =>
+  Array.isArray(value) &&
+  value.some((item) => item && typeof item === "object" && !(item as Record<string, unknown>).done);
+
+export const graphHasCycleFrom = (
+  startId: string,
+  edges: ReadonlyMap<string, readonly string[]>,
+): boolean => {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (visiting.has(id)) return true;
+    if (visited.has(id)) return false;
+    visiting.add(id);
+    for (const next of edges.get(id) ?? []) {
+      if (visit(next)) return true;
+    }
+    visiting.delete(id);
+    visited.add(id);
+    return false;
+  };
+  return visit(startId);
+};
+
+export async function taskDependencyWouldCycle(
+  tx: Tx,
+  params: { taskId: string; workspaceId: string; dependencyIds: string[] },
+): Promise<boolean> {
+  const rows = await tx.taskDependency.findMany({
+    where: { task: { workspaceId: params.workspaceId } },
+    select: { taskId: true, dependsOnId: true },
+  });
+  const graph = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.taskId === params.taskId) continue;
+    graph.set(row.taskId, [...(graph.get(row.taskId) ?? []), row.dependsOnId]);
+  }
+  graph.set(params.taskId, [...new Set(params.dependencyIds)]);
+  return graphHasCycleFrom(params.taskId, graph);
+}
+
+export async function taskParentWouldCycle(
+  tx: Tx,
+  params: { taskId: string; workspaceId: string; parentId: string | null },
+): Promise<boolean> {
+  if (!params.parentId) return false;
+  if (params.parentId === params.taskId) return true;
+  const rows = await tx.task.findMany({
+    where: { workspaceId: params.workspaceId },
+    select: { id: true, parentId: true },
+  });
+  const parents = new Map(rows.map((row) => [row.id, row.parentId]));
+  parents.set(params.taskId, params.parentId);
+  const seen = new Set<string>();
+  let cursor: string | null | undefined = params.taskId;
+  while (cursor) {
+    if (seen.has(cursor)) return true;
+    seen.add(cursor);
+    cursor = parents.get(cursor);
+  }
+  return false;
+}
+
 export type RoutineCadence = "DAILY" | "WEEKLY";
 
 /** The next due date for a routine, one cadence period after `base`. */

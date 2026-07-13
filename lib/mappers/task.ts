@@ -1,4 +1,4 @@
-import type { TaskAutomationState, TaskStatus } from "../types";
+import type { TaskAutomationState, TaskDTO, TaskStatus } from "../types";
 
 type DepNode = {
   dependsOnId: string;
@@ -28,16 +28,33 @@ type TaskWithDeps<T extends DepNode = DepNode> = {
   updatedAt?: Date;
 };
 
-export const mapTaskWithDependencies = (task: TaskWithDeps) => {
+export const mapTaskWithDependencies = (task: TaskWithDeps): TaskDTO => {
   const dependencyIds = task.dependencies.map((dep) => dep.dependsOnId);
   const dependencies = task.dependencies
     .map((dep) => dep.dependsOn)
     .filter((dep): dep is { id: string; title: string; status: TaskStatus } => Boolean(dep));
   return {
-    ...task,
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    definitionOfDone: task.definitionOfDone ?? undefined,
+    checklist: task.checklist as TaskDTO["checklist"],
+    points: task.points as TaskDTO["points"],
+    urgency: task.urgency as TaskDTO["urgency"],
+    risk: task.risk as TaskDTO["risk"],
+    status: task.status,
+    type: (task.type ?? undefined) as TaskDTO["type"],
+    automationState: (task.automationState ?? undefined) as TaskDTO["automationState"],
+    parentId: task.parentId,
+    dueDate: task.dueDate,
+    assigneeId: task.assigneeId,
+    tags: task.tags,
+    sprintId: task.sprintId,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
     dependencyIds,
     dependencies,
-    routineCadence: task.routineRule?.cadence ?? null,
+    routineCadence: (task.routineRule?.cadence ?? null) as TaskDTO["routineCadence"],
     routineNextAt: task.routineRule?.nextAt ?? null,
   };
 };

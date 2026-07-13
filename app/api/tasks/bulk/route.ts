@@ -1,13 +1,19 @@
+import type { Task } from "@prisma/client";
 import { z } from "zod";
 import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
+import { applyAutomationForTask } from "../../../../lib/automation";
 import { TaskPointsSchema } from "../../../../lib/contracts/task";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
 import { checkSprintCapacity } from "../../../../lib/tasks/sprint-capacity";
+import {
+  createNextRoutineOccurrence,
+  hasIncompleteChecklist,
+} from "../../../../lib/tasks/task-write";
 import { TASK_STATUS } from "../../../../lib/types";
 
 const errors = createDomainErrors("TASK");
@@ -42,15 +48,24 @@ export async function POST(request: Request) {
       });
 
       const { action, taskIds, status, points } = body;
+      const requestedTaskIds = [...new Set(taskIds)];
 
       // Validate task IDs belong to workspace
       const existingTasks = await prisma.task.findMany({
-        where: { id: { in: taskIds }, workspaceId },
-        select: { id: true, status: true, points: true },
+        where: { id: { in: requestedTaskIds }, workspaceId },
+        include: {
+          routineRule: true,
+          dependencies: {
+            select: {
+              dependsOnId: true,
+              dependsOn: { select: { status: true } },
+            },
+          },
+        },
       });
 
-      if (existingTasks.length === 0) {
-        return errors.notFound("no tasks found");
+      if (existingTasks.length !== requestedTaskIds.length) {
+        return errors.notFound("one or more tasks were not found");
       }
 
       const validTaskIds = existingTasks.map((t) => t.id);
@@ -60,6 +75,25 @@ export async function POST(request: Request) {
           if (!status) {
             return errors.badRequest("status is required for status action");
           }
+          if (
+            status === TASK_STATUS.DONE &&
+            existingTasks.some((task) => hasIncompleteChecklist(task.checklist))
+          ) {
+            return errors.badRequest("all checklist items must be complete before moving to done");
+          }
+          const selectedIds = new Set(validTaskIds);
+          const hasUnresolvedDependency = existingTasks.some((task) =>
+            task.dependencies.some(
+              (dependency) =>
+                dependency.dependsOn.status !== TASK_STATUS.DONE &&
+                !(status === TASK_STATUS.DONE && selectedIds.has(dependency.dependsOnId)),
+            ),
+          );
+          if (hasUnresolvedDependency && status !== TASK_STATUS.BACKLOG) {
+            return errors.badRequest("dependencies must be done before moving");
+          }
+
+          let createdRoutineTasks: Task[] = [];
 
           if (status === TASK_STATUS.SPRINT) {
             // The sprint capacity check and the task updates must happen inside a
@@ -111,7 +145,7 @@ export async function POST(request: Request) {
               return errors.badRequest("sprint capacity exceeded");
             }
           } else {
-            await prisma.$transaction(async (tx) => {
+            createdRoutineTasks = await prisma.$transaction(async (tx) => {
               await tx.task.updateMany({
                 where: { id: { in: validTaskIds }, workspaceId },
                 data: {
@@ -133,6 +167,32 @@ export async function POST(request: Request) {
                   })),
                 });
               }
+              const created: Task[] = [];
+              if (status === TASK_STATUS.DONE) {
+                for (const task of tasksChangingStatus) {
+                  const next = await createNextRoutineOccurrence(tx, {
+                    task,
+                    userId,
+                    workspaceId,
+                  });
+                  if (next) created.push(next);
+                }
+              }
+              return created;
+            });
+          }
+
+          for (const task of createdRoutineTasks) {
+            await applyAutomationForTask({
+              userId,
+              workspaceId,
+              task: {
+                id: task.id,
+                title: task.title,
+                description: task.description,
+                points: task.points,
+                status: task.status,
+              },
             });
           }
 
@@ -208,6 +268,14 @@ export async function POST(request: Request) {
               }
 
               await tx.task.updateMany({
+                where: {
+                  id: { in: validTaskIds },
+                  workspaceId,
+                  automationState: { in: ["DELEGATED", "SPLIT_REJECTED"] },
+                },
+                data: { automationState: "NONE" },
+              });
+              await tx.task.updateMany({
                 where: { id: { in: validTaskIds }, workspaceId },
                 data: { points },
               });
@@ -217,6 +285,20 @@ export async function POST(request: Request) {
 
           if (pointsCapacityExceeded) {
             return errors.badRequest("sprint capacity exceeded");
+          }
+
+          for (const task of existingTasks) {
+            await applyAutomationForTask({
+              userId,
+              workspaceId,
+              task: {
+                id: task.id,
+                title: task.title,
+                description: task.description,
+                points,
+                status: task.status,
+              },
+            });
           }
 
           await logAudit({

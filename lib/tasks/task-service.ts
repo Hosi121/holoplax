@@ -14,9 +14,12 @@ import { checkSprintCapacity, findActiveSprint } from "./sprint-capacity";
 import { isTaskStatus, isTaskType } from "./task-values";
 import {
   createNextRoutineOccurrence,
+  hasIncompleteChecklist,
   nextRoutineAt,
   syncRoutineRule,
   syncTaskDependencies,
+  taskDependencyWouldCycle,
+  taskParentWouldCycle,
   toNullableJsonInput,
 } from "./task-write";
 
@@ -100,6 +103,9 @@ export async function createTask(params: {
   const typeValue = isTaskType(type) ? type : TASK_TYPE.PBI;
   logger.debug("TASK_CREATE narrowed", { statusValue, typeValue });
   const parentCandidate = parentId ? String(parentId) : null;
+  if (statusValue === TASK_STATUS.DONE && hasIncompleteChecklist(checklist)) {
+    throw badRequest("all checklist items must be complete before moving to done");
+  }
 
   // These validations are independent. Starting them together avoids up to
   // four consecutive database round trips on task creation.
@@ -126,6 +132,12 @@ export async function createTask(params: {
       ? findActiveSprint(prisma, workspaceId)
       : Promise.resolve(null),
   ]);
+  const uniqueRequestedDependencies = [...new Set(dependencyList.filter(Boolean))];
+  if (assigneeId && !member) throw badRequest("assignee must be a workspace member");
+  if (parentCandidate && !parent) throw badRequest("parent task not found in workspace");
+  if (allowedDependencies.length !== uniqueRequestedDependencies.length) {
+    throw badRequest("one or more dependencies were not found in workspace");
+  }
   const safeAssigneeId = assigneeId && member ? assigneeId : null;
 
   if (
@@ -307,8 +319,25 @@ export async function updateTask(params: {
     throw notFound();
   }
 
+  const effectiveChecklist = checklistValue === undefined ? currentTask.checklist : checklistValue;
+  if (
+    (statusValue ?? currentTask.status) === TASK_STATUS.DONE &&
+    hasIncompleteChecklist(effectiveChecklist)
+  ) {
+    throw badRequest("all checklist items must be complete before moving to done");
+  }
+
+  if (
+    (body.title !== undefined || body.description !== undefined || body.points !== undefined) &&
+    (currentTask.automationState === "DELEGATED" ||
+      currentTask.automationState === "SPLIT_REJECTED")
+  ) {
+    data.automationState = "NONE";
+  }
+
   if (
     (statusValue === TASK_STATUS.SPRINT || statusValue === TASK_STATUS.DONE) &&
+    !Array.isArray(body.dependencyIds) &&
     currentTask.dependencies &&
     currentTask.dependencies.length > 0
   ) {
@@ -346,10 +375,16 @@ export async function updateTask(params: {
   ]);
 
   if (body.assigneeId !== undefined) {
+    if (body.assigneeId && !memberResult) {
+      throw badRequest("assignee must be a workspace member");
+    }
     data.assigneeId = body.assigneeId && memberResult ? String(body.assigneeId) : null;
   }
 
   if (body.parentId !== undefined) {
+    if (body.parentId && body.parentId !== id && !parentResult) {
+      throw badRequest("parent task not found in workspace");
+    }
     data.parentId = body.parentId && body.parentId !== id && parentResult ? parentResult.id : null;
   }
 
@@ -362,6 +397,25 @@ export async function updateTask(params: {
     }
   }
 
+  const proposedDependencyIds = Array.isArray(body.dependencyIds)
+    ? [...new Set(body.dependencyIds.map(String).filter((depId) => depId !== id))]
+    : null;
+  if (proposedDependencyIds) {
+    const proposedDependencies = await prisma.task.findMany({
+      where: { id: { in: proposedDependencyIds }, workspaceId },
+      select: { id: true, status: true },
+    });
+    if (proposedDependencies.length !== proposedDependencyIds.length) {
+      throw badRequest("one or more dependencies were not found in workspace");
+    }
+    if (
+      (statusValue ?? currentTask.status) !== TASK_STATUS.BACKLOG &&
+      proposedDependencies.some((dependency) => dependency.status !== TASK_STATUS.DONE)
+    ) {
+      throw badRequest("dependencies must be done before moving");
+    }
+  }
+
   if (statusValue === TASK_STATUS.SPRINT && capacity?.activeSprint) {
     data.sprintId = capacity.activeSprint.id;
   }
@@ -369,66 +423,89 @@ export async function updateTask(params: {
     data.sprintId = null;
   }
 
-  const { task, createdRoutineTask } = await prisma.$transaction(async (tx) => {
-    const updated = await tx.task.updateMany({ where: { id, workspaceId }, data });
-    if (!updated.count) {
-      throw new Error("TASK_NOT_FOUND");
-    }
-
-    const updatedTask = await tx.task.findFirst({
-      where: { id, workspaceId },
-      include: { routineRule: { select: { nextAt: true, cadence: true } } },
-    });
-
-    if (Array.isArray(body.dependencyIds)) {
-      await syncTaskDependencies(tx, {
-        taskId: id,
-        workspaceId,
-        dependencyIds: body.dependencyIds.map((depId: string) => String(depId)),
-      });
-    }
-
-    if (updatedTask) {
-      await syncRoutineRule(tx, {
-        task: updatedTask,
-        cadenceValue,
-        routineNextAt,
-        shouldClearRoutine,
-      });
-    }
-
-    await tx.auditLog.create({
-      data: {
-        actorId: userId,
-        action: "TASK_UPDATE",
-        targetWorkspaceId: workspaceId,
-        metadata: { taskId: id },
-      },
-    });
-
-    if (updatedTask && statusValue && currentTask.status !== statusValue) {
-      await tx.taskStatusEvent.create({
-        data: {
-          taskId: updatedTask.id,
-          fromStatus: currentTask.status ?? null,
-          toStatus: statusValue,
-          actorId: userId,
-          trigger: "API",
+  const { task, createdRoutineTask } = await prisma.$transaction(
+    async (tx) => {
+      if (
+        proposedDependencyIds &&
+        (await taskDependencyWouldCycle(tx, {
+          taskId: id,
           workspaceId,
+          dependencyIds: proposedDependencyIds,
+        }))
+      ) {
+        throw badRequest("task dependencies cannot contain a cycle");
+      }
+      if (
+        body.parentId !== undefined &&
+        (await taskParentWouldCycle(tx, {
+          taskId: id,
+          workspaceId,
+          parentId: body.parentId ? String(body.parentId) : null,
+        }))
+      ) {
+        throw badRequest("task hierarchy cannot contain a cycle");
+      }
+      const updated = await tx.task.updateMany({ where: { id, workspaceId }, data });
+      if (!updated.count) {
+        throw new Error("TASK_NOT_FOUND");
+      }
+
+      const updatedTask = await tx.task.findFirst({
+        where: { id, workspaceId },
+        include: { routineRule: { select: { nextAt: true, cadence: true } } },
+      });
+
+      if (Array.isArray(body.dependencyIds)) {
+        await syncTaskDependencies(tx, {
+          taskId: id,
+          workspaceId,
+          dependencyIds: body.dependencyIds.map((depId: string) => String(depId)),
+        });
+      }
+
+      if (updatedTask) {
+        await syncRoutineRule(tx, {
+          task: updatedTask,
+          cadenceValue,
+          routineNextAt,
+          shouldClearRoutine,
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: userId,
+          action: "TASK_UPDATE",
+          targetWorkspaceId: workspaceId,
+          metadata: { taskId: id },
         },
       });
-    }
 
-    const newRoutineTask =
-      updatedTask &&
-      statusValue === TASK_STATUS.DONE &&
-      currentTask.status !== TASK_STATUS.DONE &&
-      updatedTask.routineRule != null
-        ? await createNextRoutineOccurrence(tx, { task: updatedTask, userId, workspaceId })
-        : null;
+      if (updatedTask && statusValue && currentTask.status !== statusValue) {
+        await tx.taskStatusEvent.create({
+          data: {
+            taskId: updatedTask.id,
+            fromStatus: currentTask.status ?? null,
+            toStatus: statusValue,
+            actorId: userId,
+            trigger: "API",
+            workspaceId,
+          },
+        });
+      }
 
-    return { task: updatedTask, createdRoutineTask: newRoutineTask };
-  });
+      const newRoutineTask =
+        updatedTask &&
+        statusValue === TASK_STATUS.DONE &&
+        currentTask.status !== TASK_STATUS.DONE &&
+        updatedTask.routineRule != null
+          ? await createNextRoutineOccurrence(tx, { task: updatedTask, userId, workspaceId })
+          : null;
+
+      return { task: updatedTask, createdRoutineTask: newRoutineTask };
+    },
+    { isolationLevel: "Serializable" },
+  );
 
   if (!task) {
     throw notFound();
