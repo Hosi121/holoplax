@@ -4,27 +4,17 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { cn } from "../../lib/cn";
 import { STORY_POINTS } from "../../lib/points";
+import { InlineError } from "../components/ui/feedback";
 
-type IntentOption = {
-  id: string;
-  title: string;
-  summary: string;
-};
+const intents = [
+  { id: "personal", title: "個人で使う", summary: "自分の目標や日々のやることを整理する" },
+  { id: "team", title: "チームで使う", summary: "メンバーと計画や進み具合を共有する" },
+  { id: "learning", title: "習慣や学習に使う", summary: "繰り返し取り組み、成長を記録する" },
+  { id: "product", title: "仕事・事業で使う", summary: "成果に向けて優先順位を決める" },
+] as const;
 
-const intents: IntentOption[] = [
-  { id: "personal", title: "個人の挑戦", summary: "自分の夢や目標を形にする" },
-  { id: "team", title: "チームの航海", summary: "仲間とリズムを揃えて進める" },
-  { id: "learning", title: "学びの旅", summary: "習慣を積み重ねて成長する" },
-  { id: "product", title: "事業の航路", summary: "成果へ向けた最短ルートを描く" },
-];
-
-const prepExamples = {
-  CHECKLIST: "- 目的と完了条件を整理\n- 必要な資料を準備\n- 依存タスクを確認\n- 実行\n- 共有",
-  IMPLEMENTATION: "1. 影響範囲を洗い出す\n2. 変更方針を決定\n3. 実装\n4. テスト\n5. 振り返り",
-  EMAIL:
-    "件名: 進捗共有\n\n関係者各位\n\n現在の状況を共有します。\n- 進捗\n- 次のアクション\n- 期限\n\nよろしくお願いします。",
-};
 const focusTaskSlots = ["focus-1", "focus-2", "focus-3"] as const;
 
 export default function OnboardingPage() {
@@ -40,20 +30,18 @@ export default function OnboardingPage() {
   const [routineCadence, setRoutineCadence] = useState("DAILY");
   const [routineDescription, setRoutineDescription] = useState("");
   const [focusTasks, setFocusTasks] = useState<string[]>(["", "", ""]);
-  const [prepType, setPrepType] = useState<"CHECKLIST" | "IMPLEMENTATION" | "EMAIL">("CHECKLIST");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canNext = useMemo(() => {
-    if (step === 0) return workspaceName.trim().length > 1 && Boolean(intent);
-    if (step === 1) return goalTitle.trim().length > 1 && routineTitle.trim().length > 1;
-    if (step === 2) return focusTasks.some((task) => task.trim().length > 1);
-    return true;
-  }, [step, intent, workspaceName, goalTitle, routineTitle, focusTasks]);
 
-  const goNext = async () => {
-    if (!canNext) return;
-    if (step < 3) {
-      setStep((prev) => prev + 1);
+  const canContinue = useMemo(
+    () => step !== 0 || workspaceName.trim().length > 1,
+    [step, workspaceName],
+  );
+
+  const continueOrFinish = async () => {
+    if (!canContinue) return;
+    if (step < 2) {
+      setStep((current) => current + 1);
       return;
     }
     setSaving(true);
@@ -70,17 +58,16 @@ export default function OnboardingPage() {
           points,
           routineTitle: routineTitle.trim(),
           routineDescription: routineDescription.trim(),
-          routineCadence,
+          routineCadence: routineTitle.trim() ? routineCadence : undefined,
           focusTasks: focusTasks.map((task) => task.trim()).filter(Boolean),
         }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error?.message ?? "オンボーディングに失敗しました。");
+        setError(data?.error?.message ?? "初期設定を完了できませんでした。");
         return;
       }
-      const completedAt = new Date().toISOString();
-      await update({ user: { onboardingCompletedAt: completedAt } });
+      await update({ user: { onboardingCompletedAt: new Date().toISOString() } });
       router.push("/backlog");
     } finally {
       setSaving(false);
@@ -88,233 +75,200 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#f1f5f9_45%,_#e2e8f0_100%)] px-4 py-10 text-slate-900">
-      <div className="mx-auto grid w-full max-w-4xl gap-8">
-        <header className="grid gap-3 text-center">
-          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Journey Setup</p>
-          <h1 className="text-3xl font-semibold">旅の始まりを描こう</h1>
-          <p className="text-sm text-slate-600">
-            Plan → Execute → Review を回すための下準備を整えます。
-          </p>
+    <main className="min-h-dvh bg-slate-50 px-4 py-10 text-slate-900">
+      <div className="mx-auto grid w-full max-w-3xl gap-6">
+        <header className="grid gap-2 text-center">
+          <p className="text-xs text-slate-500">初期設定</p>
+          <h1 className="text-3xl font-semibold">Holoplaxを使い始める</h1>
+          <p className="text-sm text-slate-600">必須なのはワークスペース名だけです。</p>
         </header>
 
-        <div className="border border-slate-200 bg-white p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.6)]">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Chapter {step + 1} / 4</span>
-            <div className="flex gap-2">
-              {[0, 1, 2, 3].map((index) => (
+        <section className="border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between gap-4 text-xs text-slate-500">
+            <span>ステップ {step + 1} / 3</span>
+            <div className="flex flex-1 justify-end gap-2" aria-hidden>
+              {[0, 1, 2].map((index) => (
                 <span
                   key={index}
-                  className={`h-1 w-10 ${step >= index ? "bg-[#2323eb]" : "bg-slate-200"}`}
+                  className={cn("h-1 w-12", step >= index ? "bg-[#2323eb]" : "bg-slate-200")}
                 />
               ))}
             </div>
           </div>
 
-          <div className="mt-6 grid gap-6">
-            {step === 0 ? (
-              <div className="grid gap-4">
-                <h2 className="text-xl font-semibold">目的と宇宙の名前</h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {intents.map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setIntent(option.id)}
-                      className={`border px-4 py-4 text-left transition ${
-                        intent === option.id
-                          ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
-                          : "border-slate-200 bg-white hover:border-[#2323eb]/40"
-                      }`}
-                    >
-                      <p className="text-sm font-semibold">{option.title}</p>
-                      <p className="mt-2 text-xs text-slate-600">{option.summary}</p>
-                    </button>
-                  ))}
-                </div>
-                <label className="grid gap-1">
-                  <span className="text-xs text-slate-500">
-                    宇宙の名前 <span className="text-red-500">*</span>
-                  </span>
-                  <input
-                    value={workspaceName}
-                    onChange={(event) => setWorkspaceName(event.target.value)}
-                    placeholder="例: Holoplax Launch"
-                    className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            {step === 1 ? (
-              <div className="grid gap-4">
-                <h2 className="text-xl font-semibold">目標とルーティン</h2>
-                <p className="text-sm text-slate-600">
-                  いま一番大切な目標と、毎日/毎週回したいルーティンを設定します。
+          {step === 0 ? (
+            <div className="grid gap-5">
+              <div>
+                <h2 className="text-xl font-semibold">利用目的とワークスペース</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  利用目的は、最初に表示する案内を調整するために使います。
                 </p>
-                <div className="grid gap-2">
-                  <label className="grid gap-1">
-                    <span className="text-xs text-slate-500">
-                      目標 <span className="text-red-500">*</span>
-                    </span>
-                    <input
-                      value={goalTitle}
-                      onChange={(event) => setGoalTitle(event.target.value)}
-                      placeholder="例: 新しいサービスのLPを整える"
-                      className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
-                  </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {intents.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={intent === option.id}
+                    onClick={() => setIntent(option.id)}
+                    className={cn(
+                      "border px-4 py-4 text-left",
+                      intent === option.id
+                        ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
+                        : "border-slate-200 bg-white hover:border-[#2323eb]/40",
+                    )}
+                  >
+                    <span className="block text-sm font-semibold">{option.title}</span>
+                    <span className="mt-2 block text-xs text-slate-600">{option.summary}</span>
+                  </button>
+                ))}
+              </div>
+              <label className="grid gap-1 text-xs text-slate-600">
+                ワークスペース名 <span className="text-rose-600">必須</span>
+                <input
+                  value={workspaceName}
+                  onChange={(event) => setWorkspaceName(event.target.value)}
+                  placeholder="例: 新サービス開発"
+                  autoFocus
+                  className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {step === 1 ? (
+            <div className="grid gap-5">
+              <div>
+                <h2 className="text-xl font-semibold">目標と繰り返し</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  任意です。必要なければ空のまま次へ進めます。
+                </p>
+              </div>
+              <label className="grid gap-1 text-xs text-slate-600">
+                最初の目標
+                <input
+                  value={goalTitle}
+                  onChange={(event) => setGoalTitle(event.target.value)}
+                  placeholder="例: 新しいサービスの案内ページを公開する"
+                  className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                />
+              </label>
+              {goalTitle ? (
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                   <textarea
                     value={goalDescription}
                     onChange={(event) => setGoalDescription(event.target.value)}
-                    placeholder="目標の補足"
+                    placeholder="目標の補足（任意）"
                     rows={3}
                     className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   />
-                  <label className="grid gap-2 text-xs text-slate-500">
-                    目標の粒度
+                  <label className="grid content-start gap-1 text-xs text-slate-600">
+                    大きさ
                     <select
                       value={points}
                       onChange={(event) => setPoints(Number(event.target.value) || 1)}
-                      className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                      className="border border-slate-200 bg-white px-3 py-3 text-sm text-slate-800"
                     >
-                      {STORY_POINTS.map((pt) => (
-                        <option key={pt} value={pt}>
-                          {pt} pt
+                      {STORY_POINTS.map((point) => (
+                        <option key={point} value={point}>
+                          {point} pt
                         </option>
                       ))}
                     </select>
                   </label>
                 </div>
-                <div className="grid gap-2">
-                  <label className="grid gap-1">
-                    <span className="text-xs text-slate-500">
-                      ルーティン <span className="text-red-500">*</span>
-                    </span>
-                    <input
-                      value={routineTitle}
-                      onChange={(event) => setRoutineTitle(event.target.value)}
-                      placeholder="例: 朝のレビュー"
-                      className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
-                  </label>
+              ) : null}
+              <label className="grid gap-1 text-xs text-slate-600">
+                繰り返すこと
+                <input
+                  value={routineTitle}
+                  onChange={(event) => setRoutineTitle(event.target.value)}
+                  placeholder="例: 朝に今日の予定を確認する"
+                  className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                />
+              </label>
+              {routineTitle ? (
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                   <textarea
                     value={routineDescription}
                     onChange={(event) => setRoutineDescription(event.target.value)}
-                    placeholder="ルーティンの補足"
+                    placeholder="補足（任意）"
                     rows={2}
                     className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   />
-                  <label className="grid gap-2 text-xs text-slate-500">
-                    ルーティン周期
+                  <label className="grid content-start gap-1 text-xs text-slate-600">
+                    頻度
                     <select
                       value={routineCadence}
                       onChange={(event) => setRoutineCadence(event.target.value)}
-                      className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                      className="border border-slate-200 bg-white px-3 py-3 text-sm text-slate-800"
                     >
                       <option value="DAILY">毎日</option>
                       <option value="WEEKLY">毎週</option>
                     </select>
                   </label>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+          ) : null}
 
-            {step === 2 ? (
-              <div className="grid gap-4">
-                <h2 className="text-xl font-semibold">やるべきこと3件</h2>
-                <p className="text-sm text-slate-600">
-                  直近で取り組みたいタスクを3件まで入力します。
+          {step === 2 ? (
+            <div className="grid gap-5">
+              <div>
+                <h2 className="text-xl font-semibold">最初のやること</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  任意です。思い浮かぶものだけ入力してください。
                 </p>
-                <div className="grid gap-2">
-                  {focusTaskSlots.map((slot, index) => (
-                    <input
-                      key={slot}
-                      value={focusTasks[index] ?? ""}
-                      onChange={(event) =>
-                        setFocusTasks((prev) =>
-                          prev.map((item, idx) => (idx === index ? event.target.value : item)),
-                        )
-                      }
-                      placeholder={`フォーカスタスク ${index + 1}`}
-                      className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
-                  ))}
-                </div>
               </div>
-            ) : null}
-
-            {step === 3 ? (
-              <div className="grid gap-4">
-                <h2 className="text-xl font-semibold">AI下準備プレビュー</h2>
-                <p className="text-sm text-slate-600">
-                  AIが出力する下準備の例を確認します。承認→適用でタスクに反映されます。
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {(["CHECKLIST", "IMPLEMENTATION", "EMAIL"] as const).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setPrepType(type)}
-                      className={`border px-3 py-2 text-xs transition ${
-                        prepType === type
-                          ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
-                          : "border-slate-200 bg-white hover:border-[#2323eb]/40"
-                      }`}
-                    >
-                      {type === "CHECKLIST"
-                        ? "チェックリスト"
-                        : type === "IMPLEMENTATION"
-                          ? "実装手順"
-                          : "メール草案"}
-                    </button>
-                  ))}
-                </div>
-                <pre className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  {prepExamples[prepType]}
-                </pre>
+              <div className="grid gap-2">
+                {focusTaskSlots.map((slot, index) => (
+                  <input
+                    key={slot}
+                    value={focusTasks[index] ?? ""}
+                    onChange={(event) =>
+                      setFocusTasks((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index ? event.target.value : item,
+                        ),
+                      )
+                    }
+                    placeholder={`やること ${index + 1}（任意）`}
+                    className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  />
+                ))}
               </div>
-            ) : null}
-          </div>
-        </div>
+            </div>
+          ) : null}
 
-        {error ? (
-          <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
+          {error ? (
+            <div className="mt-5">
+              <InlineError message={error} />
+            </div>
+          ) : null}
+          {!canContinue ? (
+            <p className="mt-4 text-sm text-amber-700">ワークスペース名を入力してください。</p>
+          ) : null}
 
-        {!canNext && step === 0 && (
-          <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            宇宙の名前を入力してください
+          <div className="mt-6 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setStep((current) => Math.max(0, current - 1))}
+              disabled={step === 0 || saving}
+              className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
+            >
+              戻る
+            </button>
+            <button
+              type="button"
+              onClick={() => void continueOrFinish()}
+              disabled={!canContinue || saving}
+              className="bg-[#2323eb] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {saving ? "準備中..." : step < 2 ? "次へ" : "利用を開始"}
+            </button>
           </div>
-        )}
-        {!canNext && step === 1 && (
-          <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            目標とルーティンの両方を入力してください
-          </div>
-        )}
-        {!canNext && step === 2 && (
-          <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            少なくとも1つのフォーカスタスクを入力してください
-          </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setStep((prev) => Math.max(0, prev - 1))}
-            className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-            disabled={step === 0}
-          >
-            戻る
-          </button>
-          <button
-            onClick={goNext}
-            disabled={!canNext || saving}
-            className="bg-[#2323eb] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30 disabled:opacity-60"
-          >
-            {saving ? "準備中..." : step < 3 ? "次へ" : "旅を始める"}
-          </button>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

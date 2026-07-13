@@ -13,6 +13,8 @@ export type UseSprintOptimizerOptions = {
   workspaceId: string | null;
   capacity: number;
   onTasksAdded?: () => void;
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
 };
 
 export function useSprintOptimizer({
@@ -20,6 +22,8 @@ export function useSprintOptimizer({
   workspaceId,
   capacity,
   onTasksAdded,
+  onError,
+  onSuccess,
 }: UseSprintOptimizerOptions) {
   const [backlogTasks, setBacklogTasks] = useState<TaskDTO[]>([]);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
@@ -35,22 +39,28 @@ export function useSprintOptimizer({
     setLoading(true);
     try {
       const res = await apiFetch("/api/tasks?status=BACKLOG&limit=200");
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("やること候補を読み込めませんでした。");
+        return;
+      }
       const data = await res.json();
       setBacklogTasks(data.tasks ?? []);
     } finally {
       setLoading(false);
     }
-  }, [ready, workspaceId]);
+  }, [ready, workspaceId, onError]);
 
   const runOptimization = useCallback(async () => {
     if (!ready || !workspaceId) return;
 
     setLoading(true);
     try {
-      // 最新のバックログを取得
+      // 最新の候補タスクを取得
       const res = await apiFetch("/api/tasks?status=BACKLOG&limit=200");
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("おすすめを計算できませんでした。");
+        return;
+      }
       const data = await res.json();
       const tasks: TaskDTO[] = data.tasks ?? [];
       setBacklogTasks(tasks);
@@ -62,28 +72,34 @@ export function useSprintOptimizer({
     } finally {
       setLoading(false);
     }
-  }, [ready, workspaceId, capacity]);
+  }, [ready, workspaceId, capacity, onError]);
 
   const addSelectedTasks = useCallback(async () => {
     if (!optimizationResult || optimizationResult.selectedTasks.length === 0) return;
 
     setAdding(true);
     try {
-      // 選択されたタスクを順番にスプリントに追加
-      for (const task of optimizationResult.selectedTasks) {
-        await apiFetch(`/api/tasks/${task.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "SPRINT" }),
-        });
+      const res = await apiFetch("/api/tasks/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "status",
+          taskIds: optimizationResult.selectedTasks.map((task) => task.id),
+          status: "SPRINT",
+        }),
+      });
+      if (!res.ok) {
+        onError?.("選んだタスクをスプリントへ追加できませんでした。");
+        return;
       }
       setOptimizationResult(null);
       setShowPanel(false);
       onTasksAdded?.();
+      onSuccess?.("おすすめのタスクをスプリントへ追加しました。");
     } finally {
       setAdding(false);
     }
-  }, [optimizationResult, onTasksAdded]);
+  }, [optimizationResult, onTasksAdded, onError, onSuccess]);
 
   const closePanel = useCallback(() => {
     setShowPanel(false);

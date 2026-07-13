@@ -18,7 +18,7 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
 
   const [tasks, setTasks] = useState<TaskDTO[]>([]);
   const [loading, setLoading] = useState(false);
-  const [accepted, setAccepted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     if (!ready || !workspaceId) {
@@ -26,17 +26,20 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const statuses = includeBacklog
         ? `status=${TASK_STATUS.SPRINT}&status=${TASK_STATUS.BACKLOG}`
         : `status=${TASK_STATUS.SPRINT}`;
       const res = await apiFetch(`/api/tasks?${statuses}&limit=100`);
       if (!res.ok) {
-        setTasks([]);
+        setError("今やることを読み込めませんでした。");
         return;
       }
       const data = await res.json();
       setTasks(data.tasks ?? []);
+    } catch {
+      setError("今やることを読み込めませんでした。");
     } finally {
       setLoading(false);
     }
@@ -52,24 +55,25 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
 
   const summary = useMemo(() => getFocusSummary(result), [result]);
 
-  const accept = useCallback(() => {
-    setAccepted(true);
-  }, []);
-
   const refresh = useCallback(() => {
-    setAccepted(false);
     void fetchTasks();
   }, [fetchTasks]);
 
   const markDone = useCallback(
     async (taskId: string) => {
-      const res = await apiFetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: TASK_STATUS.DONE }),
-      });
-      if (res.ok) {
-        void fetchTasks();
+      try {
+        const res = await apiFetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: TASK_STATUS.DONE }),
+        });
+        if (res.ok) {
+          void fetchTasks();
+        } else {
+          setError("タスクを完了にできませんでした。");
+        }
+      } catch {
+        setError("タスクを完了にできませんでした。");
       }
     },
     [fetchTasks],
@@ -82,9 +86,8 @@ export function useDailyFocus(options: UseDailyFocusOptions = {}) {
     totalPoints: result.totalPoints,
     summary,
     loading,
-    accepted,
+    error,
     // Actions
-    accept,
     refresh,
     markDone,
   };

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 import { TASK_TYPE } from "../../lib/types";
+import { TASK_TYPE_LABELS } from "../../lib/ui-language";
 import { LoadingButton } from "./loading-button";
+import { ConfirmDialog } from "./ui/confirm-dialog";
 import { useWorkspaceId } from "./use-workspace-id";
 
 type IntakeItem = {
@@ -24,8 +26,8 @@ type DuplicateTask = {
 };
 
 const taskTypeOptions = [
-  { value: TASK_TYPE.PBI, label: "PBI" },
-  { value: TASK_TYPE.TASK, label: "タスク" },
+  { value: TASK_TYPE.PBI, label: TASK_TYPE_LABELS.PBI },
+  { value: TASK_TYPE.TASK, label: TASK_TYPE_LABELS.TASK },
 ];
 
 export function InboxWidget() {
@@ -50,7 +52,10 @@ export function InboxWidget() {
     setLoading(true);
     try {
       const res = await apiFetch("/api/intake");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError("受信箱を読み込めませんでした。");
+        return;
+      }
       const data = await res.json();
       setGlobalItems(data.globalItems ?? []);
       setWorkspaceItems(data.workspaceItems ?? []);
@@ -93,7 +98,7 @@ export function InboxWidget() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data?.error?.message ?? "インボックス登録に失敗しました。");
+        setError(data?.error?.message ?? "メモを保存できませんでした。");
         return;
       }
       const data = await res.json();
@@ -121,7 +126,10 @@ export function InboxWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intakeId: itemId, workspaceId: selectedWorkspaceId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError("似ているタスクを確認できませんでした。");
+        return;
+      }
       const data = await res.json();
       setDuplicatesMap((prev) => ({ ...prev, [itemId]: data.duplicates ?? [] }));
     } finally {
@@ -141,7 +149,12 @@ export function InboxWidget() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data?.error?.message ?? "メモを処理できませんでした。");
+      return;
+    }
+    setError(null);
     setGlobalItems((prev) => prev.filter((item) => item.id !== params.intakeId));
     setWorkspaceItems((prev) => prev.filter((item) => item.id !== params.intakeId));
     setDuplicatesMap((prev) => {
@@ -160,8 +173,8 @@ export function InboxWidget() {
       <div key={item.id} className="border border-slate-200 bg-white px-4 py-3 text-sm">
         <div className="flex items-center justify-between">
           <p className="font-semibold text-slate-900">{item.title}</p>
-          <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-            {scope === "global" ? "Global" : "Workspace"}
+          <span className="text-[11px] text-slate-400">
+            {scope === "global" ? "未割当" : "ワークスペース"}
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-600">{item.body}</p>
@@ -230,18 +243,24 @@ export function InboxWidget() {
           >
             新規作成
           </button>
-          <button
-            onClick={() => resolveIntake({ intakeId: item.id, action: "dismiss" })}
-            className="border border-slate-200 bg-white px-2 py-1 text-slate-600 transition hover:border-slate-300"
-          >
-            破棄
-          </button>
+          <ConfirmDialog
+            title="このメモを破棄しますか？"
+            description={`「${item.title}」は破棄すると元に戻せません。`}
+            confirmLabel="破棄する"
+            onConfirm={() => resolveIntake({ intakeId: item.id, action: "dismiss" })}
+            trigger={
+              <button
+                type="button"
+                className="border border-slate-200 bg-white px-2 py-1 text-slate-600 hover:border-slate-300"
+              >
+                破棄
+              </button>
+            }
+          />
         </div>
         {duplicates.length ? (
           <div className="mt-3 border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-              Duplicate candidates
-            </p>
+            <p className="text-[11px] text-slate-500">似ているタスク</p>
             <div className="mt-2 grid gap-2">
               {duplicates.map((dup) => (
                 <div key={dup.id} className="flex items-center justify-between gap-3">
@@ -262,7 +281,7 @@ export function InboxWidget() {
                     }
                     className="border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:border-amber-300"
                   >
-                    マージ
+                    既存に追加
                   </button>
                 </div>
               ))}
@@ -277,10 +296,10 @@ export function InboxWidget() {
     <section className="border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Inbox</p>
-          <h2 className="text-lg font-semibold text-slate-900">未分類メモ</h2>
+          <p className="text-xs text-slate-500">受信箱</p>
+          <h2 className="text-lg font-semibold text-slate-900">未整理のメモ</h2>
         </div>
-        {loading ? <span className="text-xs text-slate-500">Loading...</span> : null}
+        {loading ? <span className="text-xs text-slate-500">読み込み中...</span> : null}
       </div>
 
       <div className="mt-4 grid gap-3">
@@ -288,7 +307,7 @@ export function InboxWidget() {
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={3}
-          placeholder="メモを貼り付けてインボックスへ"
+          placeholder="あとで整理したい内容を入力"
           className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
         />
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
@@ -299,8 +318,8 @@ export function InboxWidget() {
               onChange={(event) => setTargetScope(event.target.value as "global" | "workspace")}
               className="border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
             >
-              <option value="global">Global Inbox</option>
-              <option value="workspace">現在のWorkspace</option>
+              <option value="global">あとで割り当てる</option>
+              <option value="workspace">現在のワークスペース</option>
             </select>
           </label>
           {error ? <span className="text-rose-600">{error}</span> : null}
@@ -309,7 +328,7 @@ export function InboxWidget() {
             loading={saving}
             className="border border-[#2323eb]/60 bg-[#2323eb]/10 px-3 py-1 text-xs font-semibold text-[#2323eb] transition hover:border-[#2323eb]"
           >
-            Inboxに送る
+            メモを保存
           </LoadingButton>
         </div>
       </div>
@@ -317,7 +336,7 @@ export function InboxWidget() {
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="grid gap-3">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Global Inbox</span>
+            <span>未割当</span>
             <span>{globalItems.length} 件</span>
           </div>
           {globalItems.length ? (
@@ -328,7 +347,7 @@ export function InboxWidget() {
         </div>
         <div className="grid gap-3">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Workspace Inbox</span>
+            <span>現在のワークスペース</span>
             <span>{workspaceItems.length} 件</span>
           </div>
           {workspaceItems.length ? (

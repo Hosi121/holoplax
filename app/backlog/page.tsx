@@ -16,11 +16,16 @@ import {
   type TaskStatus,
   type TaskType,
 } from "../../lib/types";
+import { NAV_LABELS, TASK_TYPE_LABELS } from "../../lib/ui-language";
+import { EmptyState } from "../components/empty-state";
 import { FocusPanel } from "../components/focus-panel";
 import { HelpTooltip } from "../components/help-tooltip";
 import { LoadingButton } from "../components/loading-button";
 import { type AiSuggestionConfig, TaskCard } from "../components/task-card";
 import { useToast } from "../components/toast";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Modal } from "../components/ui/dialog";
+import { InlineError, PageSkeleton } from "../components/ui/feedback";
 import { useWorkspaceId } from "../components/use-workspace-id";
 import { TaskPrepModal } from "./components/task-prep-modal";
 import { useAiSuggestions } from "./hooks/use-ai-suggestions";
@@ -30,15 +35,10 @@ import { useSuggestionContext } from "./hooks/use-suggestion-context";
 import { useTaskPrep } from "./hooks/use-task-prep";
 import { useTaskSearch } from "./hooks/use-task-search";
 
-const taskTypeLabels: Record<TaskType, string> = {
-  [TASK_TYPE.EPIC]: "目標",
-  [TASK_TYPE.PBI]: "PBI",
-  [TASK_TYPE.TASK]: "タスク",
-};
 const taskTypeOptions = [
-  { value: TASK_TYPE.EPIC, label: "目標 (EPIC)" },
-  { value: TASK_TYPE.PBI, label: "PBI" },
-  { value: TASK_TYPE.TASK, label: "タスク" },
+  { value: TASK_TYPE.EPIC, label: TASK_TYPE_LABELS.EPIC },
+  { value: TASK_TYPE.PBI, label: TASK_TYPE_LABELS.PBI },
+  { value: TASK_TYPE.TASK, label: TASK_TYPE_LABELS.TASK },
 ];
 const taskTypeOrder: TaskType[] = [TASK_TYPE.EPIC, TASK_TYPE.PBI, TASK_TYPE.TASK];
 const checklistFromText = (text: string) =>
@@ -68,6 +68,8 @@ export default function BacklogPage() {
   const { workspaceId, ready } = useWorkspaceId();
   const toast = useToast();
   const [items, setItems] = useState<TaskDTO[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState<string | null>(null);
 
   // Proactive suggestions (Beyond Agency)
   const { context: aiContext } = useSuggestionContext();
@@ -99,15 +101,16 @@ export default function BacklogPage() {
     bulkUpdatePoints,
     selectedCount,
   } = useBulkOperations(() => {
+    toast.success("選択したタスクを更新しました。");
     void fetchTasks();
-  });
+  }, toast.error);
 
   // Fetch functions need to be defined before useAiSuggestions
   const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[], searchParams?: string) => {
     const params = statuses.map((status) => `status=${encodeURIComponent(status)}`).join("&");
     const searchQuery = searchParams ? `&${searchParams}` : "";
     const res = await apiFetch(`/api/tasks?${params}&limit=200${searchQuery}`);
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error("tasks");
     const data = await res.json();
     return data.tasks ?? [];
   }, []);
@@ -116,18 +119,27 @@ export default function BacklogPage() {
     if (!ready) return;
     if (!workspaceId) {
       setItems([]);
+      setTasksLoading(false);
       return;
     }
-    const searchParams = buildQueryParams();
-    const [backlogTasks, sprintTasks] = await Promise.all([
-      fetchTasksByStatus([TASK_STATUS.BACKLOG], searchParams),
-      fetchTasksByStatus([TASK_STATUS.SPRINT], searchParams),
-    ]);
-    const mergedMap = new Map<string, TaskDTO>();
-    [...backlogTasks, ...sprintTasks].forEach((task) => {
-      mergedMap.set(task.id, task);
-    });
-    setItems(Array.from(mergedMap.values()));
+    setTasksLoading(true);
+    setTasksError(null);
+    try {
+      const searchParams = buildQueryParams();
+      const [backlogTasks, sprintTasks] = await Promise.all([
+        fetchTasksByStatus([TASK_STATUS.BACKLOG], searchParams),
+        fetchTasksByStatus([TASK_STATUS.SPRINT], searchParams),
+      ]);
+      const mergedMap = new Map<string, TaskDTO>();
+      [...backlogTasks, ...sprintTasks].forEach((task) => {
+        mergedMap.set(task.id, task);
+      });
+      setItems(Array.from(mergedMap.values()));
+    } catch {
+      setTasksError("やることを読み込めませんでした。通信状態を確認してください。");
+    } finally {
+      setTasksLoading(false);
+    }
   }, [ready, workspaceId, fetchTasksByStatus, buildQueryParams]);
 
   // AI Suggestions hook
@@ -147,7 +159,12 @@ export default function BacklogPage() {
     requestSplit,
     applySplit,
     rejectSplit,
-  } = useAiSuggestions({ fetchTasks, setItems, context: aiContext });
+  } = useAiSuggestions({
+    fetchTasks,
+    context: aiContext,
+    onError: toast.error,
+    onSuccess: toast.success,
+  });
   const createDefaultForm = () => ({
     title: "",
     description: "",
@@ -200,7 +217,7 @@ export default function BacklogPage() {
     closePrepModal,
     generatePrepOutput,
     updatePrepOutput,
-  } = useTaskPrep(fetchTasks);
+  } = useTaskPrep(fetchTasks, { onError: toast.error, onSuccess: toast.success });
   const [creationStep, setCreationStep] = useState<1 | 2 | 3>(1);
   const [aiQuestions, setAiQuestions] = useState<string[]>([]);
   const [aiAnswers, setAiAnswers] = useState<Record<number, string>>({});
@@ -265,7 +282,7 @@ export default function BacklogPage() {
         urgency: scoreData.urgency ?? prev.urgency,
         risk: scoreData.risk ?? prev.risk,
       }));
-      setScoreHint(scoreData.reason ?? `AI推定スコア: ${scoreData.score ?? ""}`);
+      setScoreHint(scoreData.reason ?? "AIが内容から大きさを見積もりました。");
       const suggestionRes = await apiFetch("/api/ai/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -477,6 +494,7 @@ export default function BacklogPage() {
       body: JSON.stringify({ status: TASK_STATUS.BACKLOG }),
     });
     if (!res.ok) {
+      toast.error("やることへ戻せませんでした。");
       void fetchTasks();
       return;
     }
@@ -492,16 +510,24 @@ export default function BacklogPage() {
     setItems((prev) =>
       prev.map((item) => (item.id === taskId ? { ...item, checklist: nextChecklist } : item)),
     );
-    await apiFetch(`/api/tasks/${taskId}`, {
+    const res = await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checklist: nextChecklist }),
     });
+    if (!res.ok) {
+      toast.error("チェック項目を更新できませんでした。");
+      void fetchTasks();
+    }
   };
 
   const deleteItem = async (id: string) => {
-    if (!window.confirm("このタスクを削除しますか？")) return;
-    await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      toast.error("削除に失敗しました。もう一度お試しください。");
+      return;
+    }
+    toast.success("タスクを削除しました。");
     await fetchTasks();
   };
 
@@ -527,7 +553,7 @@ export default function BacklogPage() {
 
   const saveEdit = async () => {
     if (!editItem) return;
-    await apiFetch(`/api/tasks/${editItem.id}`, {
+    const res = await apiFetch(`/api/tasks/${editItem.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -550,19 +576,31 @@ export default function BacklogPage() {
         dependencyIds: editForm.dependencyIds,
       }),
     });
+    if (!res.ok) {
+      toast.error("変更を保存できませんでした。");
+      return;
+    }
     setEditItem(null);
     await fetchTasks();
+    toast.success("変更を保存しました。");
   };
 
   const approveAutomation = async (id: string) => {
     setApprovalLoadingId(id);
     try {
-      await apiFetch("/api/automation/approval", {
+      const res = await apiFetch("/api/automation/approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: id, action: "approve" }),
       });
-      void fetchTasks();
+      if (!res.ok) {
+        toast.error("分割案を承認できませんでした。");
+        return;
+      }
+      await fetchTasks();
+      toast.success("分割案を追加しました。");
+    } catch {
+      toast.error("分割案を承認できませんでした。");
     } finally {
       setApprovalLoadingId(null);
     }
@@ -571,12 +609,19 @@ export default function BacklogPage() {
   const rejectAutomation = async (id: string) => {
     setApprovalLoadingId(id);
     try {
-      await apiFetch("/api/automation/approval", {
+      const res = await apiFetch("/api/automation/approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: id, action: "reject" }),
       });
-      void fetchTasks();
+      if (!res.ok) {
+        toast.error("分割案を見送れませんでした。");
+        return;
+      }
+      await fetchTasks();
+      toast.success("分割案を見送りました。");
+    } catch {
+      toast.error("分割案を見送れませんでした。");
     } finally {
       setApprovalLoadingId(null);
     }
@@ -585,16 +630,16 @@ export default function BacklogPage() {
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
       <header className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-[var(--text-muted)]">Backlog</p>
-            <h1 className="text-3xl font-semibold text-[var(--text-primary)]">バックログ</h1>
+            <p className="text-xs text-[var(--text-muted)]">{NAV_LABELS.backlog}</p>
+            <h1 className="text-3xl font-semibold text-[var(--text-primary)]">やること</h1>
             <p className="text-sm text-[var(--text-secondary)]">
-              手入力＋後でインポートを追加。点数と緊急度/リスクをセットしてスプリントに送れるように。
+              これから取り組む候補を整理し、次のスプリントを計画します。
             </p>
           </div>
-          <div className="flex items-center gap-2 whitespace-nowrap">
-            <div className="flex items-center gap-2 whitespace-nowrap border border-[var(--border)] bg-[var(--surface)] p-1 text-xs text-[var(--text-secondary)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 border border-[var(--border)] bg-[var(--surface)] p-1 text-xs text-[var(--text-secondary)]">
               <button
                 onClick={() => setView("product")}
                 className={`px-3 py-1 transition ${
@@ -603,7 +648,7 @@ export default function BacklogPage() {
                     : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
                 }`}
               >
-                目標リスト
+                やること候補
               </button>
               <button
                 onClick={() => setView("sprint")}
@@ -613,7 +658,7 @@ export default function BacklogPage() {
                     : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
                 }`}
               >
-                スプリントバックログ
+                スプリント
               </button>
             </div>
             <Link
@@ -627,9 +672,9 @@ export default function BacklogPage() {
                 fetchTasks();
                 openAddModal();
               }}
-              className="bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[var(--accent)]/30"
+              className="bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition"
             >
-              タスクを追加
+              追加
             </button>
           </div>
         </div>
@@ -637,7 +682,7 @@ export default function BacklogPage() {
         {/* Search and Filter Bar */}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               type="text"
               value={filters.q}
@@ -661,10 +706,10 @@ export default function BacklogPage() {
                 : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)]/60"
             }`}
           >
-            <Filter className="h-4 w-4" />
+            <Filter className="size-4" />
             フィルタ
             {hasActiveFilters() && (
-              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-xs text-white">
+              <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-[var(--accent)] text-xs text-white">
                 !
               </span>
             )}
@@ -683,7 +728,7 @@ export default function BacklogPage() {
               }}
               className="flex items-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
               リセット
             </button>
           )}
@@ -835,7 +880,7 @@ export default function BacklogPage() {
                 : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)]/60"
             }`}
           >
-            <CheckSquare className="h-4 w-4" />
+            <CheckSquare className="size-4" />
             {isSelectionMode ? "選択モード終了" : "一括選択"}
           </button>
 
@@ -871,7 +916,7 @@ export default function BacklogPage() {
                     <option value="" disabled>
                       ステータス変更
                     </option>
-                    <option value="BACKLOG">バックログ</option>
+                    <option value="BACKLOG">やること</option>
                     <option value="SPRINT">スプリント</option>
                     <option value="DONE">完了</option>
                   </select>
@@ -897,18 +942,22 @@ export default function BacklogPage() {
                     ))}
                   </select>
 
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`${selectedCount}件のタスクを削除しますか？`)) {
-                        void bulkDelete();
-                      }
-                    }}
-                    disabled={bulkLoading}
-                    className="flex items-center gap-1 border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    削除
-                  </button>
+                  <ConfirmDialog
+                    title={`${selectedCount}件を削除しますか？`}
+                    description="削除したタスクは元に戻せません。選択内容を確認してから実行してください。"
+                    confirmLabel="削除する"
+                    onConfirm={bulkDelete}
+                    trigger={
+                      <button
+                        type="button"
+                        disabled={bulkLoading}
+                        className="flex items-center gap-1 border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:opacity-50"
+                      >
+                        <Trash2 className="size-4" />
+                        削除
+                      </button>
+                    }
+                  />
 
                   {bulkLoading && (
                     <span className="text-sm text-[var(--text-muted)]">処理中...</span>
@@ -920,6 +969,9 @@ export default function BacklogPage() {
         </div>
       </header>
 
+      {tasksError ? <InlineError message={tasksError} onRetry={() => void fetchTasks()} /> : null}
+      {tasksLoading && !items.length ? <PageSkeleton /> : null}
+
       <FocusPanel />
 
       {items.filter(
@@ -929,7 +981,7 @@ export default function BacklogPage() {
       ).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI委任キュー</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AIに任せる候補</h2>
             <span className="text-xs text-[var(--text-muted)]">
               {
                 items.filter(
@@ -956,7 +1008,7 @@ export default function BacklogPage() {
                   <div className="flex items-center justify-between">
                     <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
                     <span className="border border-amber-200 bg-[var(--surface)] px-2 py-1 text-xs text-amber-700 dark:border-amber-800 dark:text-amber-400">
-                      AI委任候補
+                      AIに任せる
                     </span>
                   </div>
                   {item.description ? (
@@ -982,7 +1034,7 @@ export default function BacklogPage() {
       {items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">自動分解 承認待ち</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AIの分割案</h2>
             <span className="text-xs text-[var(--text-muted)]">
               {
                 items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT)
@@ -1002,7 +1054,7 @@ export default function BacklogPage() {
                   <div className="flex items-center justify-between">
                     <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
                     <span className="border border-amber-200 bg-[var(--surface)] px-2 py-1 text-[11px] text-amber-700 dark:border-amber-800 dark:text-amber-400">
-                      承認待ち
+                      確認待ち
                     </span>
                   </div>
                   {item.description ? (
@@ -1025,7 +1077,7 @@ export default function BacklogPage() {
                       loading={approvalLoadingId === item.id}
                       className="border border-emerald-300 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 transition hover:border-emerald-400 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
                     >
-                      BARABARA
+                      分割を承認
                     </LoadingButton>
                     <button
                       onClick={() => rejectAutomation(item.id)}
@@ -1043,6 +1095,19 @@ export default function BacklogPage() {
 
       <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
         <div className="grid gap-5">
+          {!tasksLoading && !visibleItems.length ? (
+            <EmptyState
+              icon="Inbox"
+              title={view === "product" ? "やること候補はありません" : "スプリントは空です"}
+              description={
+                view === "product"
+                  ? "最初のタスクを追加して、次に取り組むことを整理しましょう。"
+                  : "やること候補から、今回進めるタスクを選びましょう。"
+              }
+              actionLabel={view === "product" ? "タスクを追加" : "やること候補を見る"}
+              onAction={view === "product" ? openAddModal : () => setView("product")}
+            />
+          ) : null}
           {taskTypeOrder.map((type) => {
             const bucket = groupedByType[type];
             if (!bucket.length) return null;
@@ -1050,7 +1115,7 @@ export default function BacklogPage() {
               <div key={type} className="grid gap-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                    {taskTypeLabels[type]}
+                    {TASK_TYPE_LABELS[type]}
                   </h2>
                   <span className="text-xs text-[var(--text-muted)]">{bucket.length} 件</span>
                 </div>
@@ -1086,7 +1151,7 @@ export default function BacklogPage() {
                               type="checkbox"
                               checked={selectedIds.has(item.id)}
                               onChange={() => toggleSelection(item.id)}
-                              className="h-4 w-4 rounded border-[var(--border)] text-[var(--accent)]"
+                              className="size-4 rounded border-[var(--border)] text-[var(--accent)]"
                             />
                           </label>
                         )}
@@ -1164,367 +1229,376 @@ export default function BacklogPage() {
       ) : null}
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">
-          <div className="w-full max-w-lg border border-slate-200 bg-white p-6 shadow-lg">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">タスクを追加</h3>
-              <button
-                onClick={closeModal}
-                className="text-sm text-slate-500 transition hover:text-slate-800"
-              >
-                閉じる
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Step {creationStep}/3 -{" "}
-              {creationStep === 1
-                ? "まずは要件と背景を教えてください。"
-                : creationStep === 2
-                  ? "どうやったら終わるかを教えてください。"
-                  : "情報を確認してタスクを仕上げます。"}
-            </p>
+        <Modal
+          open={modalOpen}
+          onOpenChange={(open) => {
+            if (!open) closeModal();
+          }}
+          title="タスクを追加"
+          description="タイトルだけですぐ追加できます。必要なときだけ詳細を設定してください。"
+        >
+          <p className="text-xs text-slate-500">
+            Step {creationStep}/3 -{" "}
+            {creationStep === 1
+              ? "まずは要件と背景を教えてください。"
+              : creationStep === 2
+                ? "どうやったら終わるかを教えてください。"
+                : "情報を確認してタスクを仕上げます。"}
+          </p>
 
-            {creationStep === 1 ? (
-              <div className="mt-4 grid gap-3">
-                <input
-                  value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="タイトル"
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                />
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="概要（任意）"
-                  rows={4}
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                />
-                {aiError ? <p className="text-xs text-rose-600">{aiError}</p> : null}
-                <div className="mt-4 flex items-center justify-between">
+          {creationStep === 1 ? (
+            <div className="mt-4 grid gap-3">
+              <input
+                value={form.title}
+                onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void addItem();
+                  }
+                }}
+                placeholder="タイトル"
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                placeholder="概要（任意）"
+                rows={4}
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              {aiError ? <p className="text-xs text-rose-600">{aiError}</p> : null}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  onClick={closeModal}
+                  className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                >
+                  キャンセル
+                </button>
+                <div className="flex gap-2">
                   <button
-                    onClick={closeModal}
-                    className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                    type="button"
+                    onClick={handleStepOneNext}
+                    disabled={!form.title.trim() || aiLoading}
+                    className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-60"
                   >
-                    キャンセル
+                    詳しく設定
                   </button>
                   <LoadingButton
-                    onClick={handleStepOneNext}
-                    loading={aiLoading}
-                    className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30 disabled:opacity-60"
+                    onClick={addItem}
+                    loading={addLoading}
+                    disabled={!form.title.trim()}
+                    className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                   >
-                    次へ
+                    すぐ追加
                   </LoadingButton>
                 </div>
               </div>
-            ) : creationStep === 2 ? (
-              <div className="mt-4 grid gap-3">
-                {estimatedScore ? (
-                  <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                    <p className="inline-flex items-center gap-1 font-semibold text-slate-900">
-                      AIがポイント・緊急度・リスクを先行推定済みです。
-                      <HelpTooltip text="AIがタスクの内容から自動でスコアを推定します。手動で変更もできます。" />
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {`推定: ${estimatedScore.points} pt / 緊急度: ${SEVERITY_LABELS[estimatedScore.urgency as Severity] ?? estimatedScore.urgency} / リスク: ${SEVERITY_LABELS[estimatedScore.risk as Severity] ?? estimatedScore.risk}`}
-                    </p>
-                  </div>
-                ) : null}
-                <p className="text-sm text-slate-700">
-                  このタスクを終えるために必要なことを教えてください。
-                </p>
-                <textarea
-                  value={form.definitionOfDone}
-                  onChange={(e) => setForm((p) => ({ ...p, definitionOfDone: e.target.value }))}
-                  placeholder="どうやったら終わる？"
-                  rows={4}
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                />
-                {definitionError ? (
-                  <p className="text-xs text-rose-600">{definitionError}</p>
-                ) : null}
-                <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    AIの追加質問
+            </div>
+          ) : creationStep === 2 ? (
+            <div className="mt-4 grid gap-3">
+              {estimatedScore ? (
+                <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <p className="inline-flex items-center gap-1 font-semibold text-slate-900">
+                    AIがポイント・緊急度・リスクを先行推定済みです。
+                    <HelpTooltip text="AIがタスクの内容から大きさ・緊急度・リスクを見積もります。手動でも変更できます。" />
                   </p>
-                  <div className="mt-3 grid gap-3">
-                    {aiQuestions.length ? (
-                      aiQuestions.map((question, index) => (
-                        <div key={question} className="grid gap-2">
-                          <p className="text-xs text-slate-600">{question}</p>
-                          <textarea
-                            value={aiAnswers[index] ?? ""}
-                            onChange={(e) => handleAiAnswerChange(index, e.target.value)}
-                            rows={2}
-                            className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                            placeholder="回答を入力（任意）"
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-500">
-                        AIの質問を生成中です。少々お待ちください。
-                      </p>
-                    )}
-                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {`推定: ${estimatedScore.points} pt / 緊急度: ${SEVERITY_LABELS[estimatedScore.urgency as Severity] ?? estimatedScore.urgency} / リスク: ${SEVERITY_LABELS[estimatedScore.risk as Severity] ?? estimatedScore.risk}`}
+                  </p>
                 </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <button
-                    onClick={() => {
-                      setCreationStep(1);
-                      setDefinitionError(null);
-                    }}
-                    className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-                  >
-                    戻る
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleStepTwoNext}
-                    className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30 disabled:opacity-60"
-                  >
-                    次へ
-                  </button>
+              ) : null}
+              <p className="text-sm text-slate-700">
+                このタスクを終えるために必要なことを教えてください。
+              </p>
+              <textarea
+                value={form.definitionOfDone}
+                onChange={(e) => setForm((p) => ({ ...p, definitionOfDone: e.target.value }))}
+                placeholder="どうやったら終わる？"
+                rows={4}
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              />
+              {definitionError ? <p className="text-xs text-rose-600">{definitionError}</p> : null}
+              <div className="mt-4 border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
+                <p className="text-[11px] font-semibold uppercase text-slate-500">AIの追加質問</p>
+                <div className="mt-3 grid gap-3">
+                  {aiQuestions.length ? (
+                    aiQuestions.map((question, index) => (
+                      <div key={question} className="grid gap-2">
+                        <p className="text-xs text-slate-600">{question}</p>
+                        <textarea
+                          value={aiAnswers[index] ?? ""}
+                          onChange={(e) => handleAiAnswerChange(index, e.target.value)}
+                          rows={2}
+                          className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                          placeholder="回答を入力（任意）"
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      AIの質問を生成中です。少々お待ちください。
+                    </p>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="mt-4 grid gap-3">
-                {estimatedScore ? (
-                  <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                    <p className="font-semibold text-slate-900">
-                      AI予測を踏まえて詳細を整えています。
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {`推定: ${estimatedScore.points} pt / 緊急度: ${SEVERITY_LABELS[estimatedScore.urgency as Severity] ?? estimatedScore.urgency} / リスク: ${SEVERITY_LABELS[estimatedScore.risk as Severity] ?? estimatedScore.risk}`}
-                    </p>
-                  </div>
-                ) : null}
-                <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                  <p className="font-semibold text-slate-900">完了条件</p>
-                  <p className="mt-1 whitespace-pre-wrap">
-                    {form.definitionOfDone || "未入力のまま進めることもできます。"}
+              <div className="mt-4 flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    setCreationStep(1);
+                    setDefinitionError(null);
+                  }}
+                  className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                >
+                  戻る
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStepTwoNext}
+                  className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60"
+                >
+                  次へ
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3">
+              {estimatedScore ? (
+                <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <p className="font-semibold text-slate-900">
+                    AI予測を踏まえて詳細を整えています。
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {`推定: ${estimatedScore.points} pt / 緊急度: ${SEVERITY_LABELS[estimatedScore.urgency as Severity] ?? estimatedScore.urgency} / リスク: ${SEVERITY_LABELS[estimatedScore.risk as Severity] ?? estimatedScore.risk}`}
                   </p>
                 </div>
-                <div className="grid gap-4">
-                  <div className="grid gap-1 text-xs text-slate-500">
-                    <span className="inline-flex items-center gap-1">
-                      ポイント
-                      <HelpTooltip text="ストーリーポイントはタスクの相対的な大きさを表します。1が最小、13以上は分解を検討してください。" />
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      {STORY_POINTS.map((pt) => (
-                        <button
-                          key={pt}
-                          type="button"
-                          onClick={() => setForm((p) => ({ ...p, points: pt }))}
-                          aria-pressed={form.points === pt}
-                          className={`border px-3 py-1 text-sm transition ${
-                            form.points === pt
-                              ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                          }`}
-                        >
-                          {pt} pt
-                        </button>
-                      ))}
-                    </div>
+              ) : null}
+              <div className="border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                <p className="font-semibold text-slate-900">完了条件</p>
+                <p className="mt-1 whitespace-pre-wrap">
+                  {form.definitionOfDone || "未入力のまま進めることもできます。"}
+                </p>
+              </div>
+              <div className="grid gap-4">
+                <div className="grid gap-1 text-xs text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    ポイント
+                    <HelpTooltip text="ストーリーポイントはタスクの相対的な大きさを表します。1が最小、13以上は分解を検討してください。" />
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {STORY_POINTS.map((pt) => (
+                      <button
+                        key={pt}
+                        type="button"
+                        onClick={() => setForm((p) => ({ ...p, points: pt }))}
+                        aria-pressed={form.points === pt}
+                        className={`border px-3 py-1 text-sm transition ${
+                          form.points === pt
+                            ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                        }`}
+                      >
+                        {pt} pt
+                      </button>
+                    ))}
                   </div>
-                  <div className="grid gap-2 text-xs text-slate-500">
-                    <div className="flex items-end gap-4">
-                      <div className="flex-1 min-w-0">
-                        <span className="inline-flex items-center gap-1">
-                          緊急度
-                          <HelpTooltip text="緊急度はいつまでにやるか、リスクは不確実性の高さを表します。" />
-                        </span>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {severityOptions.map((option) => (
-                            <button
-                              key={`urgency-${option}`}
-                              type="button"
-                              onClick={() => setForm((p) => ({ ...p, urgency: option }))}
-                              aria-pressed={form.urgency === option}
-                              className={`border px-3 py-1 text-sm transition ${
-                                form.urgency === option
-                                  ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                              }`}
-                            >
-                              {SEVERITY_LABELS[option]}
-                            </button>
-                          ))}
-                        </div>
+                </div>
+                <div className="grid gap-2 text-xs text-slate-500">
+                  <div className="flex items-end gap-4">
+                    <div className="flex-1 min-w-0">
+                      <span className="inline-flex items-center gap-1">
+                        緊急度
+                        <HelpTooltip text="緊急度はいつまでにやるか、リスクは不確実性の高さを表します。" />
+                      </span>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {severityOptions.map((option) => (
+                          <button
+                            key={`urgency-${option}`}
+                            type="button"
+                            onClick={() => setForm((p) => ({ ...p, urgency: option }))}
+                            aria-pressed={form.urgency === option}
+                            className={`border px-3 py-1 text-sm transition ${
+                              form.urgency === option
+                                ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                            }`}
+                          >
+                            {SEVERITY_LABELS[option]}
+                          </button>
+                        ))}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <span>リスク</span>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {severityOptions.map((option) => (
-                            <button
-                              key={`risk-${option}`}
-                              type="button"
-                              onClick={() => setForm((p) => ({ ...p, risk: option }))}
-                              aria-pressed={form.risk === option}
-                              className={`border px-3 py-1 text-sm transition ${
-                                form.risk === option
-                                  ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                              }`}
-                            >
-                              {SEVERITY_LABELS[option]}
-                            </button>
-                          ))}
-                        </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span>リスク</span>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {severityOptions.map((option) => (
+                          <button
+                            key={`risk-${option}`}
+                            type="button"
+                            onClick={() => setForm((p) => ({ ...p, risk: option }))}
+                            aria-pressed={form.risk === option}
+                            className={`border px-3 py-1 text-sm transition ${
+                              form.risk === option
+                                ? "border-[#2323eb] bg-[#2323eb]/10 text-[#2323eb]"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                            }`}
+                          >
+                            {SEVERITY_LABELS[option]}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-xs text-slate-500">
-                    種別
-                    <select
-                      value={form.type}
-                      onChange={(e) =>
-                        setForm((p) => ({
-                          ...p,
-                          type: e.target.value as TaskType,
-                        }))
-                      }
-                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    >
-                      {taskTypeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-xs text-slate-500">
-                    親アイテム
-                    <select
-                      value={form.parentId}
-                      onChange={(e) => setForm((p) => ({ ...p, parentId: e.target.value }))}
-                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    >
-                      <option value="">未設定</option>
-                      {parentCandidates.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid gap-1 text-xs text-slate-500">
-                  繰り返し（任意）
+                  種別
                   <select
-                    value={form.routineCadence}
+                    value={form.type}
                     onChange={(e) =>
                       setForm((p) => ({
                         ...p,
-                        routineCadence: e.target.value,
+                        type: e.target.value as TaskType,
                       }))
                     }
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   >
-                    <option value="NONE">なし</option>
-                    <option value="DAILY">毎日</option>
-                    <option value="WEEKLY">毎週</option>
+                    {taskTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="grid gap-1 text-xs text-slate-500">
-                    期限
-                    <input
-                      type="date"
-                      value={form.dueDate}
-                      onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))}
-                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
-                  </label>
-                  <label className="grid gap-1 text-xs text-slate-500">
-                    担当
-                    <select
-                      value={form.assigneeId}
-                      onChange={(e) => setForm((p) => ({ ...p, assigneeId: e.target.value }))}
-                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    >
-                      <option value="">未設定</option>
-                      {members.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name ?? member.email ?? "メンバー"}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-xs text-slate-500">
-                    タグ
-                    <input
-                      value={form.tags}
-                      onChange={(e) => setForm((p) => ({ ...p, tags: e.target.value }))}
-                      placeholder="ui, sprint"
-                      className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                    />
-                  </label>
-                </div>
                 <label className="grid gap-1 text-xs text-slate-500">
-                  依存タスク
+                  親アイテム
                   <select
-                    multiple
-                    value={form.dependencyIds}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions).map(
-                        (option) => option.value,
-                      );
-                      setForm((p) => ({ ...p, dependencyIds: selected }));
-                    }}
+                    value={form.parentId}
+                    onChange={(e) => setForm((p) => ({ ...p, parentId: e.target.value }))}
                     className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                   >
-                    {items.map((candidate) => (
+                    <option value="">未設定</option>
+                    {parentCandidates.map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>
                         {candidate.title}
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setForm((p) => ({ ...p, dependencyIds: [] }))}
-                    className="w-fit text-[11px] text-slate-500 transition hover:text-[#2323eb]"
-                  >
-                    選択を解除
-                  </button>
                 </label>
-                {scoreHint ? (
-                  <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                    {scoreHint}
-                  </div>
-                ) : null}
-                <div className="mt-4 flex items-center justify-between">
-                  <button
-                    onClick={() => {
-                      setCreationStep(2);
-                      setDefinitionError(null);
-                    }}
-                    className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
-                  >
-                    戻る
-                  </button>
-                  <LoadingButton
-                    onClick={addItem}
-                    loading={addLoading}
-                    className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30 disabled:opacity-60"
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      {addLoading ? (
-                        <span className="inline-flex items-center">
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
-                        </span>
-                      ) : null}
-                      追加する
-                    </span>
-                  </LoadingButton>
-                </div>
               </div>
-            )}
-          </div>
-        </div>
+              <label className="grid gap-1 text-xs text-slate-500">
+                繰り返し（任意）
+                <select
+                  value={form.routineCadence}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      routineCadence: e.target.value,
+                    }))
+                  }
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                >
+                  <option value="NONE">なし</option>
+                  <option value="DAILY">毎日</option>
+                  <option value="WEEKLY">毎週</option>
+                </select>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-1 text-xs text-slate-500">
+                  期限
+                  <input
+                    type="date"
+                    value={form.dueDate}
+                    onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))}
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs text-slate-500">
+                  担当
+                  <select
+                    value={form.assigneeId}
+                    onChange={(e) => setForm((p) => ({ ...p, assigneeId: e.target.value }))}
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  >
+                    <option value="">未設定</option>
+                    {members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name ?? member.email ?? "メンバー"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs text-slate-500">
+                  タグ
+                  <input
+                    value={form.tags}
+                    onChange={(e) => setForm((p) => ({ ...p, tags: e.target.value }))}
+                    placeholder="ui, sprint"
+                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1 text-xs text-slate-500">
+                依存タスク
+                <select
+                  multiple
+                  value={form.dependencyIds}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions).map(
+                      (option) => option.value,
+                    );
+                    setForm((p) => ({ ...p, dependencyIds: selected }));
+                  }}
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                >
+                  {items.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.title}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, dependencyIds: [] }))}
+                  className="w-fit text-[11px] text-slate-500 transition hover:text-[#2323eb]"
+                >
+                  選択を解除
+                </button>
+              </label>
+              {scoreHint ? (
+                <div className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  {scoreHint}
+                </div>
+              ) : null}
+              <div className="mt-4 flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    setCreationStep(2);
+                    setDefinitionError(null);
+                  }}
+                  className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
+                >
+                  戻る
+                </button>
+                <LoadingButton
+                  onClick={addItem}
+                  loading={addLoading}
+                  className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {addLoading ? (
+                      <span className="inline-flex items-center">
+                        <span className="size-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+                      </span>
+                    ) : null}
+                    追加する
+                  </span>
+                </LoadingButton>
+              </div>
+            </div>
+          )}
+        </Modal>
       ) : null}
 
       {prepModalOpen && prepTask ? (
@@ -1543,203 +1617,124 @@ export default function BacklogPage() {
       ) : null}
 
       {editItem ? (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 px-4">
-          <div className="w-full max-w-lg border border-slate-200 bg-white p-6 shadow-lg">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">タスクを編集</h3>
-              <button
-                onClick={() => setEditItem(null)}
-                className="text-sm text-slate-500 transition hover:text-slate-800"
-              >
-                閉じる
-              </button>
-            </div>
-            <div className="mt-4 grid gap-3">
-              <input
-                value={editForm.title}
-                onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
-                placeholder="タイトル"
-                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-              />
-              <textarea
-                value={editForm.description}
-                onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
-                placeholder="概要（任意）"
-                rows={3}
-                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-              />
-              <input
-                value={editForm.definitionOfDone}
+        <Modal
+          open={Boolean(editItem)}
+          onOpenChange={(open) => {
+            if (!open) setEditItem(null);
+          }}
+          title="タスクを編集"
+        >
+          <div className="grid gap-3">
+            <input
+              value={editForm.title}
+              onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
+              placeholder="タイトル"
+              className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+            />
+            <textarea
+              value={editForm.description}
+              onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+              placeholder="概要（任意）"
+              rows={3}
+              className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+            />
+            <input
+              value={editForm.definitionOfDone}
+              onChange={(e) =>
+                setEditForm((p) => ({
+                  ...p,
+                  definitionOfDone: e.target.value,
+                }))
+              }
+              placeholder="完了条件"
+              className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+            />
+            <textarea
+              value={editForm.checklistText}
+              onChange={(e) => setEditForm((p) => ({ ...p, checklistText: e.target.value }))}
+              placeholder="チェックリスト（1行1項目）"
+              rows={3}
+              className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+            />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <select
+                value={editForm.points}
                 onChange={(e) =>
                   setEditForm((p) => ({
                     ...p,
-                    definitionOfDone: e.target.value,
+                    points: Number(e.target.value) || 1,
                   }))
                 }
-                placeholder="完了条件（DoD）"
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-              />
-              <textarea
-                value={editForm.checklistText}
-                onChange={(e) => setEditForm((p) => ({ ...p, checklistText: e.target.value }))}
-                placeholder="チェックリスト（1行1項目）"
-                rows={3}
+              >
+                {STORY_POINTS.map((pt) => (
+                  <option key={pt} value={pt}>
+                    {pt} pt
+                  </option>
+                ))}
+              </select>
+              <select
+                value={editForm.urgency}
+                onChange={(e) =>
+                  setEditForm((p) => ({
+                    ...p,
+                    urgency: e.target.value as Severity,
+                  }))
+                }
                 className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-              />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <select
-                  value={editForm.points}
-                  onChange={(e) =>
-                    setEditForm((p) => ({
-                      ...p,
-                      points: Number(e.target.value) || 1,
-                    }))
-                  }
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                >
-                  {STORY_POINTS.map((pt) => (
-                    <option key={pt} value={pt}>
-                      {pt} pt
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={editForm.urgency}
-                  onChange={(e) =>
-                    setEditForm((p) => ({
-                      ...p,
-                      urgency: e.target.value as Severity,
-                    }))
-                  }
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                >
-                  {severityOptions.map((v) => (
-                    <option key={v} value={v}>
-                      {SEVERITY_LABELS[v]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={editForm.risk}
-                  onChange={(e) =>
-                    setEditForm((p) => ({
-                      ...p,
-                      risk: e.target.value as Severity,
-                    }))
-                  }
-                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                >
-                  {severityOptions.map((v) => (
-                    <option key={v} value={v}>
-                      {SEVERITY_LABELS[v]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-xs text-slate-500">
-                  種別
-                  <select
-                    value={editForm.type}
-                    onChange={(e) =>
-                      setEditForm((p) => ({
-                        ...p,
-                        type: e.target.value as TaskType,
-                      }))
-                    }
-                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  >
-                    {taskTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs text-slate-500">
-                  親アイテム
-                  <select
-                    value={editForm.parentId}
-                    onChange={(e) => setEditForm((p) => ({ ...p, parentId: e.target.value }))}
-                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  >
-                    <option value="">未設定</option>
-                    {parentCandidates
-                      .filter((candidate) => candidate.id !== editItem?.id)
-                      .map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.title}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </div>
+              >
+                {severityOptions.map((v) => (
+                  <option key={v} value={v}>
+                    {SEVERITY_LABELS[v]}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={editForm.risk}
+                onChange={(e) =>
+                  setEditForm((p) => ({
+                    ...p,
+                    risk: e.target.value as Severity,
+                  }))
+                }
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              >
+                {severityOptions.map((v) => (
+                  <option key={v} value={v}>
+                    {SEVERITY_LABELS[v]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1 text-xs text-slate-500">
-                繰り返し（任意）
+                種別
                 <select
-                  value={editForm.routineCadence}
+                  value={editForm.type}
                   onChange={(e) =>
                     setEditForm((p) => ({
                       ...p,
-                      routineCadence: e.target.value,
+                      type: e.target.value as TaskType,
                     }))
                   }
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 >
-                  <option value="NONE">なし</option>
-                  <option value="DAILY">毎日</option>
-                  <option value="WEEKLY">毎週</option>
+                  {taskTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="grid gap-1 text-xs text-slate-500">
-                  期限
-                  <input
-                    type="date"
-                    value={editForm.dueDate}
-                    onChange={(e) => setEditForm((p) => ({ ...p, dueDate: e.target.value }))}
-                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs text-slate-500">
-                  担当
-                  <select
-                    value={editForm.assigneeId}
-                    onChange={(e) => setEditForm((p) => ({ ...p, assigneeId: e.target.value }))}
-                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  >
-                    <option value="">未設定</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name ?? member.email ?? "メンバー"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs text-slate-500">
-                  タグ
-                  <input
-                    value={editForm.tags}
-                    onChange={(e) => setEditForm((p) => ({ ...p, tags: e.target.value }))}
-                    placeholder="ui, sprint"
-                    className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
-                  />
-                </label>
-              </div>
               <label className="grid gap-1 text-xs text-slate-500">
-                依存タスク
+                親アイテム
                 <select
-                  multiple
-                  value={editForm.dependencyIds}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions).map(
-                      (option) => option.value,
-                    );
-                    setEditForm((p) => ({ ...p, dependencyIds: selected }));
-                  }}
+                  value={editForm.parentId}
+                  onChange={(e) => setEditForm((p) => ({ ...p, parentId: e.target.value }))}
                   className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
                 >
-                  {items
+                  <option value="">未設定</option>
+                  {parentCandidates
                     .filter((candidate) => candidate.id !== editItem?.id)
                     .map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>
@@ -1747,23 +1742,97 @@ export default function BacklogPage() {
                       </option>
                     ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={() => setEditForm((p) => ({ ...p, dependencyIds: [] }))}
-                  className="w-fit text-[11px] text-slate-500 transition hover:text-[#2323eb]"
-                >
-                  選択を解除
-                </button>
               </label>
-              <button
-                onClick={saveEdit}
-                className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30"
-              >
-                変更を保存
-              </button>
             </div>
+            <label className="grid gap-1 text-xs text-slate-500">
+              繰り返し（任意）
+              <select
+                value={editForm.routineCadence}
+                onChange={(e) =>
+                  setEditForm((p) => ({
+                    ...p,
+                    routineCadence: e.target.value,
+                  }))
+                }
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              >
+                <option value="NONE">なし</option>
+                <option value="DAILY">毎日</option>
+                <option value="WEEKLY">毎週</option>
+              </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-1 text-xs text-slate-500">
+                期限
+                <input
+                  type="date"
+                  value={editForm.dueDate}
+                  onChange={(e) => setEditForm((p) => ({ ...p, dueDate: e.target.value }))}
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-slate-500">
+                担当
+                <select
+                  value={editForm.assigneeId}
+                  onChange={(e) => setEditForm((p) => ({ ...p, assigneeId: e.target.value }))}
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                >
+                  <option value="">未設定</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name ?? member.email ?? "メンバー"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-slate-500">
+                タグ
+                <input
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm((p) => ({ ...p, tags: e.target.value }))}
+                  placeholder="ui, sprint"
+                  className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+                />
+              </label>
+            </div>
+            <label className="grid gap-1 text-xs text-slate-500">
+              依存タスク
+              <select
+                multiple
+                value={editForm.dependencyIds}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map(
+                    (option) => option.value,
+                  );
+                  setEditForm((p) => ({ ...p, dependencyIds: selected }));
+                }}
+                className="w-full border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2323eb]"
+              >
+                {items
+                  .filter((candidate) => candidate.id !== editItem?.id)
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.title}
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setEditForm((p) => ({ ...p, dependencyIds: [] }))}
+                className="w-fit text-[11px] text-slate-500 transition hover:text-[#2323eb]"
+              >
+                選択を解除
+              </button>
+            </label>
+            <button
+              onClick={saveEdit}
+              className="bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition"
+            >
+              変更を保存
+            </button>
           </div>
-        </div>
+        </Modal>
       ) : null}
     </main>
   );

@@ -8,7 +8,7 @@ const nonEmptyString = (message: string, max = 500) =>
 export const OnboardingSchema = z
   .object({
     workspaceName: nonEmptyString("workspaceName is required", 100),
-    goalTitle: nonEmptyString("goalTitle is required"),
+    goalTitle: z.preprocess(toStringOrEmpty, z.string().trim().max(500)).optional(),
     goalDescription: z.preprocess(toStringOrEmpty, z.string().trim().max(10_000)).optional(),
     intent: z.preprocess(toStringOrEmpty, z.string().trim().max(1_000)).optional(),
     // TaskPointsSchema enforces the Fibonacci allowlist [1,2,3,5,8,13,21,34]

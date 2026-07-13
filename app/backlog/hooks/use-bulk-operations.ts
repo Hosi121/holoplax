@@ -4,7 +4,7 @@ import type { TaskStatus } from "../../../lib/types";
 
 type BulkAction = "status" | "delete" | "points";
 
-export function useBulkOperations(onSuccess?: () => void) {
+export function useBulkOperations(onSuccess?: () => void, onError?: (message: string) => void) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -59,15 +59,18 @@ export function useBulkOperations(onSuccess?: () => void) {
           clearSelection();
           onSuccess?.();
           return true;
-        } else {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data?.error?.message ?? "操作に失敗しました");
         }
+        const data = await res.json().catch(() => ({}));
+        onError?.(data?.error?.message ?? "一括操作に失敗しました。");
+        return false;
+      } catch {
+        onError?.("一括操作に失敗しました。通信状態を確認してください。");
+        return false;
       } finally {
         setLoading(false);
       }
     },
-    [selectedIds, clearSelection, onSuccess],
+    [selectedIds, clearSelection, onSuccess, onError],
   );
 
   const bulkUpdateStatus = useCallback(

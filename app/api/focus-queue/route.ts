@@ -48,7 +48,7 @@ export async function GET() {
             return Math.max(0, Math.min(100, 100 * (1 - clamped / 14)));
           })();
           const priority = baseScore * 0.7 + dueScore * 0.3;
-          const reason = dueScore >= 50 ? "期限が近い" : "高スコア";
+          const reason = dueScore >= 50 ? "期限が近い" : "優先度が高い";
           return {
             taskId: task.id,
             title: task.title,

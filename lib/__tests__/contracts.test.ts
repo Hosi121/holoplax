@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { AiSplitSchema } from "../contracts/ai";
+import { AiSplitApplyPayloadSchema, AiSplitSchema } from "../contracts/ai";
 import {
   AccountPasswordChangeSchema,
   AccountProviderUnlinkSchema,
@@ -696,6 +696,45 @@ describe("AiSplitSchema", () => {
   });
 });
 
+describe("AiSplitApplyPayloadSchema", () => {
+  const suggestion = {
+    title: "ログイン画面を作る",
+    detail: "フォームを実装する",
+    points: 3,
+    urgency: "MEDIUM",
+    risk: "LOW",
+  };
+
+  it("accepts an atomic split payload for an active task list", () => {
+    const result = AiSplitApplyPayloadSchema.safeParse({
+      status: "SPRINT",
+      suggestions: [suggestion],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects empty, oversized, completed, and invalid-point payloads", () => {
+    expect(
+      AiSplitApplyPayloadSchema.safeParse({ status: "BACKLOG", suggestions: [] }).success,
+    ).toBe(false);
+    expect(
+      AiSplitApplyPayloadSchema.safeParse({
+        status: "BACKLOG",
+        suggestions: Array.from({ length: 51 }, () => suggestion),
+      }).success,
+    ).toBe(false);
+    expect(
+      AiSplitApplyPayloadSchema.safeParse({ status: "DONE", suggestions: [suggestion] }).success,
+    ).toBe(false);
+    expect(
+      AiSplitApplyPayloadSchema.safeParse({
+        status: "SPRINT",
+        suggestions: [{ ...suggestion, points: 4 }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // SprintStartSchema — capacityPoints constraints
 // ---------------------------------------------------------------------------
@@ -1059,9 +1098,9 @@ describe("AutomationUpdateSchema", () => {
 describe("OnboardingSchema", () => {
   const minValid = { workspaceName: "My Team", goalTitle: "Launch v1" };
 
-  it("requires workspaceName and goalTitle", () => {
+  it("requires only workspaceName so onboarding can stay progressive", () => {
     expect(OnboardingSchema.safeParse({}).success).toBe(false);
-    expect(OnboardingSchema.safeParse({ workspaceName: "Team" }).success).toBe(false);
+    expect(OnboardingSchema.safeParse({ workspaceName: "Team" }).success).toBe(true);
     expect(OnboardingSchema.safeParse({ goalTitle: "Goal" }).success).toBe(false);
   });
 

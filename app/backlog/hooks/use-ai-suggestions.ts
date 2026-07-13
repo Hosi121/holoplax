@@ -5,13 +5,7 @@ import {
   trackSuggestionRejected,
   trackSuggestionViewed,
 } from "../../../lib/ai-reaction-tracker";
-import {
-  AUTOMATION_STATE,
-  SEVERITY,
-  TASK_STATUS,
-  TASK_TYPE,
-  type TaskDTO,
-} from "../../../lib/types";
+import { TASK_STATUS, type TaskDTO } from "../../../lib/types";
 import type { AiContext } from "./use-suggestion-context";
 
 type SplitSuggestion = {
@@ -37,11 +31,17 @@ type TipResult = {
 
 export type UseAiSuggestionsOptions = {
   fetchTasks: () => Promise<void>;
-  setItems: React.Dispatch<React.SetStateAction<TaskDTO[]>>;
   context?: AiContext | null;
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
 };
 
-export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggestionsOptions) {
+export function useAiSuggestions({
+  fetchTasks,
+  context,
+  onError,
+  onSuccess,
+}: UseAiSuggestionsOptions) {
   const [suggestionMap, setSuggestionMap] = useState<Record<string, TipResult>>({});
   const [scoreMap, setScoreMap] = useState<Record<string, ScoreResult>>({});
   const [splitMap, setSplitMap] = useState<Record<string, SplitSuggestion[]>>({});
@@ -85,7 +85,10 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description, taskId }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("AIからのヒントを取得できませんでした");
+        return;
+      }
       const data = await res.json();
       if (taskId) {
         setSuggestionMap((prev) => ({
@@ -101,6 +104,8 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
           viewedAtMap.current[`tip_${taskId}`] = viewedAt;
         }
       }
+    } catch {
+      onError?.("AIからのヒントを取得できませんでした");
     } finally {
       setSuggestLoadingId(null);
     }
@@ -118,7 +123,10 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
           taskId: item.id,
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("大きさを見積もれませんでした");
+        return;
+      }
       const data = await res.json();
       setScoreMap((prev) => ({
         ...prev,
@@ -140,6 +148,8 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
       if (viewedAt) {
         viewedAtMap.current[`score_${item.id}`] = viewedAt;
       }
+    } catch {
+      onError?.("大きさを見積もれませんでした");
     } finally {
       setScoreLoadingId(null);
     }
@@ -148,41 +158,57 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
   const applyTipSuggestion = async (itemId: string) => {
     const suggestion = suggestionMap[itemId];
     if (!suggestion) return;
-    // Track ACCEPTED
-    trackSuggestionAccepted(suggestion.suggestionId, viewedAtMap.current[`tip_${itemId}`]);
-    await apiFetch("/api/ai/apply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: itemId,
-        type: "TIP",
-        suggestionId: suggestion.suggestionId,
-        payload: { text: suggestion.text },
-      }),
-    });
-    void fetchTasks();
+    try {
+      const res = await apiFetch("/api/ai/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: itemId,
+          type: "TIP",
+          suggestionId: suggestion.suggestionId,
+          payload: { text: suggestion.text },
+        }),
+      });
+      if (!res.ok) {
+        onError?.("AIからのヒントを反映できませんでした");
+        return;
+      }
+      trackSuggestionAccepted(suggestion.suggestionId, viewedAtMap.current[`tip_${itemId}`]);
+      await fetchTasks();
+      onSuccess?.("AIからのヒントを反映しました");
+    } catch {
+      onError?.("AIからのヒントを反映できませんでした");
+    }
   };
 
   const applyScoreSuggestion = async (itemId: string) => {
     const score = scoreMap[itemId];
     if (!score) return;
-    // Track ACCEPTED
-    trackSuggestionAccepted(score.suggestionId, viewedAtMap.current[`score_${itemId}`]);
-    await apiFetch("/api/ai/apply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: itemId,
-        type: "SCORE",
-        suggestionId: score.suggestionId,
-        payload: {
-          points: score.points,
-          urgency: score.urgency,
-          risk: score.risk,
-        },
-      }),
-    });
-    void fetchTasks();
+    try {
+      const res = await apiFetch("/api/ai/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: itemId,
+          type: "SCORE",
+          suggestionId: score.suggestionId,
+          payload: {
+            points: score.points,
+            urgency: score.urgency,
+            risk: score.risk,
+          },
+        }),
+      });
+      if (!res.ok) {
+        onError?.("見積もりを反映できませんでした");
+        return;
+      }
+      trackSuggestionAccepted(score.suggestionId, viewedAtMap.current[`score_${itemId}`]);
+      await fetchTasks();
+      onSuccess?.("見積もりを反映しました");
+    } catch {
+      onError?.("見積もりを反映できませんでした");
+    }
   };
 
   const requestSplit = async (item: TaskDTO) => {
@@ -198,24 +224,27 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
           taskId: item.id,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setSplitMap((prev) => ({ ...prev, [item.id]: data.suggestions ?? [] }));
-        setSplitSuggestionIdMap((prev) => ({
-          ...prev,
-          [item.id]: data.suggestionId ?? null,
-        }));
-        // Track VIEWED
-        const viewedAt = trackSuggestionViewed(data.suggestionId, {
-          taskType: item.type,
-          taskPoints: item.points,
-          wipCount: context?.wipCount,
-          flowState: context?.flowState ?? undefined,
-        });
-        if (viewedAt) {
-          viewedAtMap.current[`split_${item.id}`] = viewedAt;
-        }
+      if (!res.ok) {
+        onError?.("分割案を作れませんでした");
+        return;
       }
+      const data = await res.json();
+      setSplitMap((prev) => ({ ...prev, [item.id]: data.suggestions ?? [] }));
+      setSplitSuggestionIdMap((prev) => ({
+        ...prev,
+        [item.id]: data.suggestionId ?? null,
+      }));
+      const viewedAt = trackSuggestionViewed(data.suggestionId, {
+        taskType: item.type,
+        taskPoints: item.points,
+        wipCount: context?.wipCount,
+        flowState: context?.flowState ?? undefined,
+      });
+      if (viewedAt) {
+        viewedAtMap.current[`split_${item.id}`] = viewedAt;
+      }
+    } catch {
+      onError?.("分割案を作れませんでした");
     } finally {
       setSplitLoadingId(null);
     }
@@ -225,58 +254,38 @@ export function useAiSuggestions({ fetchTasks, setItems, context }: UseAiSuggest
     const suggestions = splitMap[item.id] ?? [];
     if (!suggestions.length) return;
     const suggestionId = splitSuggestionIdMap[item.id];
-    // Track ACCEPTED
-    trackSuggestionAccepted(suggestionId, viewedAtMap.current[`split_${item.id}`]);
-    // Optimistic update
-    setItems((prev) =>
-      prev.map((t) =>
-        t.id === item.id ? { ...t, automationState: AUTOMATION_STATE.SPLIT_PARENT } : t,
-      ),
-    );
-    setSplitMap((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
-    setSplitSuggestionIdMap((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
     const statusValue = view === "sprint" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG;
-    await Promise.all(
-      suggestions.map((split) =>
-        apiFetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: split.title,
-            description: split.detail,
-            points: split.points,
-            urgency: split.urgency ?? SEVERITY.MEDIUM,
-            risk: split.risk ?? SEVERITY.MEDIUM,
-            status: statusValue,
-            type: TASK_TYPE.TASK,
-            parentId: item.id,
-          }),
+    try {
+      const res = await apiFetch("/api/ai/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: item.id,
+          type: "SPLIT",
+          suggestionId: suggestionId ?? null,
+          payload: { status: statusValue, suggestions },
         }),
-      ),
-    );
-    await apiFetch(`/api/tasks/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ automationState: AUTOMATION_STATE.SPLIT_PARENT }),
-    });
-    await apiFetch("/api/ai/apply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: item.id,
-        type: "SPLIT",
-        suggestionId: suggestionId ?? null,
-      }),
-    });
-    await fetchTasks();
+      });
+      if (!res.ok) {
+        onError?.("分割案を反映できませんでした");
+        return;
+      }
+      trackSuggestionAccepted(suggestionId, viewedAtMap.current[`split_${item.id}`]);
+      setSplitMap((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      setSplitSuggestionIdMap((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      await fetchTasks();
+      onSuccess?.("分割案を追加しました");
+    } catch {
+      onError?.("分割案を反映できませんでした");
+    }
   };
 
   const dismissTip = (itemId: string) => {

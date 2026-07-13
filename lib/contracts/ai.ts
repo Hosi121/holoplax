@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SEVERITY, TASK_STATUS } from "../types";
 import { TaskPointsSchema } from "./task";
 
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
@@ -44,6 +45,28 @@ export const AiApplySchema = z
     type: nonEmptyString("type is required"),
     suggestionId: z.preprocess(toStringOrEmpty, z.string().trim()).optional(),
     payload: z.record(z.string(), z.any()).optional().nullable(),
+  })
+  .strip();
+
+const severityValues = [SEVERITY.LOW, SEVERITY.MEDIUM, SEVERITY.HIGH] as const;
+
+export const AiSplitApplyPayloadSchema = z
+  .object({
+    status: z.enum([TASK_STATUS.BACKLOG, TASK_STATUS.SPRINT]),
+    suggestions: z
+      .array(
+        z
+          .object({
+            title: z.string().trim().min(1).max(500),
+            detail: z.string().max(100_000).optional().default(""),
+            points: TaskPointsSchema,
+            urgency: z.enum(severityValues).optional().default(SEVERITY.MEDIUM),
+            risk: z.enum(severityValues).optional().default(SEVERITY.MEDIUM),
+          })
+          .strip(),
+      )
+      .min(1)
+      .max(50),
   })
   .strip();
 

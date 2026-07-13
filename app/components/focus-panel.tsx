@@ -1,20 +1,22 @@
 "use client";
 
 import { Check, RefreshCw, Target } from "lucide-react";
+import { InlineError, Skeleton } from "./ui/feedback";
 import { useDailyFocus } from "./use-daily-focus";
 
 export function FocusPanel() {
-  const { focusTasks, summary, loading, accepted, accept, refresh, markDone } = useDailyFocus();
+  const { focusTasks, summary, loading, error, refresh, markDone } = useDailyFocus();
 
   if (loading) {
     return (
       <section className="border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-2 text-slate-500">
-          <RefreshCw size={16} className="animate-spin" />
-          <span className="text-sm">読み込み中...</span>
-        </div>
+        <Skeleton className="h-20 w-full" />
       </section>
     );
+  }
+
+  if (error) {
+    return <InlineError message={error} onRetry={refresh} />;
   }
 
   if (focusTasks.length === 0) {
@@ -30,7 +32,7 @@ export function FocusPanel() {
   }
 
   return (
-    <section className="border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50 p-6 shadow-sm">
+    <section className="border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Target size={18} className="text-[#2323eb]" />
@@ -54,7 +56,8 @@ export function FocusPanel() {
           >
             <button
               onClick={() => markDone(task.id)}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-400 transition hover:border-[#2323eb] hover:text-[#2323eb]"
+              className="flex size-5 shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-400 hover:border-[#2323eb] hover:text-[#2323eb]"
+              aria-label={`「${task.title}」を完了にする`}
             >
               <Check size={12} />
             </button>
@@ -77,30 +80,6 @@ export function FocusPanel() {
           </div>
         ))}
       </div>
-
-      {!accepted && (
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={accept}
-            className="flex-1 bg-[#2323eb] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#2323eb]/30"
-          >
-            これでいく
-          </button>
-          <button
-            onClick={refresh}
-            className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 transition hover:border-slate-300"
-          >
-            変える
-          </button>
-        </div>
-      )}
-
-      {accepted && (
-        <div className="mt-4 flex items-center gap-2 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          <Check size={14} />
-          今日のフォーカスを決定しました
-        </div>
-      )}
     </section>
   );
 }

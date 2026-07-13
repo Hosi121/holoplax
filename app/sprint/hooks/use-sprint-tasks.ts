@@ -45,6 +45,8 @@ export type UseSprintTasksOptions = {
   workspaceId: string | null;
   sprintId?: string | null;
   onWarning?: (message: string) => void;
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
 };
 
 const defaultNewForm: NewTaskForm = {
@@ -58,8 +60,17 @@ const defaultNewForm: NewTaskForm = {
   tags: "",
 };
 
-export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseSprintTasksOptions) {
+export function useSprintTasks({
+  ready,
+  workspaceId,
+  sprintId,
+  onWarning,
+  onError,
+  onSuccess,
+}: UseSprintTasksOptions) {
   const [items, setItems] = useState<TaskDTO[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState<string | null>(null);
   const [newItem, setNewItem] = useState<NewTaskForm>(defaultNewForm);
   const [editItem, setEditItem] = useState<TaskDTO | null>(null);
   const [editForm, setEditForm] = useState<EditTaskForm>({
@@ -79,17 +90,26 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
     if (!ready) return;
     if (!workspaceId) {
       setItems([]);
+      setTasksLoading(false);
       return;
     }
     // Completed tasks retain their sprintId and belong in the current sprint's
     // completed section, so fetch both states before filtering by sprintId.
-    const res = await apiFetch("/api/tasks?status=SPRINT&status=DONE&limit=500");
-    if (!res.ok) {
-      setItems([]);
-      return;
+    setTasksLoading(true);
+    setTasksError(null);
+    try {
+      const res = await apiFetch("/api/tasks?status=SPRINT&status=DONE&limit=500");
+      if (!res.ok) {
+        setTasksError("スプリントのタスクを読み込めませんでした。");
+        return;
+      }
+      const data = await res.json();
+      setItems(data.tasks ?? []);
+    } catch {
+      setTasksError("スプリントのタスクを読み込めませんでした。");
+    } finally {
+      setTasksLoading(false);
     }
-    const data = await res.json();
-    setItems(data.tasks ?? []);
   }, [ready, workspaceId]);
 
   const displayedItems = useMemo(() => {
@@ -117,7 +137,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
   const addItem = async (remaining: number) => {
     if (!newItem.title.trim() || newItem.points <= 0) return;
     if (newItem.points > remaining) return;
-    await apiFetch("/api/tasks", {
+    const res = await apiFetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -138,8 +158,13 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
           .filter(Boolean),
       }),
     });
+    if (!res.ok) {
+      onError?.("タスクを追加できませんでした。");
+      return;
+    }
     setNewItem(defaultNewForm);
-    fetchTasks();
+    onSuccess?.("スプリントにタスクを追加しました。");
+    void fetchTasks();
   };
 
   const markDone = async (id: string) => {
@@ -152,18 +177,26 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
       onWarning?.("チェックリストが未完了です。完了にする前に確認してください。");
       return;
     }
-    await apiFetch(`/api/tasks/${id}`, {
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: TASK_STATUS.DONE }),
     });
-    fetchTasks();
+    if (!res.ok) {
+      onError?.("タスクを完了にできませんでした。");
+      return;
+    }
+    void fetchTasks();
   };
 
   const deleteItem = async (id: string) => {
-    if (!window.confirm("このタスクを削除しますか？")) return;
-    await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
-    fetchTasks();
+    const res = await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      onError?.("タスクを削除できませんでした。");
+      return;
+    }
+    onSuccess?.("タスクを削除しました。");
+    void fetchTasks();
   };
 
   const openEdit = (item: TaskDTO) => {
@@ -186,7 +219,7 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
 
   const saveEdit = async () => {
     if (!editItem) return;
-    await apiFetch(`/api/tasks/${editItem.id}`, {
+    const res = await apiFetch(`/api/tasks/${editItem.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -205,8 +238,13 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
           .filter(Boolean),
       }),
     });
+    if (!res.ok) {
+      onError?.("変更を保存できませんでした。");
+      return;
+    }
     setEditItem(null);
-    fetchTasks();
+    onSuccess?.("変更を保存しました。");
+    void fetchTasks();
   };
 
   const toggleChecklistItem = async (taskId: string, checklistId: string) => {
@@ -224,12 +262,17 @@ export function useSprintTasks({ ready, workspaceId, sprintId, onWarning }: UseS
       body: JSON.stringify({ checklist: nextChecklist }),
     });
     // Re-sync from the server on failure so the optimistic toggle doesn't stick.
-    if (!res.ok) fetchTasks();
+    if (!res.ok) {
+      onError?.("チェックリストを更新できませんでした。");
+      void fetchTasks();
+    }
   };
 
   return {
     // State
     items,
+    tasksLoading,
+    tasksError,
     displayedItems,
     used,
     newItem,

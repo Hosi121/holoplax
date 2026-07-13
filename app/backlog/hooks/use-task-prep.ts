@@ -17,7 +17,15 @@ export type AiPrepOutput = {
  * prep outputs, generating a new one, and approving/applying/reverting them.
  * `fetchTasks` is invoked after apply/revert so the board reflects the change.
  */
-export function useTaskPrep(fetchTasks: () => void | Promise<void>) {
+type UseTaskPrepOptions = {
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
+};
+
+export function useTaskPrep(
+  fetchTasks: () => void | Promise<void>,
+  { onError, onSuccess }: UseTaskPrepOptions = {},
+) {
   const [prepModalOpen, setPrepModalOpen] = useState(false);
   const [prepTask, setPrepTask] = useState<TaskDTO | null>(null);
   const [prepType, setPrepType] = useState<AiPrepType>("CHECKLIST");
@@ -26,17 +34,25 @@ export function useTaskPrep(fetchTasks: () => void | Promise<void>) {
   const [prepFetchLoading, setPrepFetchLoading] = useState(false);
   const [prepActionLoadingId, setPrepActionLoadingId] = useState<string | null>(null);
 
-  const loadPrepOutputs = useCallback(async (taskId: string) => {
-    setPrepFetchLoading(true);
-    try {
-      const res = await apiFetch(`/api/ai/prep?taskId=${taskId}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setPrepOutputs(data.outputs ?? []);
-    } finally {
-      setPrepFetchLoading(false);
-    }
-  }, []);
+  const loadPrepOutputs = useCallback(
+    async (taskId: string) => {
+      setPrepFetchLoading(true);
+      try {
+        const res = await apiFetch(`/api/ai/prep?taskId=${taskId}`);
+        if (!res.ok) {
+          onError?.("AIの下準備を読み込めませんでした");
+          return;
+        }
+        const data = await res.json();
+        setPrepOutputs(data.outputs ?? []);
+      } catch {
+        onError?.("AIの下準備を読み込めませんでした");
+      } finally {
+        setPrepFetchLoading(false);
+      }
+    },
+    [onError],
+  );
 
   const openPrepModal = (item: TaskDTO) => {
     setPrepTask(item);
@@ -60,11 +76,17 @@ export function useTaskPrep(fetchTasks: () => void | Promise<void>) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: prepTask.id, type: prepType }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("AIの下準備を作れませんでした");
+        return;
+      }
       const data = await res.json();
       if (data.output) {
         setPrepOutputs((prev) => [data.output, ...prev]);
       }
+      onSuccess?.("AIの下準備を作りました");
+    } catch {
+      onError?.("AIの下準備を作れませんでした");
     } finally {
       setPrepLoading(false);
     }
@@ -78,7 +100,10 @@ export function useTaskPrep(fetchTasks: () => void | Promise<void>) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        onError?.("AIの下準備を更新できませんでした");
+        return;
+      }
       const data = await res.json();
       if (data.output) {
         setPrepOutputs((prev) =>
@@ -86,8 +111,11 @@ export function useTaskPrep(fetchTasks: () => void | Promise<void>) {
         );
       }
       if (action === "apply" || action === "revert") {
-        void fetchTasks();
+        await fetchTasks();
       }
+      onSuccess?.(action === "apply" ? "下準備を反映しました" : "下準備を更新しました");
+    } catch {
+      onError?.("AIの下準備を更新できませんでした");
     } finally {
       setPrepActionLoadingId(null);
     }

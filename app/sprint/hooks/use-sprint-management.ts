@@ -18,6 +18,8 @@ export type UseSprintManagementOptions = {
   ready: boolean;
   workspaceId: string | null;
   onSprintChange?: () => void;
+  onError?: (message: string) => void;
+  onSuccess?: (message: string) => void;
 };
 
 const defaultSprintForm: SprintForm = {
@@ -31,10 +33,13 @@ export function useSprintManagement({
   ready,
   workspaceId,
   onSprintChange,
+  onError,
+  onSuccess,
 }: UseSprintManagementOptions) {
   const [sprint, setSprint] = useState<SprintDTO | null>(null);
   const [sprintHistory, setSprintHistory] = useState<SprintHistoryItem[]>([]);
   const [sprintLoading, setSprintLoading] = useState(false);
+  const [sprintError, setSprintError] = useState<string | null>(null);
   const [sprintForm, setSprintForm] = useState<SprintForm>(defaultSprintForm);
 
   const fetchSprint = useCallback(async () => {
@@ -43,18 +48,26 @@ export function useSprintManagement({
       setSprint(null);
       return;
     }
-    const res = await apiFetch("/api/sprints/current");
-    if (!res.ok) return;
-    const data = await res.json();
-    const s = data.sprint ?? null;
-    setSprint(s);
-    if (s) {
-      setSprintForm({
-        name: s.name ?? "",
-        capacityPoints: s.capacityPoints ?? 24,
-        startedAt: s.startedAt ? String(s.startedAt).slice(0, 10) : "",
-        plannedEndAt: s.plannedEndAt ? String(s.plannedEndAt).slice(0, 10) : "",
-      });
+    setSprintError(null);
+    try {
+      const res = await apiFetch("/api/sprints/current");
+      if (!res.ok) {
+        setSprintError("スプリントを読み込めませんでした。");
+        return;
+      }
+      const data = await res.json();
+      const s = data.sprint ?? null;
+      setSprint(s);
+      if (s) {
+        setSprintForm({
+          name: s.name ?? "",
+          capacityPoints: s.capacityPoints ?? 24,
+          startedAt: s.startedAt ? String(s.startedAt).slice(0, 10) : "",
+          plannedEndAt: s.plannedEndAt ? String(s.plannedEndAt).slice(0, 10) : "",
+        });
+      }
+    } catch {
+      setSprintError("スプリントを読み込めませんでした。");
     }
   }, [ready, workspaceId]);
 
@@ -86,6 +99,9 @@ export function useSprintManagement({
         setSprint(data.sprint ?? null);
         fetchSprintHistory();
         onSprintChange?.();
+        onSuccess?.("スプリントを開始しました。");
+      } else {
+        onError?.("スプリントを開始できませんでした。");
       }
     } finally {
       setSprintLoading(false);
@@ -98,6 +114,9 @@ export function useSprintManagement({
       const res = await apiFetch("/api/sprints/current", { method: "PATCH" });
       if (res.ok) {
         await fetchSprint();
+        onSuccess?.("スプリントを終了し、完了ペースを記録しました。");
+      } else {
+        onError?.("スプリントを終了できませんでした。");
       }
       fetchSprintHistory();
       onSprintChange?.();
@@ -124,6 +143,9 @@ export function useSprintManagement({
         const data = await res.json();
         setSprint(data.sprint ?? null);
         fetchSprintHistory();
+        onSuccess?.("スプリントの設定を保存しました。");
+      } else {
+        onError?.("スプリントの設定を保存できませんでした。");
       }
     } finally {
       setSprintLoading(false);
@@ -135,6 +157,7 @@ export function useSprintManagement({
     sprint,
     sprintHistory,
     sprintLoading,
+    sprintError,
     sprintForm,
     setSprintForm,
     // Actions

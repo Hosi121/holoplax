@@ -3,10 +3,11 @@ import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
-import { AiApplySchema } from "../../../../lib/contracts/ai";
+import { AiApplySchema, AiSplitApplyPayloadSchema } from "../../../../lib/contracts/ai";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import prisma from "../../../../lib/prisma";
+import { AUTOMATION_STATE, TASK_TYPE } from "../../../../lib/types";
 
 const errors = createDomainErrors("AI");
 
@@ -82,7 +83,41 @@ export async function POST(request: Request) {
           },
         });
       } else if (type === "SPLIT") {
-        // split itself is applied elsewhere; keep this endpoint for audit logging
+        const result = AiSplitApplyPayloadSchema.safeParse(payload);
+        if (!result.success) {
+          return errors.badRequest("invalid split payload");
+        }
+        const { status, suggestions } = result.data;
+        const applied = await prisma.$transaction(async (tx) => {
+          const updated = await tx.task.updateMany({
+            where: {
+              id: taskId,
+              workspaceId,
+              automationState: { not: AUTOMATION_STATE.SPLIT_PARENT },
+            },
+            data: { automationState: AUTOMATION_STATE.SPLIT_PARENT },
+          });
+          if (updated.count === 0) return false;
+          await tx.task.createMany({
+            data: suggestions.map((item) => ({
+              title: item.title,
+              description: item.detail,
+              points: item.points,
+              urgency: item.urgency,
+              risk: item.risk,
+              status,
+              automationState: AUTOMATION_STATE.SPLIT_CHILD,
+              type: TASK_TYPE.TASK,
+              parentId: taskId,
+              workspaceId,
+              userId,
+            })),
+          });
+          return true;
+        });
+        if (!applied) {
+          return ok({ ok: true, applied: false });
+        }
       } else {
         return errors.badRequest("invalid type");
       }

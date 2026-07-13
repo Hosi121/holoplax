@@ -24,7 +24,7 @@ export async function POST(request: Request) {
         code: "ONBOARDING_VALIDATION",
       });
       const workspaceName = body.workspaceName;
-      const goalTitle = body.goalTitle;
+      const goalTitle = body.goalTitle ?? "";
       const goalDescription = body.goalDescription ?? "";
       const intent = body.intent ?? "";
       const points = Number(body.points ?? 3);
@@ -65,20 +65,22 @@ export async function POST(request: Request) {
           },
         });
 
-        const task = await tx.task.create({
-          data: {
-            title: goalTitle,
-            description: goalDescription,
-            points: Number.isFinite(points) ? points : 3,
-            urgency: SEVERITY.MEDIUM,
-            risk: SEVERITY.MEDIUM,
-            status: "BACKLOG",
-            type: TASK_TYPE.EPIC,
-            userId,
-            workspaceId: workspace.id,
-          },
-          select: { id: true },
-        });
+        const task = goalTitle
+          ? await tx.task.create({
+              data: {
+                title: goalTitle,
+                description: goalDescription,
+                points: Number.isFinite(points) ? points : 3,
+                urgency: SEVERITY.MEDIUM,
+                risk: SEVERITY.MEDIUM,
+                status: "BACKLOG",
+                type: TASK_TYPE.EPIC,
+                userId,
+                workspaceId: workspace.id,
+              },
+              select: { id: true },
+            })
+          : null;
         if (routineTitle && routineCadence) {
           const dueAt = new Date();
           dueAt.setDate(dueAt.getDate() + (routineCadence === "DAILY" ? 1 : 7));
@@ -120,7 +122,7 @@ export async function POST(request: Request) {
           created: true as const,
           completedAt,
           workspaceId: workspace.id,
-          taskId: task.id,
+          taskId: task?.id ?? null,
         };
       });
 

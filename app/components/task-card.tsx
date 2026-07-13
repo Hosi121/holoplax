@@ -7,19 +7,14 @@ import {
   SEVERITY_LABELS,
   type Severity,
   TASK_STATUS,
-  TASK_TYPE,
   type TaskDTO,
   type TaskType,
 } from "../../lib/types";
+import { TASK_TYPE_LABELS } from "../../lib/ui-language";
 import { DropdownMenu } from "./dropdown-menu";
 import { ExpandableText } from "./expandable-text";
 import { useToast } from "./toast";
-
-const taskTypeLabels: Record<TaskType, string> = {
-  [TASK_TYPE.EPIC]: "目標",
-  [TASK_TYPE.PBI]: "PBI",
-  [TASK_TYPE.TASK]: "タスク",
-};
+import { ConfirmDialog } from "./ui/confirm-dialog";
 
 // ============================================================
 // Types
@@ -241,7 +236,7 @@ export function TaskCard({
             <span
               className={`border border-slate-200 bg-white px-2 py-1 ${isCompact ? "text-slate-500" : "text-slate-600"}`}
             >
-              {taskTypeLabels[(item.type ?? TASK_TYPE.PBI) as TaskType]}
+              {TASK_TYPE_LABELS[(item.type ?? "PBI") as TaskType]}
             </span>
           )}
           {showAiTaskBadge && (
@@ -274,7 +269,7 @@ export function TaskCard({
           )}
           {item.automationState === AUTOMATION_STATE.PENDING_SPLIT && (
             <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-              承認待ち
+              確認待ち
             </span>
           )}
         </div>
@@ -293,7 +288,7 @@ export function TaskCard({
         </div>
       )}
 
-      {/* Definition of Done */}
+      {/* Completion criteria */}
       {!isCompact && item.definitionOfDone && (
         <p className="mt-1 text-xs text-slate-500">完了条件: {item.definitionOfDone}</p>
       )}
@@ -342,13 +337,13 @@ export function TaskCard({
       )}
 
       {/* Action buttons */}
-      {!isKanban && (
+      {(renderActions || !isKanban) && (
         <div className="mt-2 flex items-center gap-2 text-xs">
           {/* Custom actions */}
           {renderActions?.()}
 
           {/* Default actions based on variant */}
-          {!renderActions && (
+          {!isKanban && !renderActions && (
             <>
               {variant === "backlog" && onMoveToSprint && (
                 <button
@@ -394,7 +389,7 @@ export function TaskCard({
                       loading: aiConfig.suggestLoadingId === item.id,
                     },
                     {
-                      label: "スコア推定",
+                      label: "大きさを見積もる",
                       onClick: aiConfig.onEstimateScore,
                       loading: aiConfig.scoreLoadingId === item.id,
                     },
@@ -422,23 +417,31 @@ export function TaskCard({
               )}
 
               {onDelete && (
-                <button
-                  className="border border-slate-200 bg-white p-1 text-slate-700 transition hover:border-red-300 hover:text-red-600"
-                  onClick={onDelete}
-                  aria-label="削除"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <ConfirmDialog
+                  title="このタスクを削除しますか？"
+                  description={`「${item.title}」は削除すると元に戻せません。`}
+                  confirmLabel="削除する"
+                  onConfirm={onDelete}
+                  trigger={
+                    <button
+                      type="button"
+                      className="border border-slate-200 bg-white p-1 text-slate-700 hover:border-red-300 hover:text-red-600"
+                      aria-label="削除"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  }
+                />
               )}
             </>
           )}
         </div>
       )}
 
-      {/* AI Tip Suggestion */}
+      {/* AI hint */}
       {aiConfig?.suggestion && (
         <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">AI Tip</p>
+          <p className="mb-1 text-[11px] text-slate-500">AIからのヒント</p>
           <ExpandableText text={aiConfig.suggestion.text} maxLength={120} className="text-sm" />
           <div className="mt-2 flex items-center gap-2">
             <button
@@ -457,10 +460,10 @@ export function TaskCard({
         </div>
       )}
 
-      {/* AI Score Suggestion */}
+      {/* AI estimate */}
       {aiConfig?.score && (
         <div className="mt-2 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Score suggestion</p>
+          <p className="text-[11px] text-slate-500">AIによる見積もり</p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
             <span className="border border-slate-200 bg-slate-50 px-2 py-1">
               {aiConfig.score.points} pt
@@ -567,7 +570,7 @@ export function TaskCard({
       {/* Split Suggestions */}
       {aiConfig?.splits && aiConfig.splits.length > 0 && (
         <div className="mt-3 border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Split suggestions</p>
+          <p className="text-[11px] text-slate-500">分割案</p>
           <div className="mt-2 grid gap-2">
             {aiConfig.splits.map((split, idx) => (
               <div key={`${item.id}-${idx}`} className="flex items-start justify-between gap-3">
@@ -588,7 +591,7 @@ export function TaskCard({
               onClick={aiConfig.onApplySplit}
               className="border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb]"
             >
-              この分解をバックログに追加
+              この分割案をやることに追加
             </button>
             <button
               onClick={aiConfig.onDismissSplit}
