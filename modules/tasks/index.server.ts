@@ -11,7 +11,13 @@ import { prismaBulkTaskCommandPort } from "./infrastructure/prisma-bulk-task-com
 import { prismaConvertIntakeTaskCommandPort } from "./infrastructure/prisma-convert-intake-task-command";
 import { prismaPendingTaskSplitCommandPort } from "./infrastructure/prisma-pending-task-split-command";
 import { prismaRejectPendingTaskSplitCommandPort } from "./infrastructure/prisma-reject-pending-task-split-command";
-import { processTaskAutomationJobs } from "./infrastructure/prisma-task-automation-jobs";
+import {
+  getTaskAutomationQueueStatus,
+  processTaskAutomationJobs,
+  retryFailedTaskAutomationJobs,
+  startTaskAutomationWorker,
+  wakeTaskAutomationWorker,
+} from "./infrastructure/prisma-task-automation-jobs";
 import { prismaTaskCommandPort } from "./infrastructure/prisma-task-command-port";
 import { prismaTaskCommentCommandPort } from "./infrastructure/prisma-task-comments";
 import { prismaTaskQueryPort } from "./infrastructure/prisma-task-query-port";
@@ -37,6 +43,10 @@ export const rejectPendingTaskSplit = createRejectPendingTaskSplitCommand(
 export const listTasks = queries.list;
 export const getTask = queries.get;
 export const runPendingTaskAutomation = processTaskAutomationJobs;
+export const retryFailedTaskAutomation = retryFailedTaskAutomationJobs;
+export const getTaskAutomationStatus = getTaskAutomationQueueStatus;
+export const startDurableTaskAutomationWorker = startTaskAutomationWorker;
+export const wakeDurableTaskAutomationWorker = wakeTaskAutomationWorker;
 export const listTaskComments = comments.list;
 export const createTaskComment = comments.create;
 export const updateTaskComment = comments.update;

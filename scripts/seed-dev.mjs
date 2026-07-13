@@ -87,6 +87,22 @@ const main = async () => {
     "スプリント完了レビューのテンプレ作成",
   ];
   // Keep the development seed repeatable without deleting unrelated user data.
+  const previousSeedTasks = await prisma.task.findMany({
+    where: { workspaceId: workspace.id, title: { in: seedTaskTitles } },
+    select: { id: true },
+  });
+  const previousSeedTaskIds = previousSeedTasks.map(({ id }) => id);
+  if (previousSeedTaskIds.length) {
+    await prisma.taskDependencyEvent.deleteMany({
+      where: {
+        OR: [
+          { taskKey: { in: previousSeedTaskIds } },
+          { dependsOnKey: { in: previousSeedTaskIds } },
+        ],
+      },
+    });
+    await prisma.taskStatusEvent.deleteMany({ where: { taskKey: { in: previousSeedTaskIds } } });
+  }
   await prisma.task.deleteMany({
     where: { workspaceId: workspace.id, title: { in: seedTaskTitles } },
   });
@@ -206,16 +222,35 @@ const main = async () => {
   });
   await prisma.taskDependency.createMany({
     data: [
+      { taskId: onboarding.id, dependsOnId: heroCopy.id, workspaceId: workspace.id },
+      { taskId: reviewTemplate.id, dependsOnId: velocityCopy.id, workspaceId: workspace.id },
+      { taskId: notifyDesign.id, dependsOnId: inboxSpec.id, workspaceId: workspace.id },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.taskDependencyEvent.createMany({
+    data: [
       { taskId: onboarding.id, dependsOnId: heroCopy.id },
       { taskId: reviewTemplate.id, dependsOnId: velocityCopy.id },
       { taskId: notifyDesign.id, dependsOnId: inboxSpec.id },
-    ],
+    ].map(({ taskId, dependsOnId }) => ({
+      taskId,
+      taskKey: taskId,
+      dependsOnId,
+      dependsOnKey: dependsOnId,
+      type: "REQUIRED",
+      actorId: testUser.id,
+      workspaceId: workspace.id,
+      reason: "SEED",
+    })),
     skipDuplicates: true,
   });
   await prisma.taskStatusEvent.createMany({
     data: [heroCopy, onboarding, velocityCopy, inboxSpec, notifyDesign, reviewTemplate].map(
       (task) => ({
         taskId: task.id,
+        taskKey: task.id,
+        taskTitle: task.title,
         fromStatus: null,
         toStatus: task.status,
         actorId: testUser.id,

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import {
   carryOverSprintCommitments,
   commitTaskToSprint,
@@ -9,7 +10,9 @@ import {
   attachLegacySprintProjection,
   clearClosedSprintProjection,
 } from "../../shared/infrastructure/prisma-task-consistency";
+import { recordTaskStatusTransitions } from "../../shared/infrastructure/prisma-task-status-events";
 import type { SprintOperationsPort } from "../application/sprint-operations";
+import { sprintWindowViolation } from "../domain/sprint-policy";
 
 const sprintSelect = {
   id: true,
@@ -93,8 +96,12 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
   },
 
   async create(actor, input = {}) {
+    const startedAt = new Date();
+    const plannedEndAt = input.plannedEndAt ? new Date(input.plannedEndAt) : null;
+    const windowViolation = sprintWindowViolation({ startedAt, plannedEndAt });
+    if (windowViolation) throw error("bad_request", windowViolation);
     try {
-      return await prisma.$transaction(
+      return await runSerializableTransaction(
         async (tx) => {
           const active = await tx.sprint.findFirst({
             where: { workspaceId: actor.workspaceId, status: "ACTIVE" },
@@ -115,7 +122,8 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
               capacityPoints,
               userId: actor.userId,
               workspaceId: actor.workspaceId,
-              plannedEndAt: input.plannedEndAt ? new Date(input.plannedEndAt) : null,
+              startedAt,
+              plannedEndAt,
             },
             select: sprintSelect,
           });
@@ -136,7 +144,10 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
           });
           return sprint;
         },
-        { isolationLevel: "Serializable" },
+        {
+          code: "SPRINT_CONCURRENT_UPDATE",
+          message: "sprint changed concurrently; retry the operation",
+        },
       );
     } catch (caught) {
       if (caught instanceof Prisma.PrismaClientKnownRequestError && caught.code === "P2002") {
@@ -147,7 +158,7 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
   },
 
   close(actor) {
-    return prisma.$transaction(
+    return runSerializableTransaction(
       async (tx) => {
         const active = await tx.sprint.findFirst({
           where: { workspaceId: actor.workspaceId, status: "ACTIVE" },
@@ -183,7 +194,7 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
         });
         const sprintTasks = await tx.task.findMany({
           where: { workspaceId: actor.workspaceId, sprintId: active.id, status: "SPRINT" },
-          select: { id: true },
+          select: { id: true, title: true },
         });
         await clearClosedSprintProjection(tx, {
           workspaceId: actor.workspaceId,
@@ -191,16 +202,18 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
         });
         await carryOverSprintCommitments(tx, { sprintId: active.id, carriedAt: closedAt });
         if (sprintTasks.length) {
-          await tx.taskStatusEvent.createMany({
-            data: sprintTasks.map(({ id }) => ({
+          await recordTaskStatusTransitions(
+            tx,
+            sprintTasks.map(({ id, title }) => ({
               taskId: id,
+              taskTitle: title,
               fromStatus: "SPRINT" as const,
               toStatus: "BACKLOG" as const,
               actorId: actor.userId,
               trigger: "SPRINT_END" as const,
               workspaceId: actor.workspaceId,
             })),
-          });
+          );
         }
         await tx.auditLog.createMany({
           data: [
@@ -220,7 +233,10 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
         });
         return sprint;
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "SPRINT_CONCURRENT_UPDATE",
+        message: "sprint changed concurrently; retry the operation",
+      },
     );
   },
 
@@ -228,13 +244,22 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
     if (input.name !== undefined && !input.name.trim()) {
       throw error("bad_request", "name is required");
     }
-    return prisma.$transaction(
+    return runSerializableTransaction(
       async (tx) => {
         const current = await tx.sprint.findFirst({
           where: { id: sprintId, workspaceId: actor.workspaceId },
-          select: { id: true, status: true },
+          select: { id: true, status: true, startedAt: true, plannedEndAt: true },
         });
         if (!current) throw error("not_found", "sprint not found");
+        const startedAt = input.startedAt ? new Date(input.startedAt) : current.startedAt;
+        const plannedEndAt =
+          input.plannedEndAt === undefined
+            ? current.plannedEndAt
+            : input.plannedEndAt
+              ? new Date(input.plannedEndAt)
+              : null;
+        const windowViolation = sprintWindowViolation({ startedAt, plannedEndAt });
+        if (windowViolation) throw error("bad_request", windowViolation);
         if (current.status === "ACTIVE" && input.capacityPoints !== undefined) {
           const committed = await tx.sprintItem.aggregate({
             where: {
@@ -253,12 +278,8 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
           data: {
             ...(input.name !== undefined ? { name: input.name.trim() } : {}),
             ...(input.capacityPoints !== undefined ? { capacityPoints: input.capacityPoints } : {}),
-            ...(input.startedAt !== undefined
-              ? { startedAt: input.startedAt ? new Date(input.startedAt) : undefined }
-              : {}),
-            ...(input.plannedEndAt !== undefined
-              ? { plannedEndAt: input.plannedEndAt ? new Date(input.plannedEndAt) : null }
-              : {}),
+            ...(input.startedAt !== undefined ? { startedAt } : {}),
+            ...(input.plannedEndAt !== undefined ? { plannedEndAt } : {}),
           },
         });
         if (!updated.count) throw error("not_found", "sprint not found");
@@ -276,7 +297,10 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
         });
         return sprint;
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "SPRINT_CONCURRENT_UPDATE",
+        message: "sprint changed concurrently; retry the operation",
+      },
     );
   },
 };

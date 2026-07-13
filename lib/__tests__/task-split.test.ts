@@ -88,9 +88,15 @@ describe("splitTaskIntoChildren", () => {
         status: "BACKLOG",
         parentId: "parent",
         automationState: "SPLIT_CHILD",
-        statusEvents: {
-          create: expect.objectContaining({ toStatus: "BACKLOG", actorId: "user" }),
-        },
+      }),
+    });
+    expect(tx.taskStatusEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taskId: "child",
+        taskKey: "child",
+        taskTitle: "Child",
+        toStatus: "BACKLOG",
+        actorId: "user",
       }),
     });
   });

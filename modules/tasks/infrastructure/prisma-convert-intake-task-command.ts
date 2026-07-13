@@ -3,10 +3,7 @@ import prisma from "../../../lib/prisma";
 import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
 import type { ConvertIntakeTaskCommandPort } from "../application/convert-intake-task-command";
-import {
-  drainTaskAutomationForWorkspace,
-  enqueueTaskAutomation,
-} from "./prisma-task-automation-jobs";
+import { enqueueTaskAutomation, wakeTaskAutomationWorker } from "./prisma-task-automation-jobs";
 import { persistNewTask } from "./prisma-task-writer";
 
 const badRequest = (message: string) =>
@@ -95,7 +92,7 @@ export const prismaConvertIntakeTaskCommandPort: ConvertIntakeTaskCommandPort = 
     });
     if (!task) throw conflict("intake item already converted or dismissed");
 
-    await drainTaskAutomationForWorkspace(command.workspaceId);
+    wakeTaskAutomationWorker();
     return { taskId: task.id };
   },
 };

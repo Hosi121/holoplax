@@ -12,7 +12,9 @@ export const nextWorkflowState = (input: {
 }): TaskWorkflowState => {
   if (input.requestedWorkflowState) return input.requestedWorkflowState;
   if (input.requestedStatus === "DONE") return "DONE";
-  if (input.requestedStatus && input.current === "DONE") return "READY";
+  if (input.requestedStatus && (input.current === "DONE" || input.current === "CANCELED")) {
+    return "READY";
+  }
   return input.current;
 };
 
@@ -34,4 +36,5 @@ export const conflictingLifecycleRequest = (input: {
   (input.status === "DONE" &&
     input.workflowState !== undefined &&
     input.workflowState !== "DONE") ||
-  (input.workflowState === "DONE" && input.status !== undefined && input.status !== "DONE");
+  (input.workflowState === "DONE" && input.status !== undefined && input.status !== "DONE") ||
+  (input.workflowState === "CANCELED" && input.status !== undefined && input.status !== "BACKLOG");

@@ -1,26 +1,25 @@
 import type { Task } from "@prisma/client";
-import prisma from "../../../lib/prisma";
-import { TASK_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import {
   commitTaskToSprint,
   completeTaskCommitment,
   removeTaskFromActiveSprint,
 } from "../../shared/infrastructure/prisma-sprint-items";
+import { recordTaskStatusTransitions } from "../../shared/infrastructure/prisma-task-status-events";
 import type {
   BulkTaskCommand,
   BulkTaskCommandPort,
+  BulkTaskPlanners,
   BulkTaskResult,
 } from "../application/bulk-task-command";
 import { projectLegacyAutomationState } from "../domain/task-automation";
-import { findTaskPolicyViolation } from "../domain/task-policy";
-import { nextWorkflowState } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
+import { enqueueTaskAutomation, wakeTaskAutomationWorker } from "./prisma-task-automation-jobs";
 import {
-  drainTaskAutomationForWorkspace,
-  enqueueTaskAutomation,
-} from "./prisma-task-automation-jobs";
-import { createNextRoutineOccurrence } from "./prisma-task-write";
+  createNextRoutineOccurrence,
+  deactivateRoutineSeriesForDeletedTask,
+} from "./prisma-task-write";
 import { recordWorkflowTransition } from "./prisma-workflow-events";
 
 const badRequest = (message: string) =>
@@ -35,8 +34,9 @@ type AutomationTask = Pick<
 const executeBulkCommand = async (
   actor: { userId: string; workspaceId: string },
   command: BulkTaskCommand,
+  planners: BulkTaskPlanners,
 ): Promise<BulkTaskResult> =>
-  prisma.$transaction(
+  runSerializableTransaction(
     async (tx) => {
       const taskIds = [...new Set(command.taskIds)];
       const tasks = await tx.task.findMany({
@@ -60,6 +60,7 @@ const executeBulkCommand = async (
       if (command.action === "delete") {
         const removedAt = new Date();
         for (const task of tasks) {
+          await deactivateRoutineSeriesForDeletedTask(tx, task);
           await removeTaskFromActiveSprint(tx, { taskId: task.id, removedAt });
           if (task.workflowState !== "DONE" && task.workflowState !== "CANCELED") {
             await recordWorkflowTransition(tx, {
@@ -89,30 +90,26 @@ const executeBulkCommand = async (
 
       if (command.action === "status") {
         if (!command.status) throw badRequest("status is required for status action");
-        const selectedIds = new Set(taskIds);
-        for (const task of tasks) {
-          const violation = findTaskPolicyViolation({
+        const executionPlan = planners.planStatus({
+          requestedStatus: command.status,
+          tasks: tasks.map((task) => ({
+            id: task.id,
+            status: task.status,
+            workflowState: task.workflowState,
             type: task.type,
-            status: command.status,
-            workflowState: command.status === TASK_STATUS.DONE ? "DONE" : task.workflowState,
             checklist: task.checklist,
-            hasUnresolvedDependencies: task.dependencies.some(
-              (dependency) =>
-                dependency.dependsOn.workflowState !== "DONE" &&
-                !(command.status === TASK_STATUS.DONE && selectedIds.has(dependency.dependsOnId)),
-            ),
-            hasIncompleteChildren: task.children.some(
-              (child) => child.workflowState !== "DONE" && child.workflowState !== "CANCELED",
-            ),
-          });
-          if (violation) throw badRequest(violation);
-          if (command.status === TASK_STATUS.SPRINT && task.children.length > 0) {
-            throw badRequest("only leaf work items can be committed to a sprint");
-          }
-        }
+            dependencies: task.dependencies.map((dependency) => ({
+              id: dependency.dependsOnId,
+              workflowState: dependency.dependsOn.workflowState,
+            })),
+            children: task.children,
+          })),
+        });
+        if (!executionPlan.ok) throw badRequest(executionPlan.violation);
+        const taskPlans = new Map(executionPlan.tasks.map((plan) => [plan.taskId, plan]));
 
         let sprintId: string | null = null;
-        if (command.status === TASK_STATUS.SPRINT) {
+        if (executionPlan.requiresActiveSprint) {
           const activeSprint = await findActiveSprint(tx, actor.workspaceId);
           if (!activeSprint) throw badRequest("active sprint not found");
           const tasksToMove = tasks.filter(
@@ -127,42 +124,28 @@ const executeBulkCommand = async (
           sprintId = activeSprint.id;
         }
 
-        await tx.task.updateMany({
-          where: { id: { in: taskIds }, workspaceId: actor.workspaceId },
-          data: {
-            status: command.status,
-            // A completed task must retain the sprint it was completed in so
-            // sprint close and historical velocity can still attribute it.
-            // Only an explicit move back to the backlog removes commitment.
-            ...(command.status === TASK_STATUS.SPRINT
-              ? { sprintId }
-              : command.status === TASK_STATUS.BACKLOG
-                ? { sprintId: null }
-                : {}),
-            ...(command.status === TASK_STATUS.DONE ? { workflowState: "DONE" as const } : {}),
-          },
-        });
-        const reopenedTaskIds =
-          command.status === TASK_STATUS.DONE
-            ? []
-            : tasks.filter(({ workflowState }) => workflowState === "DONE").map(({ id }) => id);
-        if (reopenedTaskIds.length) {
-          await tx.task.updateMany({
-            where: { id: { in: reopenedTaskIds }, workspaceId: actor.workspaceId },
-            data: { workflowState: "READY" },
-          });
-        }
         const changedAt = new Date();
         for (const task of tasks) {
-          const workflowState = nextWorkflowState({
-            current: task.workflowState,
-            requestedStatus: command.status,
+          const taskPlan = taskPlans.get(task.id);
+          if (!taskPlan) throw new Error("TASK_LIFECYCLE_PLAN_MISSING");
+          const updated = await tx.task.updateMany({
+            where: { id: task.id, workspaceId: actor.workspaceId },
+            data: {
+              status: taskPlan.status,
+              workflowState: taskPlan.workflowState,
+              ...(taskPlan.planningAction === "COMMIT"
+                ? { sprintId }
+                : taskPlan.planningAction === "REMOVE"
+                  ? { sprintId: null }
+                  : {}),
+            },
           });
-          if (command.status === TASK_STATUS.SPRINT && sprintId) {
+          if (!updated.count) throw notFound("task disappeared while applying lifecycle plan");
+          if (taskPlan.planningAction === "COMMIT" && sprintId) {
             await commitTaskToSprint(tx, { sprintId, task, committedAt: changedAt });
-          } else if (command.status === TASK_STATUS.BACKLOG) {
+          } else if (taskPlan.planningAction === "REMOVE") {
             await removeTaskFromActiveSprint(tx, { taskId: task.id, removedAt: changedAt });
-          } else if (command.status === TASK_STATUS.DONE && task.sprintId) {
+          } else if (taskPlan.planningAction === "COMPLETE" && task.sprintId) {
             await completeTaskCommitment(tx, {
               taskId: task.id,
               sprintId: task.sprintId,
@@ -174,28 +157,37 @@ const executeBulkCommand = async (
             workspaceId: actor.workspaceId,
             actorId: actor.userId,
             fromState: task.workflowState,
-            toState: workflowState,
+            toState: taskPlan.workflowState,
             trigger: "BULK",
             createdAt: changedAt,
           });
         }
-        const changedTasks = tasks.filter(({ status }) => status !== command.status);
+        const changedTasks = tasks
+          .map((task) => ({ task, plan: taskPlans.get(task.id) }))
+          .filter(
+            (
+              entry,
+            ): entry is { task: (typeof tasks)[number]; plan: NonNullable<typeof entry.plan> } =>
+              Boolean(entry.plan) && entry.task.status !== entry.plan?.status,
+          );
         if (changedTasks.length) {
-          await tx.taskStatusEvent.createMany({
-            data: changedTasks.map((task) => ({
+          await recordTaskStatusTransitions(
+            tx,
+            changedTasks.map(({ task, plan }) => ({
               taskId: task.id,
+              taskTitle: task.title,
               fromStatus: task.status,
-              toStatus: command.status as "BACKLOG" | "SPRINT" | "DONE",
+              toStatus: plan.status,
               actorId: actor.userId,
               trigger: "BULK" as const,
               workspaceId: actor.workspaceId,
             })),
-          });
+          );
         }
 
         const automationTasks: AutomationTask[] = [];
-        if (command.status === TASK_STATUS.DONE) {
-          for (const task of changedTasks) {
+        for (const { task, plan } of changedTasks) {
+          if (plan.createNextRoutineOccurrence) {
             const next = await createNextRoutineOccurrence(tx, {
               task,
               userId: actor.userId,
@@ -216,7 +208,7 @@ const executeBulkCommand = async (
             actorId: actor.userId,
             action: "TASK_BULK_STATUS",
             targetWorkspaceId: actor.workspaceId,
-            metadata: { taskIds, status: command.status },
+            metadata: { taskIds, status: executionPlan.requestedStatus },
           },
         });
         return { ok: true, action: "status", updatedCount: taskIds.length };
@@ -254,23 +246,40 @@ const executeBulkCommand = async (
           metadata: { taskIds, points: command.points },
         },
       });
-      const queuedAt = new Date();
-      for (const task of tasks) {
+      const updatedTasks = await tx.task.findMany({
+        where: { id: { in: taskIds }, workspaceId: actor.workspaceId },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          points: true,
+          status: true,
+          workflowState: true,
+          updatedAt: true,
+        },
+      });
+      if (updatedTasks.length !== taskIds.length) {
+        throw notFound("one or more updated tasks were not found");
+      }
+      for (const task of updatedTasks) {
         await enqueueTaskAutomation(tx, {
-          task: { ...task, points: command.points, updatedAt: queuedAt },
+          task,
           workspaceId: actor.workspaceId,
           requestedById: actor.userId,
         });
       }
       return { ok: true, action: "points", updatedCount: taskIds.length };
     },
-    { isolationLevel: "Serializable" },
+    {
+      code: "TASK_CONCURRENT_UPDATE",
+      message: "tasks changed concurrently; retry the operation",
+    },
   );
 
 export const prismaBulkTaskCommandPort: BulkTaskCommandPort = {
-  async execute(actor, command) {
-    const result = await executeBulkCommand(actor, command);
-    await drainTaskAutomationForWorkspace(actor.workspaceId);
+  async execute(actor, command, planners) {
+    const result = await executeBulkCommand(actor, command, planners);
+    wakeTaskAutomationWorker();
     return result;
   },
 };

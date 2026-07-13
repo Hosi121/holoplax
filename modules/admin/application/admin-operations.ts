@@ -39,6 +39,7 @@ export const createAdminOperations = (
     succeeded: number;
     failed: number;
   }>,
+  retryFailedAutomation: (limit: number) => Promise<number>,
 ) => ({
   getAiSetting: () => port.getAiSetting(),
   updateAiSetting: (
@@ -47,12 +48,14 @@ export const createAdminOperations = (
   ) => port.updateAiSetting(actorId, input),
   getAudit: (input: Parameters<AdminOperationsPort["getAudit"]>[0]) => port.getAudit(input),
   runMaintenance: async (actorId: string) => {
-    const [deleted, automation] = await Promise.all([
+    const [deleted, retried] = await Promise.all([
       port.runMaintenance(actorId),
-      processAutomation({ limit: 25 }),
+      retryFailedAutomation(25),
     ]);
+    const automation = await processAutomation({ limit: 25 });
     return {
       ...deleted,
+      automationRetried: retried,
       automationProcessed: automation.processed,
       automationSucceeded: automation.succeeded,
       automationFailed: automation.failed,

@@ -6,6 +6,7 @@ import { logger } from "../../../lib/logger";
 import { sendEmail } from "../../../lib/mailer";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import type { IdentityPort } from "../application/identity-commands";
 
 const badRequest = (message: string) =>
@@ -319,7 +320,7 @@ export const prismaIdentityPort: IdentityPort = {
 
   async resetPassword(token, password) {
     const passwordHash = await hash(password, 10);
-    const userId = await prisma.$transaction(
+    const userId = await runSerializableTransaction(
       async (tx) => {
         const record = await tx.passwordResetToken.findUnique({ where: { token } });
         if (!record || record.used || record.expiresAt < new Date()) return null;
@@ -345,13 +346,16 @@ export const prismaIdentityPort: IdentityPort = {
         });
         return record.userId;
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "IDENTITY_CONCURRENT_UPDATE",
+        message: "password reset changed concurrently; retry the operation",
+      },
     );
     if (!userId) throw badRequest("token is invalid or expired");
   },
 
   async verifyEmail(token) {
-    const userId = await prisma.$transaction(
+    const userId = await runSerializableTransaction(
       async (tx) => {
         const record = await tx.emailVerificationToken.findUnique({ where: { token } });
         if (!record || record.expiresAt < new Date()) return null;
@@ -372,7 +376,10 @@ export const prismaIdentityPort: IdentityPort = {
         });
         return record.userId;
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "IDENTITY_CONCURRENT_UPDATE",
+        message: "email verification changed concurrently; retry the operation",
+      },
     );
     if (!userId) throw badRequest("token is invalid or expired");
   },

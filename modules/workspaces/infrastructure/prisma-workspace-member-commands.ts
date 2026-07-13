@@ -1,5 +1,5 @@
-import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import { clearWorkspaceTaskAssignee } from "../../shared/infrastructure/prisma-task-consistency";
 import type { WorkspaceMemberCommandPort } from "../application/member-commands";
 import type { WorkspaceRole } from "../domain/workspace-types";
@@ -20,7 +20,7 @@ const conflict = (message: string) =>
 export async function updateWorkspaceMemberRole(params: MemberParams & { role: WorkspaceRole }) {
   const { actorId, workspaceId, targetUserId, role } = params;
 
-  const result = await prisma.$transaction(
+  const result = await runSerializableTransaction(
     async (tx) => {
       const [target, workspace] = await Promise.all([
         tx.workspaceMember.findUnique({
@@ -89,7 +89,10 @@ export async function updateWorkspaceMemberRole(params: MemberParams & { role: W
       });
       return member;
     },
-    { isolationLevel: "Serializable" },
+    {
+      code: "WORKSPACE_CONCURRENT_UPDATE",
+      message: "workspace membership changed concurrently; retry the operation",
+    },
   );
 
   return result;
@@ -98,7 +101,7 @@ export async function updateWorkspaceMemberRole(params: MemberParams & { role: W
 export async function removeWorkspaceMember(params: MemberParams) {
   const { actorId, workspaceId, targetUserId } = params;
 
-  await prisma.$transaction(
+  await runSerializableTransaction(
     async (tx) => {
       const [target, workspace] = await Promise.all([
         tx.workspaceMember.findUnique({
@@ -129,7 +132,10 @@ export async function removeWorkspaceMember(params: MemberParams) {
         },
       });
     },
-    { isolationLevel: "Serializable" },
+    {
+      code: "WORKSPACE_CONCURRENT_UPDATE",
+      message: "workspace membership changed concurrently; retry the operation",
+    },
   );
 }
 

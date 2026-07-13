@@ -1,6 +1,29 @@
 import prisma from "../../../lib/prisma";
 import type { ReviewQueryPort } from "../application/review-query";
 
+const loadLeadTimeDays = async (workspaceId: string) => {
+  const rows = await prisma.$queryRaw<Array<{ averageDays: number | null }>>`
+    WITH latest_done AS (
+      SELECT DISTINCT ON (event."taskKey")
+        event."taskKey",
+        event."taskCreatedAt",
+        event."createdAt" AS "doneAt"
+      FROM "TaskWorkflowEvent" event
+      WHERE event."workspaceId" = ${workspaceId}
+        AND event."toState" = 'DONE'
+        AND event."taskCreatedAt" IS NOT NULL
+      ORDER BY event."taskKey", event."createdAt" DESC, event.id DESC
+    ), recent AS (
+      SELECT * FROM latest_done ORDER BY "doneAt" DESC LIMIT 5
+    )
+    SELECT AVG(
+      GREATEST(0, EXTRACT(EPOCH FROM ("doneAt" - "taskCreatedAt")) / 86400.0)
+    )::double precision AS "averageDays"
+    FROM recent
+  `;
+  return rows[0]?.averageDays ?? null;
+};
+
 const sprintSelect = {
   id: true,
   name: true,
@@ -38,7 +61,10 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
     const [
       activeSprint,
       latestClosedSprint,
-      tasks,
+      leadTimeDays,
+      backlogHighPriority,
+      backlogSplitPending,
+      backlogSmallTasks,
       velocityEntries,
       openDependencies,
       activity,
@@ -54,29 +80,29 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
         orderBy: { endedAt: "desc" },
         select: sprintSelect,
       }),
-      prisma.task.findMany({
-        where: { workspaceId },
-        orderBy: { createdAt: "desc" },
-        take: 1000,
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          workflowState: true,
-          type: true,
-          points: true,
-          sprintId: true,
-          urgency: true,
-          automationStatus: true,
-          hierarchyRole: true,
-          origin: true,
-          createdAt: true,
-          workflowEvents: {
-            where: { toState: "DONE" },
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { createdAt: true },
-          },
+      loadLeadTimeDays(workspaceId),
+      prisma.task.count({
+        where: {
+          workspaceId,
+          status: "BACKLOG",
+          workflowState: { not: "CANCELED" },
+          urgency: "HIGH",
+        },
+      }),
+      prisma.task.count({
+        where: {
+          workspaceId,
+          status: "BACKLOG",
+          workflowState: { not: "CANCELED" },
+          automationStatus: "SPLIT_PENDING",
+        },
+      }),
+      prisma.task.count({
+        where: {
+          workspaceId,
+          status: "BACKLOG",
+          workflowState: { not: "CANCELED" },
+          points: { lte: 3 },
         },
       }),
       prisma.velocityEntry.findMany({
@@ -87,7 +113,7 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
       }),
       prisma.taskDependency.count({
         where: {
-          task: { workspaceId },
+          task: { workspaceId, workflowState: { not: "CANCELED" } },
           state: "REQUIRED",
           dependsOn: { workflowState: { not: "DONE" } },
         },
@@ -100,7 +126,7 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
           id: true,
           fromStatus: true,
           toStatus: true,
-          task: { select: { title: true } },
+          taskTitle: true,
         },
       }),
       prisma.userAutomationSetting.findUnique({
@@ -111,7 +137,12 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
     return {
       activeSprint,
       latestClosedSprint,
-      tasks,
+      leadTimeDays,
+      backlogSummary: {
+        highPriority: backlogHighPriority,
+        splitPending: backlogSplitPending,
+        smallTasks: backlogSmallTasks,
+      },
       velocityEntries,
       openDependencies,
       activity,

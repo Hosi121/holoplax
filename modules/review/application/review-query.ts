@@ -1,14 +1,19 @@
 export type ReviewSnapshot = {
   activeSprint: ReviewSprint | null;
   latestClosedSprint: ReviewSprint | null;
-  tasks: ReviewTask[];
+  leadTimeDays: number | null;
+  backlogSummary: {
+    highPriority: number;
+    splitPending: number;
+    smallTasks: number;
+  };
   velocityEntries: Array<{ id: string; points: number }>;
   openDependencies: number;
   activity: Array<{
     id: string;
     fromStatus: "BACKLOG" | "SPRINT" | "DONE" | null;
     toStatus: "BACKLOG" | "SPRINT" | "DONE";
-    task: { title: string };
+    taskTitle: string;
   }>;
   automation: { high: number } | null;
 };
@@ -39,22 +44,6 @@ export type ReviewSprintItem = {
     committedPoints: number;
     occurredAt: Date;
   }>;
-};
-
-export type ReviewTask = {
-  id: string;
-  title: string;
-  status: "BACKLOG" | "SPRINT" | "DONE";
-  workflowState: "READY" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELED";
-  type: "EPIC" | "PBI" | "TASK";
-  points: number;
-  sprintId: string | null;
-  urgency: "LOW" | "MEDIUM" | "HIGH";
-  automationStatus: "NONE" | "PREPARED" | "SPLIT_PENDING" | "SPLIT_REJECTED";
-  hierarchyRole: "STANDARD" | "SPLIT_PARENT" | "SPLIT_CHILD";
-  origin: "MANUAL" | "INTAKE" | "AUTOMATION" | "ROUTINE" | "ONBOARDING";
-  createdAt: Date;
-  workflowEvents: Array<{ createdAt: Date }>;
 };
 
 export interface ReviewQueryPort {

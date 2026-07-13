@@ -38,5 +38,6 @@ describe("task workflow compatibility", () => {
   it("rejects contradictory lifecycle fields", () => {
     expect(conflictingLifecycleRequest({ status: "DONE", workflowState: "READY" })).toBe(true);
     expect(conflictingLifecycleRequest({ status: "SPRINT", workflowState: "DONE" })).toBe(true);
+    expect(conflictingLifecycleRequest({ status: "SPRINT", workflowState: "CANCELED" })).toBe(true);
   });
 });

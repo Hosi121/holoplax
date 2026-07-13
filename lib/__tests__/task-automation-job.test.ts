@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const taskAutomationJob = {
     findFirst: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn(),
     updateMany: vi.fn(),
   };
   const db = {
@@ -33,6 +35,7 @@ vi.mock("../../modules/tasks/infrastructure/prisma-task-automation", () => ({
 import {
   enqueueTaskAutomation,
   processTaskAutomationJobs,
+  retryFailedTaskAutomationJobs,
 } from "../../modules/tasks/infrastructure/prisma-task-automation-jobs";
 
 describe("durable task automation jobs", () => {
@@ -43,7 +46,8 @@ describe("durable task automation jobs", () => {
 
   it("uses the task revision as an idempotency key", async () => {
     const upsert = vi.fn().mockResolvedValue({ id: "job-1" });
-    const tx = { taskAutomationJob: { upsert } };
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const tx = { taskAutomationJob: { upsert, updateMany } };
     const updatedAt = new Date("2026-07-13T00:00:00Z");
 
     await enqueueTaskAutomation(tx as never, {
@@ -65,6 +69,14 @@ describe("durable task automation jobs", () => {
       create: expect.objectContaining({ taskKey: "task-1", requestedById: "user-1" }),
       update: {},
     });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        taskId: "task-1",
+        status: "PENDING",
+        dedupeKey: { not: `task-1:${updatedAt.toISOString()}` },
+      },
+      data: { status: "CANCELED" },
+    });
   });
 
   it("keeps a failed provider call pending for retry", async () => {
@@ -77,8 +89,9 @@ describe("durable task automation jobs", () => {
       status: "PENDING",
       attempts: 0,
       createdAt: new Date(),
+      dedupeKey: "task-1:2026-07-13T00:00:00.000Z",
     };
-    mocks.db.taskAutomationJob.findFirst.mockResolvedValueOnce(job).mockResolvedValueOnce(null);
+    mocks.db.taskAutomationJob.findFirst.mockResolvedValueOnce(job);
     mocks.db.task.findFirst
       .mockResolvedValueOnce({ automationStatus: "NONE", hierarchyRole: "STANDARD" })
       .mockResolvedValueOnce({
@@ -89,6 +102,7 @@ describe("durable task automation jobs", () => {
         status: "BACKLOG",
         workflowState: "READY",
         userId: "user-1",
+        updatedAt: new Date("2026-07-13T00:00:00.000Z"),
       });
     mocks.applyAutomation.mockRejectedValue(new Error("provider unavailable"));
 
@@ -100,9 +114,67 @@ describe("durable task automation jobs", () => {
 
     expect(mocks.db.taskAutomationJob.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        where: { id: "job-1", status: "RUNNING" },
+        where: { id: "job-1", status: "RUNNING", lockedBy: expect.any(String) },
         data: expect.objectContaining({ status: "PENDING", lastError: "provider unavailable" }),
       }),
     );
+  });
+
+  it("cancels a queued revision after the task has changed", async () => {
+    const job = {
+      id: "job-stale",
+      taskId: "task-1",
+      taskKey: "task-1",
+      workspaceId: "workspace-1",
+      requestedById: "user-1",
+      status: "PENDING",
+      attempts: 0,
+      createdAt: new Date(),
+      dedupeKey: "task-1:2026-07-12T00:00:00.000Z",
+    };
+    mocks.db.taskAutomationJob.findFirst.mockResolvedValueOnce(job);
+    mocks.db.task.findFirst
+      .mockResolvedValueOnce({ automationStatus: "NONE", hierarchyRole: "STANDARD" })
+      .mockResolvedValueOnce({
+        id: "task-1",
+        title: "Changed task",
+        description: "",
+        points: 3,
+        status: "BACKLOG",
+        workflowState: "READY",
+        userId: "user-1",
+        updatedAt: new Date("2026-07-13T00:00:00.000Z"),
+      });
+
+    await expect(processTaskAutomationJobs({ limit: 1 })).resolves.toEqual({
+      processed: 1,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(mocks.applyAutomation).not.toHaveBeenCalled();
+    expect(mocks.db.taskAutomationJob.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: "job-stale", status: "RUNNING", lockedBy: expect.any(String) },
+        data: { status: "CANCELED", lockedAt: null, lockedBy: null },
+      }),
+    );
+  });
+
+  it("requeues terminal failures only through the explicit recovery operation", async () => {
+    mocks.db.taskAutomationJob.findMany.mockResolvedValue([{ id: "job-1" }, { id: "job-2" }]);
+    mocks.db.taskAutomationJob.updateMany.mockResolvedValue({ count: 2 });
+
+    await expect(retryFailedTaskAutomationJobs(2)).resolves.toBe(2);
+
+    expect(mocks.db.taskAutomationJob.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["job-1", "job-2"] }, status: "FAILED" },
+      data: expect.objectContaining({
+        status: "PENDING",
+        attempts: 0,
+        lockedAt: null,
+        lockedBy: null,
+        lastError: null,
+      }),
+    });
   });
 });

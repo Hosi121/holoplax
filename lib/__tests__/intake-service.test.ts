@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     task: { create: vi.fn(), findUnique: vi.fn() },
     workspaceMember: { findUnique: vi.fn() },
     auditLog: { create: vi.fn() },
+    taskStatusEvent: { create: vi.fn() },
     taskWorkflowEvent: { create: vi.fn() },
     $executeRaw: vi.fn(),
   };
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => {
     tx,
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
     enqueueAutomation: vi.fn(),
-    drainAutomation: vi.fn(),
+    wakeAutomation: vi.fn(),
   };
 });
 
@@ -24,8 +25,11 @@ vi.mock("../prisma", () => ({
 }));
 vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
   enqueueTaskAutomation: mocks.enqueueAutomation,
-  drainTaskAutomationForWorkspace: mocks.drainAutomation,
-  processTaskAutomationJobs: mocks.drainAutomation,
+  wakeTaskAutomationWorker: mocks.wakeAutomation,
+  processTaskAutomationJobs: vi.fn(),
+  retryFailedTaskAutomationJobs: vi.fn(),
+  getTaskAutomationQueueStatus: vi.fn(),
+  startTaskAutomationWorker: vi.fn(),
 }));
 
 import { resolveIntakeItem } from "../../modules/intake/index.server";
@@ -47,7 +51,6 @@ describe("intake application service", () => {
     mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
     mocks.tx.taskWorkflowEvent.create.mockResolvedValue({ id: "workflow-event-1" });
     mocks.enqueueAutomation.mockResolvedValue(undefined);
-    mocks.drainAutomation.mockResolvedValue({ processed: 1, succeeded: 1, failed: 0 });
     mocks.tx.task.findUnique.mockResolvedValue({
       createdAt: new Date(),
       dueDate: null,
@@ -76,15 +79,17 @@ describe("intake application service", () => {
       ),
     ).resolves.toEqual({ taskId: "task-1" });
 
-    expect(mocks.tx.task.create).toHaveBeenCalledWith({
+    expect(mocks.tx.taskStatusEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        statusEvents: {
-          create: expect.objectContaining({ toStatus: "BACKLOG", trigger: "API" }),
-        },
+        taskId: "task-1",
+        taskKey: "task-1",
+        taskTitle: intakeItem.title,
+        toStatus: "BACKLOG",
+        trigger: "API",
       }),
     });
     expect(mocks.enqueueAutomation).toHaveBeenCalledOnce();
-    expect(mocks.drainAutomation).toHaveBeenCalledOnce();
+    expect(mocks.wakeAutomation).toHaveBeenCalledOnce();
   });
 
   it("does not create a second task after the intake item was already claimed", async () => {

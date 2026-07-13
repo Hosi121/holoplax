@@ -1,6 +1,7 @@
 import { Prisma, type Task } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { TASK_STATUS } from "../../../lib/types";
+import { ApplicationError } from "../../shared/application/application-error";
 import { persistNewTask } from "./prisma-task-writer";
 
 type Tx = Prisma.TransactionClient;
@@ -111,16 +112,37 @@ const normalizeChecklistForReset = (value: unknown) => {
  */
 export async function syncTaskDependencies(
   tx: Tx,
-  params: { taskId: string; workspaceId: string; dependencyIds: string[] },
+  params: { taskId: string; workspaceId: string; actorId: string; dependencyIds: string[] },
 ) {
-  const { taskId, workspaceId, dependencyIds } = params;
-  const allowed = dependencyIds.length
-    ? await tx.task.findMany({
-        where: { id: { in: dependencyIds }, workspaceId },
-        select: { id: true },
-      })
-    : [];
-  const allowedIds = allowed.map((dep) => dep.id).filter((depId) => depId && depId !== taskId);
+  const { taskId, workspaceId, actorId, dependencyIds } = params;
+  const requestedIds = [...new Set(dependencyIds)];
+  if (requestedIds.includes(taskId)) {
+    throw new ApplicationError("TASK_BAD_REQUEST", "a task cannot depend on itself", "bad_request");
+  }
+  const [allowed, existing] = await Promise.all([
+    requestedIds.length
+      ? tx.task.findMany({
+          where: { id: { in: requestedIds }, workspaceId },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    tx.taskDependency.findMany({
+      where: { taskId },
+      select: { dependsOnId: true, state: true },
+    }),
+  ]);
+  if (allowed.length !== requestedIds.length) {
+    throw new ApplicationError(
+      "TASK_BAD_REQUEST",
+      "one or more dependencies were not found in workspace",
+      "bad_request",
+    );
+  }
+  const allowedIds = allowed.map((dep) => dep.id);
+  const allowedSet = new Set(allowedIds);
+  const waivedIds = existing
+    .filter(({ dependsOnId, state }) => state === "REQUIRED" && !allowedSet.has(dependsOnId))
+    .map(({ dependsOnId }) => dependsOnId);
   await tx.taskDependency.updateMany({
     where: {
       taskId,
@@ -129,18 +151,63 @@ export async function syncTaskDependencies(
     },
     data: { state: "WAIVED", waivedAt: new Date() },
   });
+  if (waivedIds.length) {
+    await tx.taskDependencyEvent.createMany({
+      data: waivedIds.map((dependsOnId) => ({
+        taskId,
+        taskKey: taskId,
+        dependsOnId,
+        dependsOnKey: dependsOnId,
+        type: "WAIVED" as const,
+        actorId,
+        workspaceId,
+        reason: "REMOVED_FROM_TASK",
+      })),
+    });
+  }
+  const existingById = new Map(existing.map((edge) => [edge.dependsOnId, edge.state]));
   for (const dependsOnId of allowedIds) {
     await tx.taskDependency.upsert({
       where: { taskId_dependsOnId: { taskId, dependsOnId } },
-      create: { taskId, dependsOnId },
+      create: { taskId, dependsOnId, workspaceId },
       update: { state: "REQUIRED", waivedAt: null },
     });
+    if (existingById.get(dependsOnId) !== "REQUIRED") {
+      await tx.taskDependencyEvent.create({
+        data: {
+          taskId,
+          taskKey: taskId,
+          dependsOnId,
+          dependsOnKey: dependsOnId,
+          type: "REQUIRED",
+          actorId,
+          workspaceId,
+          reason: existingById.has(dependsOnId) ? "REACTIVATED" : "ADDED_TO_TASK",
+        },
+      });
+    }
   }
 }
 
 type TaskWithRoutineRule = Task & {
   routineRule: { nextAt: Date; cadence: string; seriesId: string } | null;
 };
+
+/**
+ * Deleting the current occurrence means stopping its recurrence. Historical
+ * occurrences have no RoutineRule, so deleting one does not affect the active
+ * series that has already moved to a newer occurrence.
+ */
+export const deactivateRoutineSeriesForDeletedTask = (
+  tx: Tx,
+  task: { routineRule: { seriesId: string } | null },
+) =>
+  task.routineRule
+    ? tx.routineSeries.updateMany({
+        where: { id: task.routineRule.seriesId, active: true },
+        data: { active: false },
+      })
+    : Promise.resolve({ count: 0 });
 
 /**
  * Reconcile a task's RoutineRule after an update. Recurrence is expressed solely

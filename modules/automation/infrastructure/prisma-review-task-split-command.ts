@@ -4,6 +4,7 @@ import { generateSplitSuggestions } from "../../../lib/ai-suggestions";
 import prisma from "../../../lib/prisma";
 import { AUTOMATION_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import { applyPendingTaskSplit, rejectPendingTaskSplit } from "../../tasks/index.server";
 import type { ReviewTaskSplitCommandPort } from "../application/review-task-split-command";
 
@@ -27,7 +28,7 @@ const parseSuggestions = (output: string | null): SplitItem[] | null => {
 };
 
 const maybeRaiseStage = async (userId: string, workspaceId: string) =>
-  prisma.$transaction(
+  runSerializableTransaction(
     async (tx) => {
       const setting = await tx.userAutomationSetting.findUnique({
         where: { userId_workspaceId: { userId, workspaceId } },
@@ -58,7 +59,10 @@ const maybeRaiseStage = async (userId: string, workspaceId: string) =>
       });
       return stage;
     },
-    { isolationLevel: "Serializable" },
+    {
+      code: "AUTOMATION_CONCURRENT_UPDATE",
+      message: "automation settings changed concurrently; retry the operation",
+    },
   );
 
 export const prismaReviewTaskSplitCommandPort: ReviewTaskSplitCommandPort = {

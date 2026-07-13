@@ -10,6 +10,7 @@ import {
 } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
 import { removeTaskFromActiveSprint } from "../../shared/infrastructure/prisma-sprint-items";
+import { recordTaskStatusTransition } from "../../shared/infrastructure/prisma-task-status-events";
 import { checkSprintCapacity } from "./prisma-sprint-capacity";
 import { persistNewTask } from "./prisma-task-writer";
 
@@ -59,7 +60,7 @@ export async function splitTaskIntoChildren(
 
   const parent = await tx.task.findFirst({
     where: { id: params.taskId, workspaceId: params.workspaceId },
-    select: { status: true, sprintId: true, type: true },
+    select: { title: true, status: true, sprintId: true, type: true },
   });
   if (!parent) throw badRequest("task not found");
 
@@ -103,15 +104,14 @@ export async function splitTaskIntoChildren(
   }
 
   if (parent.status !== TASK_STATUS.BACKLOG) {
-    await tx.taskStatusEvent.create({
-      data: {
-        taskId: params.taskId,
-        fromStatus: parent.status,
-        toStatus: TASK_STATUS.BACKLOG,
-        actorId: params.userId,
-        trigger: "API",
-        workspaceId: params.workspaceId,
-      },
+    await recordTaskStatusTransition(tx, {
+      taskId: params.taskId,
+      taskTitle: parent.title,
+      fromStatus: parent.status,
+      toStatus: TASK_STATUS.BACKLOG,
+      actorId: params.userId,
+      trigger: "API",
+      workspaceId: params.workspaceId,
     });
   }
   await removeTaskFromActiveSprint(tx, { taskId: params.taskId });

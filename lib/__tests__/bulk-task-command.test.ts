@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => {
     tx,
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
     enqueueAutomation: vi.fn(),
-    drainAutomation: vi.fn(),
+    wakeAutomation: vi.fn(),
   };
 });
 
@@ -24,10 +24,13 @@ vi.mock("../prisma", () => ({
 
 vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
   enqueueTaskAutomation: mocks.enqueueAutomation,
-  drainTaskAutomationForWorkspace: mocks.drainAutomation,
+  wakeTaskAutomationWorker: mocks.wakeAutomation,
 }));
 
+import { createBulkTaskCommand } from "../../modules/tasks/application/bulk-task-command";
 import { prismaBulkTaskCommandPort } from "../../modules/tasks/infrastructure/prisma-bulk-task-command";
+
+const executeBulkTaskCommand = createBulkTaskCommand(prismaBulkTaskCommandPort);
 
 describe("bulk task commands", () => {
   beforeEach(() => {
@@ -73,19 +76,65 @@ describe("bulk task commands", () => {
   });
 
   it("retains sprint membership when tasks are completed in bulk", async () => {
-    await prismaBulkTaskCommandPort.execute(
+    await executeBulkTaskCommand(
       { userId: "user-1", workspaceId: "workspace-1" },
       { action: "status", taskIds: ["task-1"], status: "DONE" },
     );
 
     expect(mocks.tx.task.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["task-1"] }, workspaceId: "workspace-1" },
+      where: { id: "task-1", workspaceId: "workspace-1" },
       data: { status: "DONE", workflowState: "DONE" },
     });
     expect(mocks.tx.sprintItem.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ outcome: "COMPLETED" }),
       }),
+    );
+    expect(mocks.wakeAutomation).toHaveBeenCalledOnce();
+  });
+
+  it("queues points automation with the revision actually written by the database", async () => {
+    const storedRevision = new Date("2026-07-13T01:23:45Z");
+    mocks.tx.task.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "task-1",
+          title: "Task",
+          description: "",
+          points: 3,
+          status: "BACKLOG",
+          workflowState: "READY",
+          sprintId: null,
+          type: "TASK",
+          checklist: null,
+          children: [],
+          routineRule: null,
+          dependencies: [],
+          automationStatus: "NONE",
+          hierarchyRole: "STANDARD",
+          updatedAt: new Date("2026-07-13T00:00:00Z"),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "task-1",
+          title: "Task",
+          description: "",
+          points: 5,
+          status: "BACKLOG",
+          workflowState: "READY",
+          updatedAt: storedRevision,
+        },
+      ]);
+
+    await executeBulkTaskCommand(
+      { userId: "user-1", workspaceId: "workspace-1" },
+      { action: "points", taskIds: ["task-1"], points: 5 },
+    );
+
+    expect(mocks.enqueueAutomation).toHaveBeenCalledWith(
+      mocks.tx,
+      expect.objectContaining({ task: expect.objectContaining({ updatedAt: storedRevision }) }),
     );
   });
 });

@@ -1,8 +1,12 @@
-import { runPendingTaskAutomation } from "../tasks/index.server";
+import { retryFailedTaskAutomation, runPendingTaskAutomation } from "../tasks/index.server";
 import { createAdminOperations } from "./application/admin-operations";
 import { prismaAdminOperationsPort } from "./infrastructure/prisma-admin-operations";
 
-const operations = createAdminOperations(prismaAdminOperationsPort, runPendingTaskAutomation);
+const operations = createAdminOperations(
+  prismaAdminOperationsPort,
+  runPendingTaskAutomation,
+  retryFailedTaskAutomation,
+);
 export const getAdminAiSetting = operations.getAiSetting;
 export const updateAdminAiSetting = operations.updateAiSetting;
 export const getAdminAudit = operations.getAudit;

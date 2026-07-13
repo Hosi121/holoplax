@@ -1,4 +1,4 @@
-import { Prisma, type Task, type TaskStatus } from "@prisma/client";
+import type { Prisma, Task, TaskStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import type { z } from "zod";
 import { normalizeSeverity } from "../../../lib/ai-normalization";
@@ -9,26 +9,26 @@ import prisma from "../../../lib/prisma";
 import { isTaskStatus, isTaskType } from "../../../lib/tasks/task-values";
 import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import {
   commitTaskToSprint,
   completeTaskCommitment,
   removeTaskFromActiveSprint,
 } from "../../shared/infrastructure/prisma-sprint-items";
+import { recordTaskStatusTransition } from "../../shared/infrastructure/prisma-task-status-events";
+import { planTaskLifecycleUpdate } from "../application/task-lifecycle";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { findTaskHierarchyViolation, findTaskPolicyViolation } from "../domain/task-policy";
 import {
   conflictingLifecycleRequest,
   initialWorkflowState,
-  nextWorkflowState,
   projectLegacyStatus,
 } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
-import {
-  drainTaskAutomationForWorkspace,
-  enqueueTaskAutomation,
-} from "./prisma-task-automation-jobs";
+import { enqueueTaskAutomation, wakeTaskAutomationWorker } from "./prisma-task-automation-jobs";
 import {
   createNextRoutineOccurrence,
+  deactivateRoutineSeriesForDeletedTask,
   nextRoutineAt,
   syncRoutineRule,
   syncTaskDependencies,
@@ -49,26 +49,11 @@ const notFound = (message = "not found") =>
 
 const runSerializableTaskTransaction = async <T>(
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
-): Promise<T> => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(operation, { isolationLevel: "Serializable" });
-    } catch (caught) {
-      const serializationConflict =
-        caught instanceof Prisma.PrismaClientKnownRequestError && caught.code === "P2034";
-      if (serializationConflict && attempt < 2) continue;
-      if (serializationConflict) {
-        throw new ApplicationError(
-          "TASK_CONCURRENT_UPDATE",
-          "task changed concurrently; retry the operation",
-          "conflict",
-        );
-      }
-      throw caught;
-    }
-  }
-  throw new Error("unreachable serializable transaction state");
-};
+) =>
+  runSerializableTransaction(operation, {
+    code: "TASK_CONCURRENT_UPDATE",
+    message: "task changed concurrently; retry the operation",
+  });
 
 // On create, an absent/invalid checklist is normalized to null (cleared).
 const toChecklistForCreate = (value: unknown) => {
@@ -274,7 +259,7 @@ export async function createTask(params: {
     return created;
   });
 
-  await drainTaskAutomationForWorkspace(workspaceId);
+  wakeTaskAutomationWorker();
   return task;
 }
 
@@ -338,6 +323,12 @@ export async function updateTask(params: {
   // placement and the execution workflow are resolved after loading the
   // current aggregate below.
   const requestedStatus = (body.status as TaskStatus | undefined) ?? null;
+  const requestedDependencyIds = Array.isArray(body.dependencyIds)
+    ? [...new Set(body.dependencyIds.map(String))]
+    : null;
+  if (requestedDependencyIds?.includes(id)) {
+    throw badRequest("a task cannot depend on itself");
+  }
   const cadenceValue =
     body.routineCadence === "DAILY" || body.routineCadence === "WEEKLY"
       ? body.routineCadence
@@ -384,16 +375,35 @@ export async function updateTask(params: {
       throw notFound();
     }
 
-    const workflowStateValue = nextWorkflowState({
-      current: currentTask.workflowState,
+    const requestedDependencies = requestedDependencyIds
+      ? await tx.task.findMany({
+          where: { id: { in: requestedDependencyIds }, workspaceId },
+          select: { id: true, workflowState: true },
+        })
+      : null;
+    if (requestedDependencies && requestedDependencies.length !== requestedDependencyIds?.length) {
+      throw badRequest("one or more dependencies were not found in workspace");
+    }
+
+    const lifecycle = planTaskLifecycleUpdate({
+      currentStatus:
+        currentTask.sprint?.status === "ACTIVE" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG,
+      currentWorkflowState: currentTask.workflowState,
       requestedStatus,
       requestedWorkflowState: body.workflowState,
+      policy: {
+        type: (body.type ?? currentTask.type) as "EPIC" | "PBI" | "TASK",
+        checklist: checklistValue === undefined ? currentTask.checklist : checklistValue,
+        hasUnresolvedDependencies: requestedDependencies
+          ? requestedDependencies.some(({ workflowState }) => workflowState !== "DONE")
+          : Boolean(currentTask.dependencies?.length),
+        hasIncompleteChildren: currentTask.children.some(
+          (child) => child.workflowState !== "DONE" && child.workflowState !== "CANCELED",
+        ),
+      },
     });
-    const statusValue = projectLegacyStatus({
-      current: currentTask.sprint?.status === "ACTIVE" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG,
-      requestedStatus,
-      workflowState: workflowStateValue,
-    });
+    const workflowStateValue = lifecycle.workflowState;
+    const statusValue = lifecycle.status;
     if (workflowStateValue !== currentTask.workflowState) data.workflowState = workflowStateValue;
     if (statusValue !== currentTask.status) data.status = statusValue;
     logger.debug("TASK_UPDATE narrowed", {
@@ -402,8 +412,6 @@ export async function updateTask(params: {
       typeValue: data.type ?? null,
     });
 
-    const effectiveChecklist =
-      checklistValue === undefined ? currentTask.checklist : checklistValue;
     const effectiveType = (body.type ?? currentTask.type) as "EPIC" | "PBI" | "TASK";
     const hierarchyViolation = findTaskHierarchyViolation({
       type: effectiveType,
@@ -411,22 +419,7 @@ export async function updateTask(params: {
       childTypes: currentTask.children.map(({ type }) => type),
     });
     if (hierarchyViolation && body.parentId === undefined) throw badRequest(hierarchyViolation);
-    const policyViolation = findTaskPolicyViolation({
-      type: effectiveType,
-      status: statusValue,
-      workflowState: workflowStateValue,
-      checklist: effectiveChecklist,
-      hasUnresolvedDependencies:
-        (workflowStateValue === "IN_PROGRESS" ||
-          workflowStateValue === "BLOCKED" ||
-          workflowStateValue === "DONE") &&
-        !Array.isArray(body.dependencyIds) &&
-        Boolean(currentTask.dependencies?.length),
-      hasIncompleteChildren: currentTask.children.some(
-        (child) => child.workflowState !== "DONE" && child.workflowState !== "CANCELED",
-      ),
-    });
-    if (policyViolation) throw badRequest(policyViolation);
+    if (lifecycle.violation) throw badRequest(lifecycle.violation);
 
     if (
       (body.title !== undefined || body.description !== undefined || body.points !== undefined) &&
@@ -438,17 +431,6 @@ export async function updateTask(params: {
         automationStatus: "NONE",
         hierarchyRole: currentTask.hierarchyRole,
       });
-    }
-
-    if (
-      (workflowStateValue === "IN_PROGRESS" ||
-        workflowStateValue === "BLOCKED" ||
-        workflowStateValue === "DONE") &&
-      !Array.isArray(body.dependencyIds) &&
-      currentTask.dependencies &&
-      currentTask.dependencies.length > 0
-    ) {
-      throw badRequest("dependencies must be done before moving");
     }
 
     // Batch the assignee/parent validation and the sprint capacity read.
@@ -518,27 +500,6 @@ export async function updateTask(params: {
       }
     }
 
-    const proposedDependencyIds = Array.isArray(body.dependencyIds)
-      ? [...new Set(body.dependencyIds.map(String).filter((depId) => depId !== id))]
-      : null;
-    if (proposedDependencyIds) {
-      const proposedDependencies = await tx.task.findMany({
-        where: { id: { in: proposedDependencyIds }, workspaceId },
-        select: { id: true, workflowState: true },
-      });
-      if (proposedDependencies.length !== proposedDependencyIds.length) {
-        throw badRequest("one or more dependencies were not found in workspace");
-      }
-      if (
-        (workflowStateValue === "IN_PROGRESS" ||
-          workflowStateValue === "BLOCKED" ||
-          workflowStateValue === "DONE") &&
-        proposedDependencies.some((dependency) => dependency.workflowState !== "DONE")
-      ) {
-        throw badRequest("dependencies must be done before moving");
-      }
-    }
-
     if (statusValue === TASK_STATUS.SPRINT && capacity?.activeSprint) {
       data.sprintId = capacity.activeSprint.id;
     }
@@ -547,11 +508,11 @@ export async function updateTask(params: {
     }
 
     if (
-      proposedDependencyIds &&
+      requestedDependencyIds &&
       (await taskDependencyWouldCycle(tx, {
         taskId: id,
         workspaceId,
-        dependencyIds: proposedDependencyIds,
+        dependencyIds: requestedDependencyIds,
       }))
     ) {
       throw badRequest("task dependencies cannot contain a cycle");
@@ -582,7 +543,8 @@ export async function updateTask(params: {
       await syncTaskDependencies(tx, {
         taskId: id,
         workspaceId,
-        dependencyIds: body.dependencyIds.map((depId: string) => String(depId)),
+        actorId: userId,
+        dependencyIds: requestedDependencyIds ?? [],
       });
     }
 
@@ -627,15 +589,14 @@ export async function updateTask(params: {
     });
 
     if (updatedTask && currentTask.status !== statusValue) {
-      await tx.taskStatusEvent.create({
-        data: {
-          taskId: updatedTask.id,
-          fromStatus: currentTask.status ?? null,
-          toStatus: statusValue,
-          actorId: userId,
-          trigger: "API",
-          workspaceId,
-        },
+      await recordTaskStatusTransition(tx, {
+        taskId: updatedTask.id,
+        taskTitle: updatedTask.title,
+        fromStatus: currentTask.status ?? null,
+        toStatus: statusValue,
+        actorId: userId,
+        trigger: "API",
+        workspaceId,
       });
     }
 
@@ -669,7 +630,7 @@ export async function updateTask(params: {
     throw notFound();
   }
 
-  await drainTaskAutomationForWorkspace(workspaceId);
+  wakeTaskAutomationWorker();
   return task;
 }
 
@@ -683,7 +644,11 @@ export async function deleteTask(params: {
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id, workspaceId },
-      select: { id: true, workflowState: true },
+      select: {
+        id: true,
+        workflowState: true,
+        routineRule: { select: { seriesId: true } },
+      },
     });
     if (!task) throw notFound();
     if (task.workflowState !== "DONE" && task.workflowState !== "CANCELED") {
@@ -698,6 +663,7 @@ export async function deleteTask(params: {
     }
     // Relations are ON DELETE CASCADE. Scope and delete the aggregate root
     // first so a foreign-workspace id cannot mutate any related records.
+    await deactivateRoutineSeriesForDeletedTask(tx, task);
     await removeTaskFromActiveSprint(tx, { taskId: id });
     const deleted = await tx.task.deleteMany({ where: { id, workspaceId } });
     if (!deleted.count) throw notFound();

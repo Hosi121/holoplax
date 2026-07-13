@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { encrypt, isEncrypted } from "../../../lib/encryption";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import type { AdminOperationsPort } from "../application/admin-operations";
 import { getAdminAudit } from "./prisma-admin-audit";
 
@@ -198,7 +199,7 @@ export const prismaAdminOperationsPort: AdminOperationsPort = {
   updateUser(actorId, targetUserId, input) {
     const role = input.role?.toUpperCase();
     if (role && !roles.has(role)) throw badRequest("invalid role");
-    return prisma.$transaction(
+    return runSerializableTransaction(
       async (tx) => {
         const target = await tx.user.findUnique({
           where: { id: targetUserId },
@@ -245,7 +246,10 @@ export const prismaAdminOperationsPort: AdminOperationsPort = {
         });
         return updated;
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "ADMIN_CONCURRENT_UPDATE",
+        message: "user administration changed concurrently; retry the operation",
+      },
     );
   },
 

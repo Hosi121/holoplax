@@ -33,7 +33,7 @@ const mocks = vi.hoisted(() => {
     outsideTaskRead: vi.fn(),
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
     enqueue: vi.fn(),
-    drain: vi.fn(),
+    wake: vi.fn(),
   };
 });
 
@@ -50,7 +50,7 @@ vi.mock("../logger", () => ({
 
 vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
   enqueueTaskAutomation: mocks.enqueue,
-  drainTaskAutomationForWorkspace: mocks.drain,
+  wakeTaskAutomationWorker: mocks.wake,
 }));
 
 import { updateTask } from "../../modules/tasks/infrastructure/prisma-task-service";
@@ -98,7 +98,6 @@ describe("task update transaction boundary", () => {
     mocks.tx.sprintItem.findMany.mockResolvedValue([]);
     mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
     mocks.enqueue.mockResolvedValue({ id: "job-1" });
-    mocks.drain.mockResolvedValue({ processed: 1, succeeded: 1, failed: 0 });
   });
 
   it("reads invariants and writes through the same serializable transaction", async () => {
@@ -124,6 +123,6 @@ describe("task update transaction boundary", () => {
       data: { title: "After", sprintId: null },
     });
     expect(mocks.enqueue).toHaveBeenCalledOnce();
-    expect(mocks.drain).toHaveBeenCalledWith("workspace-1");
+    expect(mocks.wake).toHaveBeenCalledOnce();
   });
 });

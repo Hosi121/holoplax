@@ -10,7 +10,6 @@ import {
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { AUTOMATION_STATUS, SEVERITY } from "@/lib/types";
 import { resolveWorkspaceId } from "@/lib/workspace-context";
 import { getReviewSnapshot } from "@/modules/review/index.server";
 
@@ -39,7 +38,8 @@ export default async function ReviewPage() {
       : {
           activeSprint: null,
           latestClosedSprint: null,
-          tasks: [],
+          leadTimeDays: null,
+          backlogSummary: { highPriority: 0, splitPending: 0, smallTasks: 0 },
           velocityEntries: [],
           openDependencies: 0,
           activity: [],
@@ -48,14 +48,14 @@ export default async function ReviewPage() {
   const {
     activeSprint,
     latestClosedSprint,
-    tasks,
+    leadTimeDays,
+    backlogSummary,
     velocityEntries,
     openDependencies,
     activity,
     automation,
   } = snapshot;
   const sprint = activeSprint ?? latestClosedSprint;
-  const doneAt = (task: (typeof tasks)[number]) => task.workflowEvents[0]?.createdAt ?? null;
 
   // Single pass to collect all sprint-related metrics
   const sprintMetrics = (() => {
@@ -96,21 +96,6 @@ export default async function ReviewPage() {
     completionRate,
   } = sprintMetrics;
 
-  const leadTimeSample = tasks
-    .filter((task) => doneAt(task) !== null)
-    .sort((a, b) => (doneAt(b)?.getTime() ?? 0) - (doneAt(a)?.getTime() ?? 0))
-    .slice(0, 5);
-  const leadTimeDays =
-    leadTimeSample.length > 0
-      ? leadTimeSample.reduce((sum, task) => {
-          const created = task.createdAt ? new Date(task.createdAt).getTime() : 0;
-          const completed = doneAt(task)?.getTime() ?? created;
-          return sum + Math.max(0, completed - created);
-        }, 0) /
-        leadTimeSample.length /
-        (1000 * 60 * 60 * 24)
-      : null;
-
   const velocitySeries = velocityEntries.map((entry) => ({
     id: entry.id,
     points: entry.points,
@@ -147,23 +132,20 @@ export default async function ReviewPage() {
     });
   })();
 
-  const backlogTasks = tasks.filter((task) => task.status === "BACKLOG");
   const backlogSnapshot = [
     {
       label: "高優先度",
-      value: backlogTasks.filter((task) => task.urgency === SEVERITY.HIGH).length,
+      value: backlogSummary.highPriority,
       accent: "bg-red-100 text-red-700",
     },
     {
       label: "分解待ち",
-      value: backlogTasks.filter(
-        (task) => task.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING,
-      ).length,
+      value: backlogSummary.splitPending,
       accent: "bg-amber-100 text-amber-700",
     },
     {
       label: "小タスク",
-      value: backlogTasks.filter((task) => task.points <= 3).length,
+      value: backlogSummary.smallTasks,
       accent: "bg-emerald-100 text-emerald-700",
     },
   ];
@@ -172,12 +154,12 @@ export default async function ReviewPage() {
     id: event.id,
     label:
       event.toStatus === "DONE"
-        ? `完了: ${event.task.title}`
+        ? `完了: ${event.taskTitle}`
         : event.toStatus === "SPRINT"
-          ? `スプリントに「${event.task.title}」を追加`
+          ? `スプリントに「${event.taskTitle}」を追加`
           : event.fromStatus === null
-            ? `やること追加: ${event.task.title}`
-            : `バックログへ移動: ${event.task.title}`,
+            ? `やること追加: ${event.taskTitle}`
+            : `バックログへ移動: ${event.taskTitle}`,
   }));
 
   const now = new Date();

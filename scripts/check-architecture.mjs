@@ -105,6 +105,61 @@ for (const file of sourceFiles) {
       report(file, "Task writes must use the tasks module or the shared consistency adapter");
     }
   }
+
+  // Lifecycle history is a permanent audit projection. Requiring every write
+  // to pass through one adapter prevents individual commands from omitting
+  // immutable task snapshots or inventing a different event shape.
+  const ownsTaskStatusEventWrites =
+    path === "modules/shared/infrastructure/prisma-task-status-events.ts" ||
+    path.startsWith("scripts/") ||
+    /\.(?:test|spec)\.[jt]sx?$/.test(path);
+  if (
+    !ownsTaskStatusEventWrites &&
+    /\b(?:prisma|tx|db)\.taskStatusEvent\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\s*\(/.test(
+      source,
+    )
+  ) {
+    report(file, "Task status events must use the shared status-event adapter");
+  }
+
+  // Dependency decisions are part of the Task aggregate. Keeping their state
+  // and event updates in one writer makes waiver/reactivation atomic.
+  const ownsTaskDependencyWrites =
+    path === "modules/tasks/infrastructure/prisma-task-write.ts" ||
+    path.startsWith("scripts/") ||
+    /\.(?:test|spec)\.[jt]sx?$/.test(path);
+  if (
+    !ownsTaskDependencyWrites &&
+    /\b(?:prisma|tx|db)\.taskDependency\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\s*\(/.test(
+      source,
+    )
+  ) {
+    report(file, "Task dependency writes must use the Task aggregate writer");
+  }
+
+  // A single retry policy is the process-wide unit-of-work boundary. Direct
+  // declarations would silently reintroduce inconsistent conflict handling.
+  const ownsSerializableTransactions =
+    path === "modules/shared/infrastructure/prisma-serializable-transaction.ts" ||
+    /\.(?:test|spec)\.[jt]sx?$/.test(path);
+  if (!ownsSerializableTransactions && /isolationLevel\s*:\s*["']Serializable["']/.test(source)) {
+    report(file, "Serializable transactions must use the shared retrying transaction adapter");
+  }
+
+  // Bulk lifecycle decisions belong to the application execution planner. A
+  // persistence adapter writing request values directly would recreate the
+  // split-brain status/workflow bug even if it called the planner for validation.
+  if (path === "modules/tasks/infrastructure/prisma-bulk-task-command.ts") {
+    if (/status\s*:\s*command\.status/.test(source)) {
+      report(file, "bulk persistence must write lifecycle values from the application plan");
+    }
+    if (!/planners\.planStatus\s*\(/.test(source)) {
+      report(file, "bulk persistence must execute the application lifecycle plan");
+    }
+    if (/application\/task-lifecycle/.test(source)) {
+      report(file, "bulk persistence must not call the lifecycle domain planner directly");
+    }
+  }
 }
 
 const visitingModules = new Set();

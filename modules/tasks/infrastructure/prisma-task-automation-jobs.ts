@@ -9,6 +9,7 @@ type Tx = Prisma.TransactionClient;
 
 const MAX_ATTEMPTS = 5;
 const STALE_AFTER_MS = 5 * 60 * 1000;
+const HEARTBEAT_MS = 60 * 1000;
 
 type AutomationJobTask = Pick<
   Task,
@@ -27,17 +28,28 @@ export const enqueueTaskAutomation = (
     return Promise.resolve(null);
   }
   const dedupeKey = `${input.task.id}:${input.task.updatedAt.toISOString()}`;
-  return tx.taskAutomationJob.upsert({
-    where: { dedupeKey },
-    create: {
-      dedupeKey,
-      taskId: input.task.id,
-      taskKey: input.task.id,
-      workspaceId: input.workspaceId,
-      requestedById: input.requestedById,
-    },
-    update: {},
-  });
+  return tx.taskAutomationJob
+    .updateMany({
+      where: {
+        taskId: input.task.id,
+        status: "PENDING",
+        dedupeKey: { not: dedupeKey },
+      },
+      data: { status: "CANCELED" },
+    })
+    .then(() =>
+      tx.taskAutomationJob.upsert({
+        where: { dedupeKey },
+        create: {
+          dedupeKey,
+          taskId: input.task.id,
+          taskKey: input.task.id,
+          workspaceId: input.workspaceId,
+          requestedById: input.requestedById,
+        },
+        update: {},
+      }),
+    );
 };
 
 const reconcileInterruptedTask = async (job: {
@@ -83,12 +95,14 @@ const reconcileInterruptedTask = async (job: {
   });
 };
 
-const failJob = async (jobId: string, attempts: number, error: unknown) => {
+const failJob = async (jobId: string, workerId: string, attempts: number, error: unknown) => {
   const terminal = attempts >= MAX_ATTEMPTS;
   const delayMs = Math.min(60_000, 1000 * 2 ** Math.max(0, attempts - 1));
   const message = error instanceof Error ? error.message : String(error);
   await prisma.taskAutomationJob.updateMany({
-    where: { id: jobId, status: "RUNNING" },
+    // A stale worker must never overwrite a claim that has already been
+    // recovered and assigned to another worker.
+    where: { id: jobId, status: "RUNNING", lockedBy: workerId },
     data: {
       status: terminal ? "FAILED" : "PENDING",
       availableAt: terminal ? new Date() : new Date(Date.now() + delayMs),
@@ -97,6 +111,19 @@ const failJob = async (jobId: string, attempts: number, error: unknown) => {
       lastError: message.slice(0, 4000),
     },
   });
+};
+
+const startHeartbeat = (jobId: string, workerId: string) => {
+  const timer = setInterval(() => {
+    void prisma.taskAutomationJob
+      .updateMany({
+        where: { id: jobId, status: "RUNNING", lockedBy: workerId },
+        data: { lockedAt: new Date() },
+      })
+      .catch((error) => logger.error("TASK_AUTOMATION_JOB heartbeat failed", { jobId }, error));
+  }, HEARTBEAT_MS);
+  timer.unref();
+  return () => clearInterval(timer);
 };
 
 export const processTaskAutomationJobs = async (
@@ -142,6 +169,7 @@ export const processTaskAutomationJobs = async (
     });
     if (!job) break;
     processed += 1;
+    const stopHeartbeat = startHeartbeat(job.id, workerId);
 
     try {
       await reconcileInterruptedTask(job);
@@ -150,6 +178,13 @@ export const processTaskAutomationJobs = async (
         : null;
       const requestedById = job.requestedById ?? task?.userId;
       if (!task || !requestedById) {
+        await prisma.taskAutomationJob.updateMany({
+          where: { id: job.id, status: "RUNNING", lockedBy: workerId },
+          data: { status: "CANCELED", lockedAt: null, lockedBy: null },
+        });
+        continue;
+      }
+      if (job.dedupeKey !== `${task.id}:${task.updatedAt.toISOString()}`) {
         await prisma.taskAutomationJob.updateMany({
           where: { id: job.id, status: "RUNNING", lockedBy: workerId },
           data: { status: "CANCELED", lockedAt: null, lockedBy: null },
@@ -167,22 +202,113 @@ export const processTaskAutomationJobs = async (
           status: task.status,
         },
       });
-      await prisma.taskAutomationJob.updateMany({
+      const completed = await prisma.taskAutomationJob.updateMany({
         where: { id: job.id, status: "RUNNING", lockedBy: workerId },
         data: { status: "SUCCEEDED", lockedAt: null, lockedBy: null, lastError: null },
       });
-      succeeded += 1;
+      if (completed.count) succeeded += 1;
     } catch (error) {
       failed += 1;
       logger.error("TASK_AUTOMATION_JOB failed", { jobId: job.id, taskId: job.taskId }, error);
-      await failJob(job.id, job.attempts, error);
+      await failJob(job.id, workerId, job.attempts, error);
+    } finally {
+      stopHeartbeat();
     }
   }
   return { processed, succeeded, failed };
 };
 
-export const drainTaskAutomationForWorkspace = (workspaceId: string, limit = 5) =>
-  processTaskAutomationJobs({ workspaceId, limit }).catch((error) => {
-    logger.error("TASK_AUTOMATION_JOB drain failed", { workspaceId }, error);
-    return { processed: 0, succeeded: 0, failed: 1 };
+/** Explicit operator recovery for terminal jobs after the provider is fixed. */
+export const retryFailedTaskAutomationJobs = async (limit = 25) => {
+  const take = Math.min(100, Math.max(1, Math.trunc(limit)));
+  const failed = await prisma.taskAutomationJob.findMany({
+    where: { status: "FAILED" },
+    orderBy: { updatedAt: "asc" },
+    take,
+    select: { id: true },
   });
+  if (!failed.length) return 0;
+  const retried = await prisma.taskAutomationJob.updateMany({
+    where: { id: { in: failed.map(({ id }) => id) }, status: "FAILED" },
+    data: {
+      status: "PENDING",
+      attempts: 0,
+      availableAt: new Date(),
+      lockedAt: null,
+      lockedBy: null,
+      lastError: null,
+    },
+  });
+  return retried.count;
+};
+
+export const getTaskAutomationQueueStatus = async () => {
+  const [groups, oldestPending] = await Promise.all([
+    prisma.taskAutomationJob.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.taskAutomationJob.findFirst({
+      where: { status: "PENDING" },
+      orderBy: { availableAt: "asc" },
+      select: { availableAt: true },
+    }),
+  ]);
+  const counts = Object.fromEntries(groups.map(({ status, _count }) => [status, _count._all]));
+  return {
+    pending: counts.PENDING ?? 0,
+    running: counts.RUNNING ?? 0,
+    failed: counts.FAILED ?? 0,
+    oldestPendingAt: oldestPending?.availableAt ?? null,
+  };
+};
+
+type WorkerState = {
+  timer: ReturnType<typeof setInterval> | null;
+  running: boolean;
+  wakeRequested: boolean;
+  tick: () => Promise<void>;
+};
+const globalWorker = globalThis as typeof globalThis & {
+  __holoplaxTaskAutomationWorker?: WorkerState;
+};
+
+/** Start one non-overlapping durable-job poller per Node.js process. */
+export const startTaskAutomationWorker = (intervalMs = 30_000) => {
+  const existing = globalWorker.__holoplaxTaskAutomationWorker;
+  if (existing?.timer) return () => undefined;
+  const state = {} as WorkerState;
+  const tick = async () => {
+    if (state.running) {
+      state.wakeRequested = true;
+      return;
+    }
+    state.running = true;
+    try {
+      await processTaskAutomationJobs({ limit: 25 });
+    } catch (error) {
+      logger.error("TASK_AUTOMATION_WORKER poll failed", {}, error);
+    } finally {
+      state.running = false;
+      if (state.wakeRequested) {
+        state.wakeRequested = false;
+        queueMicrotask(() => void tick());
+      }
+    }
+  };
+  Object.assign(state, { timer: null, running: false, wakeRequested: false, tick });
+  state.timer = setInterval(() => void tick(), Math.max(5_000, intervalMs));
+  state.timer.unref();
+  globalWorker.__holoplaxTaskAutomationWorker = state;
+  void tick();
+  return () => {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    if (globalWorker.__holoplaxTaskAutomationWorker === state) {
+      delete globalWorker.__holoplaxTaskAutomationWorker;
+    }
+  };
+};
+
+/** Nudge the process-local poller after commit without awaiting provider I/O. */
+export const wakeTaskAutomationWorker = () => {
+  const state = globalWorker.__holoplaxTaskAutomationWorker;
+  if (state) void state.tick();
+};

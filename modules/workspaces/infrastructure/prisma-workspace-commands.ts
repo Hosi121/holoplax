@@ -5,6 +5,7 @@ import { logger } from "../../../lib/logger";
 import { sendEmail } from "../../../lib/mailer";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import type { WorkspaceCommandPort } from "../application/workspace-commands";
 
 const badRequest = (message: string) =>
@@ -137,7 +138,7 @@ export const prismaWorkspaceCommandPort: WorkspaceCommandPort = {
   },
 
   acceptInvite(userId, token) {
-    return prisma.$transaction(
+    return runSerializableTransaction(
       async (tx) => {
         const [user, invite] = await Promise.all([
           tx.user.findUnique({ where: { id: userId }, select: { email: true } }),
@@ -179,7 +180,10 @@ export const prismaWorkspaceCommandPort: WorkspaceCommandPort = {
         });
         return { workspaceId: invite.workspaceId };
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "WORKSPACE_CONCURRENT_UPDATE",
+        message: "workspace invite changed concurrently; retry the operation",
+      },
     );
   },
 };

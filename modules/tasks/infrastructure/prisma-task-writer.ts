@@ -14,6 +14,7 @@ import type {
 import { randomUUID } from "crypto";
 import { ApplicationError } from "../../shared/application/application-error";
 import { commitTaskToSprint } from "../../shared/infrastructure/prisma-sprint-items";
+import { recordTaskStatusTransition } from "../../shared/infrastructure/prisma-task-status-events";
 import { findTaskPolicyViolation } from "../domain/task-policy";
 import { initialWorkflowState } from "../domain/task-workflow";
 import { recordWorkflowTransition } from "./prisma-workflow-events";
@@ -121,22 +122,42 @@ export async function persistNewTask(
       dependencies: input.dependencyIds?.length
         ? {
             createMany: {
-              data: input.dependencyIds.map((dependsOnId) => ({ dependsOnId })),
+              data: input.dependencyIds.map((dependsOnId) => ({
+                dependsOnId,
+                workspaceId: input.workspaceId,
+              })),
               skipDuplicates: true,
             },
           }
         : undefined,
-      statusEvents: {
-        create: {
-          fromStatus: null,
-          toStatus: input.status,
-          actorId: event.actorId,
-          trigger: event.trigger,
-          workspaceId: input.workspaceId,
-        },
-      },
     },
   });
+  await recordTaskStatusTransition(tx, {
+    taskId: created.id,
+    taskTitle: created.title,
+    fromStatus: null,
+    toStatus: input.status,
+    actorId: event.actorId,
+    trigger: event.trigger,
+    workspaceId: input.workspaceId,
+  });
+  const dependencyIds = [...new Set(input.dependencyIds ?? [])].filter(
+    (dependsOnId) => dependsOnId !== created.id,
+  );
+  if (dependencyIds.length) {
+    await tx.taskDependencyEvent.createMany({
+      data: dependencyIds.map((dependsOnId) => ({
+        taskId: created.id,
+        taskKey: created.id,
+        dependsOnId,
+        dependsOnKey: dependsOnId,
+        type: "REQUIRED" as const,
+        actorId: event.actorId,
+        workspaceId: input.workspaceId,
+        reason: "TASK_CREATED",
+      })),
+    });
+  }
   await recordWorkflowTransition(tx, {
     taskId: created.id,
     workspaceId: input.workspaceId,

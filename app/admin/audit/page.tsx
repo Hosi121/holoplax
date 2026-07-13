@@ -18,7 +18,7 @@ type AuditLog = {
   id: string;
   action: string;
   createdAt: string;
-  actor: { name: string | null; email: string | null };
+  actor: { name: string | null; email: string | null } | null;
   targetUser?: { name: string | null; email: string | null } | null;
   targetWorkspace?: { name: string | null } | null;
   metadata?: Record<string, unknown> | null;

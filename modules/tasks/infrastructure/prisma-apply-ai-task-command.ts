@@ -1,8 +1,8 @@
 import { normalizeSeverity, normalizeStoryPoint } from "../../../lib/ai-normalization";
 import { AiSplitApplyPayloadSchema } from "../../../lib/contracts/ai";
-import prisma from "../../../lib/prisma";
 import { AUTOMATION_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import type { ApplyAiTaskCommandPort } from "../application/apply-ai-task-command";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { splitTaskIntoChildren } from "./prisma-task-split";
@@ -12,7 +12,7 @@ const badRequest = (message: string) =>
 
 export const prismaApplyAiTaskCommandPort: ApplyAiTaskCommandPort = {
   execute(actor, command) {
-    return prisma.$transaction(
+    return runSerializableTransaction(
       async (tx) => {
         const task = await tx.task.findFirst({
           where: { id: command.taskId, workspaceId: actor.workspaceId },
@@ -100,7 +100,10 @@ export const prismaApplyAiTaskCommandPort: ApplyAiTaskCommandPort = {
         });
         return { ok: true } as const;
       },
-      { isolationLevel: "Serializable" },
+      {
+        code: "TASK_CONCURRENT_UPDATE",
+        message: "task changed concurrently; retry the operation",
+      },
     );
   },
 };

@@ -108,6 +108,11 @@ enum TaskDependencyState {
   WAIVED
 }
 
+enum TaskDependencyEventType {
+  REQUIRED
+  WAIVED
+}
+
 enum TaskAutomationJobStatus {
   PENDING
   RUNNING
@@ -243,6 +248,7 @@ model User {
   intakeItems              IntakeItem[]
   taskStatusEvents         TaskStatusEvent[]        @relation("StatusEventActor")
   taskWorkflowEvents       TaskWorkflowEvent[]      @relation("WorkflowEventActor")
+  taskDependencyEvents     TaskDependencyEvent[]    @relation("DependencyEventActor")
   taskAutomationJobs       TaskAutomationJob[]      @relation("TaskAutomationJobRequester")
   memoryClaims             MemoryClaim[]
   memoryMetrics            MemoryMetric[]
@@ -335,7 +341,7 @@ model Workspace {
   id                       String                   @id @default(cuid())
   name                     String
   ownerId                  String
-  owner                    User                     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner                    User                     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   members                  WorkspaceMember[]
   tasks                    Task[]
   velocityEntries          VelocityEntry[]
@@ -349,6 +355,7 @@ model Workspace {
   intakeItems              IntakeItem[]
   statusEvents             TaskStatusEvent[]
   workflowEvents           TaskWorkflowEvent[]
+  dependencyEvents         TaskDependencyEvent[]
   memoryClaims             MemoryClaim[]
   memoryMetrics            MemoryMetric[]
   memoryQuestions          MemoryQuestion[]
@@ -393,12 +400,12 @@ model WorkspaceInvite {
 
 model AuditLog {
   id                String     @id @default(cuid())
-  actorId           String
+  actorId           String?
   action            String
   targetUserId      String?
   targetWorkspaceId String?
   metadata          Json?
-  actor             User       @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+  actor             User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   targetUser        User?      @relation("AuditTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
   targetWorkspace   Workspace? @relation(fields: [targetWorkspaceId], references: [id], onDelete: SetNull)
   createdAt         DateTime   @default(now())
@@ -410,51 +417,54 @@ model AuditLog {
 }
 
 model Task {
-  id               String               @id @default(uuid())
-  title            String
-  description      String               @default("")
-  definitionOfDone String               @default("")
-  checklist        Json?
-  points           Int
-  urgency          Severity             @default(MEDIUM)
-  risk             Severity             @default(MEDIUM)
-  status           TaskStatus           @default(BACKLOG)
-  workflowState    TaskWorkflowState    @default(READY)
-  type             TaskType             @default(PBI)
-  automationState  TaskAutomationState  @default(NONE)
-  automationStatus TaskAutomationStatus @default(NONE)
-  hierarchyRole    TaskHierarchyRole    @default(STANDARD)
-  origin           TaskOrigin           @default(MANUAL)
-  parentId         String?
-  sprintId         String?
-  routineSeriesId  String?
-  dueDate          DateTime?
-  assigneeId       String?
-  tags             String[]
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  suggestions      AiSuggestion[]
-  prepOutputs      AiPrepOutput[]
-  sprint           Sprint?              @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  assignee         User?                @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  id                             String                @id @default(uuid())
+  title                          String
+  description                    String                @default("")
+  definitionOfDone               String                @default("")
+  checklist                      Json?
+  points                         Int
+  urgency                        Severity              @default(MEDIUM)
+  risk                           Severity              @default(MEDIUM)
+  status                         TaskStatus            @default(BACKLOG)
+  workflowState                  TaskWorkflowState     @default(READY)
+  type                           TaskType              @default(PBI)
+  automationState                TaskAutomationState   @default(NONE)
+  automationStatus               TaskAutomationStatus  @default(NONE)
+  hierarchyRole                  TaskHierarchyRole     @default(STANDARD)
+  origin                         TaskOrigin            @default(MANUAL)
+  parentId                       String?
+  sprintId                       String?
+  routineSeriesId                String?
+  dueDate                        DateTime?
+  assigneeId                     String?
+  tags                           String[]
+  createdAt                      DateTime              @default(now())
+  updatedAt                      DateTime              @updatedAt
+  suggestions                    AiSuggestion[]
+  prepOutputs                    AiPrepOutput[]
+  sprint                         Sprint?               @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee                       User?                 @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   // A task always belongs to a workspace; creator attribution may be cleared.
-  userId           String?
-  user             User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  workspaceId      String
-  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent           Task?                @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children         Task[]               @relation("TaskHierarchy")
-  dependencies     TaskDependency[]     @relation("TaskDependencies")
-  dependents       TaskDependency[]     @relation("TaskDependents")
-  intakeItems      IntakeItem[]
-  statusEvents     TaskStatusEvent[]
-  workflowEvents   TaskWorkflowEvent[]
-  sprintItems      SprintItem[]
-  automationJobs   TaskAutomationJob[]
-  routineRule      RoutineRule?
-  routineSeries    RoutineSeries?       @relation(fields: [routineSeriesId], references: [id], onDelete: SetNull)
-  comments         TaskComment[]
+  userId                         String?
+  user                           User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspaceId                    String
+  workspace                      Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent                         Task?                 @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children                       Task[]                @relation("TaskHierarchy")
+  dependencies                   TaskDependency[]      @relation("TaskDependencies")
+  dependents                     TaskDependency[]      @relation("TaskDependents")
+  dependencyEventsAsTask         TaskDependencyEvent[] @relation("DependencyEventTask")
+  dependencyEventsAsPrerequisite TaskDependencyEvent[] @relation("DependencyEventPrerequisite")
+  intakeItems                    IntakeItem[]
+  statusEvents                   TaskStatusEvent[]
+  workflowEvents                 TaskWorkflowEvent[]
+  sprintItems                    SprintItem[]
+  automationJobs                 TaskAutomationJob[]
+  routineRule                    RoutineRule?
+  routineSeries                  RoutineSeries?        @relation(fields: [routineSeriesId], references: [id], onDelete: SetNull)
+  comments                       TaskComment[]
 
+  @@unique([id, workspaceId])
   @@index([parentId])
   // Task lists are tenant-scoped and ordered newest-first. Including the
   // unique id makes cursor pagination deterministic when timestamps tie.
@@ -684,24 +694,49 @@ model Sprint {
 model TaskDependency {
   taskId      String
   dependsOnId String
+  workspaceId String
   state       TaskDependencyState @default(REQUIRED)
   waivedAt    DateTime?
-  task        Task                @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
-  dependsOn   Task                @relation("TaskDependents", fields: [dependsOnId], references: [id], onDelete: Cascade)
+  task        Task                @relation("TaskDependencies", fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  dependsOn   Task                @relation("TaskDependents", fields: [dependsOnId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
 
   @@id([taskId, dependsOnId])
   @@index([taskId, state])
+  @@index([workspaceId, state])
+}
+
+model TaskDependencyEvent {
+  id           String                  @id @default(cuid())
+  taskId       String?
+  taskKey      String
+  dependsOnId  String?
+  dependsOnKey String
+  type         TaskDependencyEventType
+  actorId      String?
+  workspaceId  String?
+  reason       String?
+  task         Task?                   @relation("DependencyEventTask", fields: [taskId], references: [id], onDelete: SetNull)
+  dependsOn    Task?                   @relation("DependencyEventPrerequisite", fields: [dependsOnId], references: [id], onDelete: SetNull)
+  actor        User?                   @relation("DependencyEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  workspace    Workspace?              @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt    DateTime                @default(now())
+
+  @@index([taskKey, createdAt])
+  @@index([dependsOnKey, createdAt])
+  @@index([workspaceId, createdAt])
 }
 
 model TaskStatusEvent {
   id          String                 @id @default(cuid())
-  taskId      String
+  taskId      String?
+  taskKey     String
+  taskTitle   String
   fromStatus  TaskStatus?
   toStatus    TaskStatus
   actorId     String?
   trigger     TaskStatusEventSource?
   workspaceId String?
-  task        Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task        Task?                  @relation(fields: [taskId], references: [id], onDelete: SetNull)
   actor       User?                  @relation("StatusEventActor", fields: [actorId], references: [id], onDelete: SetNull)
   workspace   Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   createdAt   DateTime               @default(now())

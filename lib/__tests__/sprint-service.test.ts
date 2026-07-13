@@ -43,7 +43,12 @@ vi.mock("../prisma", () => ({
   },
 }));
 
-import { closeCurrentSprint, createSprint, listSprints } from "../../modules/sprints/index.server";
+import {
+  closeCurrentSprint,
+  createSprint,
+  listSprints,
+  updateSprint,
+} from "../../modules/sprints/index.server";
 
 const closedSprint = {
   id: "sprint-1",
@@ -135,5 +140,31 @@ describe("sprint application service", () => {
       createSprint({ userId: "user-1", workspaceId: "workspace-1" }),
     ).rejects.toMatchObject({ code: "SPRINT_CONFLICT", kind: "conflict" });
     expect(mocks.transaction).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a planned end before the persisted start on create", async () => {
+    await expect(
+      createSprint(
+        { userId: "user-1", workspaceId: "workspace-1" },
+        { plannedEndAt: "2000-01-01T00:00:00.000Z" },
+      ),
+    ).rejects.toMatchObject({ code: "SPRINT_BAD_REQUEST" });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an update whose effective end is before its effective start", async () => {
+    mocks.tx.sprint.findFirst.mockResolvedValue({
+      id: "sprint-1",
+      status: "ACTIVE",
+      startedAt: new Date("2026-07-10T00:00:00Z"),
+      plannedEndAt: new Date("2026-07-20T00:00:00Z"),
+    });
+
+    await expect(
+      updateSprint({ userId: "user-1", workspaceId: "workspace-1" }, "sprint-1", {
+        startedAt: "2026-07-21T00:00:00Z",
+      }),
+    ).rejects.toMatchObject({ code: "SPRINT_BAD_REQUEST" });
+    expect(mocks.tx.sprint.updateMany).not.toHaveBeenCalled();
   });
 });
