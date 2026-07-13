@@ -22,6 +22,12 @@ describe("rate-limiter", () => {
       expect(getRateLimitConfig("/api/auth/callback")).toBe(RATE_LIMIT_CONFIGS.auth);
     });
 
+    it("allows normal session and provider discovery traffic", () => {
+      expect(getRateLimitConfig("/api/auth/session")).toBe(RATE_LIMIT_CONFIGS.authSession);
+      expect(getRateLimitConfig("/api/auth/providers")).toBe(RATE_LIMIT_CONFIGS.authSession);
+      expect(getRateLimitConfig("/api/auth/csrf")).toBe(RATE_LIMIT_CONFIGS.authSession);
+    });
+
     it("should return authRegister config for /api/auth/register", () => {
       expect(getRateLimitConfig("/api/auth/register")).toBe(RATE_LIMIT_CONFIGS.authRegister);
     });

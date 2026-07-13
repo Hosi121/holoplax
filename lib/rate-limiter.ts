@@ -24,6 +24,9 @@ export const RATE_LIMIT_CONFIGS = {
   auth: { limit: 5, windowMs: 60 * 1000 }, // 5 requests per minute
   authRegister: { limit: 3, windowMs: 60 * 1000 }, // 3 registrations per minute
   authReset: { limit: 3, windowMs: 60 * 1000 }, // 3 reset requests per minute
+  // Session/provider discovery is performed by several mounted UI consumers
+  // and is not a password-guessing surface.
+  authSession: { limit: 120, windowMs: 60 * 1000 },
 
   // AI endpoints (expensive operations)
   ai: { limit: 20, windowMs: 60 * 1000 }, // 20 requests per minute
@@ -143,6 +146,13 @@ export function getRateLimitConfig(pathname: string): RateLimitConfig {
   }
   if (pathname.startsWith("/api/auth/request-reset") || pathname.startsWith("/api/auth/reset")) {
     return RATE_LIMIT_CONFIGS.authReset;
+  }
+  if (
+    pathname.startsWith("/api/auth/session") ||
+    pathname.startsWith("/api/auth/providers") ||
+    pathname.startsWith("/api/auth/csrf")
+  ) {
+    return RATE_LIMIT_CONFIGS.authSession;
   }
   if (pathname.startsWith("/api/auth")) {
     return RATE_LIMIT_CONFIGS.auth;
