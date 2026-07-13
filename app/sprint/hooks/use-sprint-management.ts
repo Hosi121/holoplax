@@ -95,9 +95,8 @@ export function useSprintManagement({
         }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setSprint(data.sprint ?? null);
-        fetchSprintHistory();
+        await fetchSprint();
+        void fetchSprintHistory();
         onSprintChange?.();
         onSuccess?.("スプリントを開始しました。");
       } else {
@@ -141,8 +140,8 @@ export function useSprintManagement({
       });
       if (res.ok) {
         const data = await res.json();
-        setSprint(data.sprint ?? null);
-        fetchSprintHistory();
+        setSprint((current) => (data.sprint ? { ...current, ...data.sprint } : null));
+        void fetchSprintHistory();
         onSuccess?.("スプリントの設定を保存しました。");
       } else {
         onError?.("スプリントの設定を保存できませんでした。");

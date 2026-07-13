@@ -10,7 +10,7 @@ import {
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { AUTOMATION_STATE, SEVERITY } from "@/lib/types";
+import { AUTOMATION_STATUS, SEVERITY } from "@/lib/types";
 import { resolveWorkspaceId } from "@/lib/workspace-context";
 import { getReviewSnapshot } from "@/modules/review/index.server";
 
@@ -55,34 +55,21 @@ export default async function ReviewPage() {
     automation,
   } = snapshot;
   const sprint = activeSprint ?? latestClosedSprint;
-  const doneAt = (task: (typeof tasks)[number]) => task.statusEvents[0]?.createdAt ?? null;
+  const doneAt = (task: (typeof tasks)[number]) => task.workflowEvents[0]?.createdAt ?? null;
 
   // Single pass to collect all sprint-related metrics
   const sprintMetrics = (() => {
-    const sprintDone: typeof tasks = [];
-    const sprintPbis: typeof tasks = [];
-    const sprintPbiDone: typeof tasks = [];
+    const scopedItems =
+      sprint?.items.filter((item) => sprint.endedAt !== null || item.removedAt === null) ?? [];
+    const sprintDone = scopedItems.filter((item) => item.outcome === "COMPLETED");
+    const sprintPbis = scopedItems.filter((item) => item.taskType === "PBI");
+    const sprintPbiDone = sprintPbis.filter((item) => item.outcome === "COMPLETED");
     let totalSprintPoints = 0;
     let donePoints = 0;
 
-    for (const task of tasks) {
-      const isSprintTask = sprint ? task.sprintId === sprint.id : task.status === "SPRINT";
-
-      if (!isSprintTask) continue;
-
-      totalSprintPoints += task.points;
-
-      if (task.status === "DONE") {
-        sprintDone.push(task);
-        donePoints += task.points;
-      }
-
-      if (task.type === "PBI") {
-        sprintPbis.push(task);
-        if (task.status === "DONE") {
-          sprintPbiDone.push(task);
-        }
-      }
+    for (const item of scopedItems) {
+      totalSprintPoints += item.committedPoints;
+      if (item.outcome === "COMPLETED") donePoints += item.committedPoints;
     }
 
     const pbiCompletionRate = sprintPbis.length
@@ -146,11 +133,11 @@ export default async function ReviewPage() {
     );
     const dailyDone = Array.from({ length: days }, () => 0);
     sprintDone.forEach((task) => {
-      const completedAt = doneAt(task);
+      const completedAt = task.completedAt;
       if (!completedAt) return;
       const diff = Math.floor((completedAt.getTime() - start.getTime()) / MS_PER_DAY);
       if (diff >= 0 && diff < days) {
-        dailyDone[diff] += task.points;
+        dailyDone[diff] += task.committedPoints;
       }
     });
     let remaining = totalSprintPoints;
@@ -169,8 +156,9 @@ export default async function ReviewPage() {
     },
     {
       label: "分解待ち",
-      value: backlogTasks.filter((task) => task.automationState === AUTOMATION_STATE.PENDING_SPLIT)
-        .length,
+      value: backlogTasks.filter(
+        (task) => task.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING,
+      ).length,
       accent: "bg-amber-100 text-amber-700",
     },
     {

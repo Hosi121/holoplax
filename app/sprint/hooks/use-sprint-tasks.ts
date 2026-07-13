@@ -1,6 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
-import { SEVERITY, type Severity, TASK_STATUS, TASK_TYPE, type TaskDTO } from "../../../lib/types";
+import {
+  SEVERITY,
+  type Severity,
+  TASK_STATUS,
+  TASK_TYPE,
+  TASK_WORKFLOW_STATE,
+  type TaskDTO,
+  type TaskWorkflowState,
+} from "../../../lib/types";
 
 const checklistFromText = (text: string) =>
   text
@@ -47,6 +55,7 @@ export type UseSprintTasksOptions = {
   onWarning?: (message: string) => void;
   onError?: (message: string) => void;
   onSuccess?: (message: string) => void;
+  onCommitmentChange?: () => void;
 };
 
 const defaultNewForm: NewTaskForm = {
@@ -67,6 +76,7 @@ export function useSprintTasks({
   onWarning,
   onError,
   onSuccess,
+  onCommitmentChange,
 }: UseSprintTasksOptions) {
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -116,9 +126,7 @@ export function useSprintTasks({
     if (sprintId) {
       return items.filter((item) => item.sprintId === sprintId);
     }
-    return items.filter(
-      (item) => item.status === TASK_STATUS.SPRINT || item.status === TASK_STATUS.DONE,
-    );
+    return items.filter((item) => item.status === TASK_STATUS.SPRINT);
   }, [items, sprintId]);
 
   const used = useMemo(
@@ -130,7 +138,7 @@ export function useSprintTasks({
   );
 
   const isBlocked = useCallback(
-    (item: TaskDTO) => (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE),
+    (item: TaskDTO) => (item.dependencies ?? []).some((dep) => dep.workflowState !== "DONE"),
     [],
   );
 
@@ -164,30 +172,37 @@ export function useSprintTasks({
     }
     setNewItem(defaultNewForm);
     onSuccess?.("スプリントにタスクを追加しました。");
+    onCommitmentChange?.();
     void fetchTasks();
   };
 
-  const markDone = async (id: string) => {
+  const changeWorkflowState = async (id: string, workflowState: TaskWorkflowState) => {
     const target = items.find((item) => item.id === id);
-    if (target && isBlocked(target)) {
+    if (workflowState === TASK_WORKFLOW_STATE.DONE && target && isBlocked(target)) {
       onWarning?.("依存タスクが未完了のため完了にできません。");
       return;
     }
-    if (target?.checklist?.some((item) => !item.done)) {
+    if (
+      workflowState === TASK_WORKFLOW_STATE.DONE &&
+      target?.checklist?.some((item) => !item.done)
+    ) {
       onWarning?.("チェックリストが未完了です。完了にする前に確認してください。");
       return;
     }
     const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: TASK_STATUS.DONE }),
+      body: JSON.stringify({ workflowState }),
     });
     if (!res.ok) {
-      onError?.("タスクを完了にできませんでした。");
+      onError?.("進み具合を変更できませんでした。");
       return;
     }
+    if (workflowState === TASK_WORKFLOW_STATE.CANCELED) onCommitmentChange?.();
     void fetchTasks();
   };
+
+  const markDone = (id: string) => changeWorkflowState(id, TASK_WORKFLOW_STATE.DONE);
 
   const deleteItem = async (id: string) => {
     const res = await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
@@ -196,6 +211,7 @@ export function useSprintTasks({
       return;
     }
     onSuccess?.("タスクを削除しました。");
+    onCommitmentChange?.();
     void fetchTasks();
   };
 
@@ -284,6 +300,7 @@ export function useSprintTasks({
     fetchTasks,
     addItem,
     markDone,
+    changeWorkflowState,
     deleteItem,
     openEdit,
     closeEdit,

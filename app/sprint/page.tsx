@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { STORY_POINTS } from "../../lib/points";
-import { SEVERITY, SEVERITY_LABELS, type Severity, TASK_STATUS } from "../../lib/types";
+import { SEVERITY, SEVERITY_LABELS, type Severity } from "../../lib/types";
 import { NAV_LABELS } from "../../lib/ui-language";
 import { EmptyState } from "../components/empty-state";
 import { HelpTooltip } from "../components/help-tooltip";
@@ -64,6 +64,7 @@ export default function SprintPage() {
     fetchTasks,
     addItem,
     markDone,
+    changeWorkflowState,
     deleteItem,
     openEdit,
     closeEdit,
@@ -77,6 +78,7 @@ export default function SprintPage() {
     onWarning: toast.warning,
     onError: toast.error,
     onSuccess: toast.success,
+    onCommitmentChange: () => void fetchSprint(),
   });
 
   const {
@@ -127,9 +129,16 @@ export default function SprintPage() {
   }, [members, newItem.assigneeId, setNewItem]);
 
   const activeCapacity = sprint?.capacityPoints ?? 24;
-  const remaining = activeCapacity - used;
+  const activePoints = sprint?.activePoints ?? used;
+  const remaining = activeCapacity - activePoints;
 
-  const handleAddItem = () => addItem(remaining);
+  const handleAddItem = () => {
+    if (!sprint) {
+      toast.warning("先にスプリントを開始してください。");
+      return;
+    }
+    return addItem(remaining);
+  };
 
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
@@ -165,7 +174,7 @@ export default function SprintPage() {
             <span className="inline-flex items-center gap-1">
               <button
                 onClick={runOptimization}
-                disabled={optimizerLoading}
+                disabled={optimizerLoading || !sprint}
                 className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-[#2323eb]/60 hover:text-[#2323eb] disabled:opacity-60"
               >
                 {optimizerLoading ? "計算中..." : "おすすめを表示"}
@@ -326,7 +335,7 @@ export default function SprintPage() {
             </label>
             <button
               onClick={handleAddItem}
-              disabled={newItem.points > remaining}
+              disabled={!sprint || newItem.points > remaining}
               className="border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb] disabled:opacity-50"
             >
               追加
@@ -372,9 +381,9 @@ export default function SprintPage() {
 
       <section className="border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-3">
-          {displayedItems.filter((item) => item.status !== TASK_STATUS.DONE).length > 0 ? (
+          {displayedItems.filter((item) => item.workflowState !== "DONE").length > 0 ? (
             displayedItems
-              .filter((item) => item.status !== TASK_STATUS.DONE)
+              .filter((item) => item.workflowState !== "DONE")
               .map((item) => (
                 <TaskCard
                   key={item.id}
@@ -384,6 +393,7 @@ export default function SprintPage() {
                   isBlocked={isBlocked(item)}
                   showSeverity={false}
                   onMarkDone={() => markDone(item.id)}
+                  onWorkflowStateChange={(state) => changeWorkflowState(item.id, state)}
                   onEdit={() => openEdit(item)}
                   onDelete={() => deleteItem(item.id)}
                   onToggleChecklistItem={(checklistId) => toggleChecklistItem(item.id, checklistId)}
@@ -405,12 +415,12 @@ export default function SprintPage() {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-900">完了</h3>
           <span className="text-xs text-slate-500">
-            {displayedItems.filter((item) => item.status === TASK_STATUS.DONE).length} 件
+            {displayedItems.filter((item) => item.workflowState === "DONE").length} 件
           </span>
         </div>
         <div className="mt-3 grid gap-2">
           {displayedItems
-            .filter((item) => item.status === TASK_STATUS.DONE)
+            .filter((item) => item.workflowState === "DONE")
             .map((item) => (
               <TaskCard
                 key={item.id}
