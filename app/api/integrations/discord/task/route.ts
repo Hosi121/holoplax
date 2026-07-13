@@ -8,8 +8,8 @@ import {
   validateSharedToken,
   verifyIntegrationSignature,
 } from "../../../../../lib/integrations/auth";
-import prisma from "../../../../../lib/prisma";
-import { createTask } from "../../../../../lib/tasks/task-service";
+import { createTask } from "../../../../../modules/tasks/index.server";
+import { isWorkspaceMember } from "../../../../../modules/workspaces/index.server";
 
 const getEnv = (key: string) => {
   const value = process.env[key];
@@ -77,11 +77,7 @@ export async function POST(request: Request) {
           "workspaceId not resolved; set DISCORD_WORKSPACE_ID or INTEGRATION_WORKSPACE_ID",
         );
       }
-      const membership = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId, userId: userEnv } },
-        select: { userId: true },
-      });
-      if (!membership) {
+      if (!(await isWorkspaceMember(userEnv, workspaceId))) {
         return errors.badRequest("configured integration user is not a workspace member");
       }
 
@@ -95,10 +91,9 @@ export async function POST(request: Request) {
       const fullDescription = description + meta;
 
       // 3. Create task directly in backlog
-      const task = await createTask({
-        userId: userEnv,
-        workspaceId,
-        input: {
+      const task = await createTask(
+        { userId: userEnv, workspaceId },
+        {
           title: title.slice(0, 140),
           description: fullDescription,
           points,
@@ -108,7 +103,7 @@ export async function POST(request: Request) {
           type: "PBI",
           dueDate: dueDate?.toISOString() ?? null,
         },
-      });
+      );
 
       await logAudit({
         actorId: userEnv,

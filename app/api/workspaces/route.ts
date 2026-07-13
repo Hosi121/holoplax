@@ -1,10 +1,9 @@
 import { requireAuth } from "../../../lib/api-auth";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import { logAudit } from "../../../lib/audit";
 import { WorkspaceCreateSchema } from "../../../lib/contracts/workspace";
 import { parseBody } from "../../../lib/http/validation";
-import prisma from "../../../lib/prisma";
+import { createWorkspace, listWorkspaces } from "../../../modules/workspaces/index.server";
 
 export async function GET() {
   return withApiHandler(
@@ -18,23 +17,7 @@ export async function GET() {
     },
     async () => {
       const { userId } = await requireAuth();
-      const memberships = await prisma.workspaceMember.findMany({
-        where: { userId },
-        select: {
-          role: true,
-          workspace: { select: { id: true, name: true, ownerId: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
-      return ok({
-        workspaces: memberships.map((m) => ({
-          id: m.workspace.id,
-          name: m.workspace.name,
-          role: m.role,
-          ownerId: m.workspace.ownerId,
-        })),
-      });
+      return ok({ workspaces: await listWorkspaces(userId) });
     },
   );
 }
@@ -55,22 +38,7 @@ export async function POST(request: Request) {
         code: "WORKSPACE_VALIDATION",
       });
       const name = body.name;
-      const workspace = await prisma.workspace.create({
-        data: {
-          name,
-          ownerId: userId,
-          members: {
-            create: { userId, role: "owner" },
-          },
-        },
-        select: { id: true, name: true, ownerId: true, createdAt: true },
-      });
-      await logAudit({
-        actorId: userId,
-        action: "WORKSPACE_CREATE",
-        targetWorkspaceId: workspace.id,
-        metadata: { name },
-      });
+      const workspace = await createWorkspace(userId, name);
       return ok({ workspace });
     },
   );

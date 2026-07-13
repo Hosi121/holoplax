@@ -2,13 +2,12 @@ import { requireAuth } from "../../../../../lib/api-auth";
 import { requireWorkspaceManager, requireWorkspaceMember } from "../../../../../lib/api-guards";
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
-import { logAudit } from "../../../../../lib/audit";
 import { WorkspaceMemberAddSchema } from "../../../../../lib/contracts/workspace";
-import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
-import prisma from "../../../../../lib/prisma";
-
-const errors = createDomainErrors("WORKSPACE");
+import {
+  addWorkspaceMember,
+  listWorkspaceMembers,
+} from "../../../../../modules/workspaces/index.server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApiHandler(
@@ -24,20 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       const { userId } = await requireAuth();
       const { id } = await params;
       await requireWorkspaceMember("WORKSPACE", id, userId);
-      const members = await prisma.workspaceMember.findMany({
-        where: { workspaceId: id },
-        include: { user: { select: { id: true, name: true, email: true } } },
-        orderBy: { createdAt: "asc" },
-        take: 500,
-      });
-      return ok({
-        members: members.map((m) => ({
-          id: m.user.id,
-          name: m.user.name,
-          email: m.user.email,
-          role: m.role,
-        })),
-      });
+      return ok({ members: await listWorkspaceMembers(id) });
     },
   );
 }
@@ -63,27 +49,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const email = body.email;
       const role = body.role ?? "member";
 
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        return errors.badRequest("user not found");
-      }
-
-      const membership = await prisma.workspaceMember.upsert({
-        where: { workspaceId_userId: { workspaceId: id, userId: user.id } },
-        update: { role },
-        create: { workspaceId: id, userId: user.id, role },
-        select: { userId: true, workspaceId: true, role: true, createdAt: true },
+      return ok({
+        member: await addWorkspaceMember({ actorId: userId, workspaceId: id, email, role }),
       });
-
-      await logAudit({
-        actorId: userId,
-        action: "WORKSPACE_MEMBER_ADD",
-        targetWorkspaceId: id,
-        targetUserId: user.id,
-        metadata: { role: membership.role },
-      });
-
-      return ok({ member: membership });
     },
   );
 }

@@ -4,9 +4,9 @@ import { logAudit } from "../../../../lib/audit";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { verifySlackSignature } from "../../../../lib/integrations/auth";
 import { isStoryPoint } from "../../../../lib/points";
-import prisma from "../../../../lib/prisma";
-import { createTask } from "../../../../lib/tasks/task-service";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
+import { createTask } from "../../../../modules/tasks/index.server";
+import { isWorkspaceMember } from "../../../../modules/workspaces/index.server";
 
 const getEnv = (key: string) => {
   const value = process.env[key];
@@ -85,28 +85,23 @@ export async function POST(request: Request) {
           text: "userId を解決できませんでした。SLACK_USER_ID を設定してください。",
         });
       }
-      const membership = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId, userId: userEnv } },
-        select: { userId: true },
-      });
-      if (!membership) {
+      if (!(await isWorkspaceMember(userEnv, workspaceId))) {
         return ok({
           response_type: "ephemeral",
           text: "設定されたユーザーは対象ワークスペースのメンバーではありません。",
         });
       }
 
-      const task = await createTask({
-        userId: userEnv,
-        workspaceId,
-        input: {
+      const task = await createTask(
+        { userId: userEnv, workspaceId },
+        {
           title,
           description: description ?? "",
           points,
           status: "BACKLOG",
           type: "PBI",
         },
-      });
+      );
 
       await logAudit({
         actorId: userEnv,

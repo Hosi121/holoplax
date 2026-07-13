@@ -4,6 +4,7 @@ import { EmailSchema } from "./auth";
 const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value));
 
 export const WorkspaceRoleSchema = z.enum(["owner", "admin", "member"]);
+export type WorkspaceRole = z.infer<typeof WorkspaceRoleSchema>;
 const WorkspaceAssignableRoleSchema = z.enum(["admin", "member"]);
 
 const WorkspaceRoleInputSchema = z
