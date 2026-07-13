@@ -106,6 +106,8 @@ module "ecs" {
   environment_variables = [
     { name = "NODE_ENV", value = "production" },
     { name = "NEXTAUTH_URL", value = var.app_domain != "" ? "https://${var.app_domain}" : "http://${module.alb.dns_name}" },
+    { name = "AWS_REGION", value = var.region },
+    { name = "S3_BUCKET_AVATARS", value = module.s3.bucket_name },
   ]
 
   secrets = [
@@ -151,6 +153,15 @@ module "metrics_job" {
   ]
 
   secrets_arns = [aws_secretsmanager_secret.db.arn]
+}
+
+resource "aws_security_group_rule" "metrics_to_rds" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = module.metrics_job.security_group_id
+  security_group_id        = module.rds.security_group_id
 }
 
 resource "aws_secretsmanager_secret" "db" {

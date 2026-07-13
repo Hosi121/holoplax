@@ -47,25 +47,25 @@ def alpha_for_decay(decay_days: int) -> float:
     return 1 - 2 ** (-1 / max(1, decay_days))
 
 
-def ensure_memory_types(conn) -> dict[tuple[str, str], str]:
-    type_ids: dict[tuple[str, str], str] = {}
+def ensure_memory_definitions(conn) -> dict[tuple[str, str], str]:
+    definition_ids: dict[tuple[str, str], str] = {}
     with conn.cursor() as cur:
         for spec in METRICS:
             cur.execute(
                 """
-                SELECT id FROM "MemoryType"
+                SELECT id FROM "MemoryDefinition"
                 WHERE key = %s AND scope = %s
                 """,
                 (spec.key, spec.scope),
             )
             row = cur.fetchone()
             if row:
-                type_ids[(spec.key, spec.scope)] = row[0]
+                definition_ids[(spec.key, spec.scope)] = row[0]
                 continue
             new_id = str(uuid.uuid4())
             cur.execute(
                 """
-                INSERT INTO "MemoryType"
+                INSERT INTO "MemoryDefinition"
                 (id, key, scope, "valueType", granularity, "updatePolicy", "decayDays", "createdAt", "updatedAt")
                 VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 """,
@@ -79,34 +79,34 @@ def ensure_memory_types(conn) -> dict[tuple[str, str], str]:
                     spec.decay_days,
                 ),
             )
-            type_ids[(spec.key, spec.scope)] = new_id
+            definition_ids[(spec.key, spec.scope)] = new_id
     conn.commit()
-    return type_ids
+    return definition_ids
 
 
-def update_metric_and_claim(conn, type_id: str, scope: str, owner_id: str, value: float | None):
+def update_metric_and_claim(conn, definition_id: str, scope: str, owner_id: str, value: float | None):
     if value is None:
         return
-    window_end = now_utc()
+    window_end = now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
     window_start = window_end - timedelta(days=1)
     with conn.cursor() as cur:
         if scope == "WORKSPACE":
             cur.execute(
                 """
                 SELECT id, "valueNum" FROM "MemoryMetric"
-                WHERE "typeId" = %s AND "workspaceId" = %s
+                WHERE "definitionId" = %s AND "workspaceId" = %s
                   AND "windowStart" = %s AND "windowEnd" = %s
                 """,
-                (type_id, owner_id, window_start, window_end),
+                (definition_id, owner_id, window_start, window_end),
             )
         else:
             cur.execute(
                 """
                 SELECT id, "valueNum" FROM "MemoryMetric"
-                WHERE "typeId" = %s AND "userId" = %s
+                WHERE "definitionId" = %s AND "userId" = %s
                   AND "windowStart" = %s AND "windowEnd" = %s
                 """,
-                (type_id, owner_id, window_start, window_end),
+                (definition_id, owner_id, window_start, window_end),
             )
         existing = cur.fetchone()
         if existing:
@@ -123,26 +123,26 @@ def update_metric_and_claim(conn, type_id: str, scope: str, owner_id: str, value
                 cur.execute(
                     """
                     INSERT INTO "MemoryMetric"
-                    (id, "typeId", "workspaceId", "windowStart", "windowEnd", "valueNum", "computedAt")
+                    (id, "definitionId", "workspaceId", "windowStart", "windowEnd", "valueNum", "computedAt")
                     VALUES (%s, %s, %s, %s, %s, %s, NOW())
                     """,
-                    (str(uuid.uuid4()), type_id, owner_id, window_start, window_end, value),
+                    (str(uuid.uuid4()), definition_id, owner_id, window_start, window_end, value),
                 )
             else:
                 cur.execute(
                     """
                     INSERT INTO "MemoryMetric"
-                    (id, "typeId", "userId", "windowStart", "windowEnd", "valueNum", "computedAt")
+                    (id, "definitionId", "userId", "windowStart", "windowEnd", "valueNum", "computedAt")
                     VALUES (%s, %s, %s, %s, %s, %s, NOW())
                     """,
-                    (str(uuid.uuid4()), type_id, owner_id, window_start, window_end, value),
+                    (str(uuid.uuid4()), definition_id, owner_id, window_start, window_end, value),
                 )
 
         cur.execute(
             """
-            SELECT "decayDays" FROM "MemoryType" WHERE id = %s
+            SELECT "decayDays" FROM "MemoryDefinition" WHERE id = %s
             """,
-            (type_id,),
+            (definition_id,),
         )
         decay_days = cur.fetchone()[0] or 30
         alpha = alpha_for_decay(decay_days)
@@ -150,25 +150,30 @@ def update_metric_and_claim(conn, type_id: str, scope: str, owner_id: str, value
         if scope == "WORKSPACE":
             cur.execute(
                 """
-                SELECT id, "valueNum" FROM "MemoryClaim"
-                WHERE "typeId" = %s AND "workspaceId" = %s AND status = 'ACTIVE'
+                SELECT id, "valueNum", "provenance" FROM "MemoryClaim"
+                WHERE "definitionId" = %s AND "workspaceId" = %s AND status = 'ACTIVE'
                 ORDER BY "updatedAt" DESC
                 LIMIT 1
                 """,
-                (type_id, owner_id),
+                (definition_id, owner_id),
             )
         else:
             cur.execute(
                 """
-                SELECT id, "valueNum" FROM "MemoryClaim"
-                WHERE "typeId" = %s AND "userId" = %s AND status = 'ACTIVE'
+                SELECT id, "valueNum", "provenance" FROM "MemoryClaim"
+                WHERE "definitionId" = %s AND "userId" = %s AND status = 'ACTIVE'
                 ORDER BY "updatedAt" DESC
                 LIMIT 1
                 """,
-                (type_id, owner_id),
+                (definition_id, owner_id),
             )
         claim = cur.fetchone()
         if claim:
+            # Explicit user input is authoritative. Continue storing the raw
+            # metric, but never blend it into a manually confirmed claim.
+            if claim[2] == "EXPLICIT":
+                conn.commit()
+                return
             prev = claim[1] or 0
             next_val = alpha * value + (1 - alpha) * prev
             cur.execute(
@@ -184,19 +189,19 @@ def update_metric_and_claim(conn, type_id: str, scope: str, owner_id: str, value
                 cur.execute(
                     """
                     INSERT INTO "MemoryClaim"
-                    (id, "typeId", "workspaceId", "valueNum", "source", "status", "createdAt", "updatedAt")
-                    VALUES (%s, %s, %s, %s, 'INFERRED', 'ACTIVE', NOW(), NOW())
+                    (id, "definitionId", "workspaceId", "valueNum", "provenance", "status", "validFrom", "createdAt", "updatedAt")
+                    VALUES (%s, %s, %s, %s, 'INFERRED', 'ACTIVE', NOW(), NOW(), NOW())
                     """,
-                    (str(uuid.uuid4()), type_id, owner_id, value),
+                    (str(uuid.uuid4()), definition_id, owner_id, value),
                 )
             else:
                 cur.execute(
                     """
                     INSERT INTO "MemoryClaim"
-                    (id, "typeId", "userId", "valueNum", "source", "status", "createdAt", "updatedAt")
-                    VALUES (%s, %s, %s, %s, 'INFERRED', 'ACTIVE', NOW(), NOW())
+                    (id, "definitionId", "userId", "valueNum", "provenance", "status", "validFrom", "createdAt", "updatedAt")
+                    VALUES (%s, %s, %s, %s, 'INFERRED', 'ACTIVE', NOW(), NOW(), NOW())
                     """,
-                    (str(uuid.uuid4()), type_id, owner_id, value),
+                    (str(uuid.uuid4()), definition_id, owner_id, value),
                 )
     conn.commit()
 
@@ -204,26 +209,71 @@ def update_metric_and_claim(conn, type_id: str, scope: str, owner_id: str, value
 def compute_metrics(tasks: list[dict], window_days: int):
     cutoff = now_utc() - timedelta(days=window_days)
     done_tasks = [
-        task for task in tasks if task["status"] == "DONE" and task["updatedAt"] >= cutoff
+        task
+        for task in tasks
+        if task["status"] == "DONE" and task["doneAt"] is not None and task["doneAt"] >= cutoff
     ]
     throughput = len(done_tasks)
     lead_times = [
-        (task["updatedAt"] - task["createdAt"]).total_seconds() * 1000
+        (task["doneAt"] - task["createdAt"]).total_seconds() * 1000
         for task in done_tasks
-        if task["updatedAt"] and task["createdAt"]
+        if task["doneAt"] and task["createdAt"]
     ]
     lead_time_median = median(lead_times) if lead_times else None
     due_tasks = [task for task in done_tasks if task["dueDate"] is not None]
     if due_tasks:
-        on_time = sum(1 for task in due_tasks if task["updatedAt"] <= task["dueDate"])
+        on_time = sum(1 for task in due_tasks if task["doneAt"] <= task["dueDate"])
         deadline_adherence = on_time / len(due_tasks)
     else:
         deadline_adherence = None
     return throughput, lead_time_median, deadline_adherence
 
 
-def compute_wip(tasks: list[dict]):
-    return sum(1 for task in tasks if task["status"] == "SPRINT")
+def compute_average_wip(conn, owner_column: str, owner_id: str, days: int = 14) -> float:
+    """Time-weighted average number of tasks in SPRINT during the window."""
+    if owner_column not in {"workspaceId", "userId"}:
+        raise ValueError("invalid owner column")
+    window_end = now_utc()
+    window_start = window_end - timedelta(days=days)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            WITH ordered AS (
+                SELECT e."taskId", e."toStatus", e."createdAt" AS start_at,
+                       LEAD(e."createdAt") OVER (
+                           PARTITION BY e."taskId" ORDER BY e."createdAt", e.id
+                       ) AS end_at
+                FROM "TaskStatusEvent" e
+                JOIN "Task" t ON t.id = e."taskId"
+                WHERE t."{owner_column}" = %s AND e."createdAt" < %s
+            ), intervals AS (
+                SELECT GREATEST(start_at, %s) AS active_from,
+                       LEAST(COALESCE(end_at, %s), %s) AS active_until
+                FROM ordered
+                WHERE "toStatus" = 'SPRINT'
+                  AND COALESCE(end_at, %s) > %s
+            )
+            SELECT COALESCE(
+                SUM(EXTRACT(EPOCH FROM (active_until - active_from))) /
+                NULLIF(EXTRACT(EPOCH FROM (%s::timestamp - %s::timestamp)), 0),
+                0
+            )
+            FROM intervals
+            WHERE active_until > active_from
+            """,
+            (
+                owner_id,
+                window_end,
+                window_start,
+                window_end,
+                window_end,
+                window_end,
+                window_start,
+                window_end,
+                window_start,
+            ),
+        )
+        return float(cur.fetchone()[0] or 0)
 
 
 def compute_flow_state(lead_time_ms: float | None, wip: float, throughput: float):
@@ -345,15 +395,22 @@ def compute_ai_trust_state(conn, workspace_id: str) -> float | None:
     return min(1.0, total_applies / total_outputs)
 
 
-def fetch_tasks(conn, where_clause: str, params: tuple):
+def fetch_tasks(conn, owner_column: str, owner_id: str):
+    if owner_column not in {"workspaceId", "userId"}:
+        raise ValueError("invalid owner column")
     with conn.cursor() as cur:
         cur.execute(
             f"""
-            SELECT id, "createdAt", "updatedAt", status, points, "dueDate"
-            FROM "Task"
-            WHERE {where_clause}
+            SELECT t.id, t."createdAt", t.status, t.points, t."dueDate",
+                   (
+                       SELECT MAX(e."createdAt")
+                       FROM "TaskStatusEvent" e
+                       WHERE e."taskId" = t.id AND e."toStatus" = 'DONE'
+                   ) AS "doneAt"
+            FROM "Task" t
+            WHERE t."{owner_column}" = %s
             """,
-            params,
+            (owner_id,),
         )
         columns = [desc[0] for desc in cur.description]
         return [dict(zip(columns, row)) for row in cur.fetchall()]
@@ -365,7 +422,7 @@ def main():
         raise RuntimeError("DATABASE_URL is required")
 
     with psycopg.connect(database_url) as conn:
-        type_ids = ensure_memory_types(conn)
+        definition_ids = ensure_memory_definitions(conn)
 
         with conn.cursor() as cur:
             cur.execute('SELECT id FROM "Workspace"')
@@ -374,78 +431,78 @@ def main():
             users = [row[0] for row in cur.fetchall()]
 
         for workspace_id in workspaces:
-            tasks = fetch_tasks(conn, '"workspaceId" = %s', (workspace_id,))
+            tasks = fetch_tasks(conn, "workspaceId", workspace_id)
             throughput, lead_time, adherence = compute_metrics(tasks, 30)
             throughput_14, _, _ = compute_metrics(tasks, 14)
-            wip = compute_wip(tasks)
+            wip = compute_average_wip(conn, "workspaceId", workspace_id)
             flow = compute_flow_state(lead_time, wip, throughput_14)
 
             update_metric_and_claim(
                 conn,
-                type_ids[("throughput_14d", "WORKSPACE")],
+                definition_ids[("throughput_14d", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
                 float(throughput_14),
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("lead_time_median_30d", "WORKSPACE")],
+                definition_ids[("lead_time_median_30d", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
                 float(lead_time) if lead_time is not None else None,
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("deadline_adherence_30d", "WORKSPACE")],
+                definition_ids[("deadline_adherence_30d", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
                 float(adherence) if adherence is not None else None,
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("wip_avg_14d", "WORKSPACE")],
+                definition_ids[("wip_avg_14d", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
                 float(wip),
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("flow_state", "WORKSPACE")],
+                definition_ids[("flow_state", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
                 float(flow) if flow is not None else None,
             )
 
         for user_id in users:
-            tasks = fetch_tasks(conn, '"userId" = %s', (user_id,))
+            tasks = fetch_tasks(conn, "userId", user_id)
             throughput, lead_time, adherence = compute_metrics(tasks, 30)
             throughput_14, _, _ = compute_metrics(tasks, 14)
-            wip = compute_wip(tasks)
+            wip = compute_average_wip(conn, "userId", user_id)
 
             update_metric_and_claim(
                 conn,
-                type_ids[("throughput_14d", "USER")],
+                definition_ids[("throughput_14d", "USER")],
                 "USER",
                 user_id,
                 float(throughput_14),
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("lead_time_median_30d", "USER")],
+                definition_ids[("lead_time_median_30d", "USER")],
                 "USER",
                 user_id,
                 float(lead_time) if lead_time is not None else None,
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("deadline_adherence_30d", "USER")],
+                definition_ids[("deadline_adherence_30d", "USER")],
                 "USER",
                 user_id,
                 float(adherence) if adherence is not None else None,
             )
             update_metric_and_claim(
                 conn,
-                type_ids[("wip_avg_14d", "USER")],
+                definition_ids[("wip_avg_14d", "USER")],
                 "USER",
                 user_id,
                 float(wip),
@@ -454,20 +511,20 @@ def main():
             # 提案タイプ別メトリクス
             suggestion_metrics = compute_suggestion_metrics_by_type(conn, user_id)
             for metric_key, value in suggestion_metrics.items():
-                if (metric_key, "USER") in type_ids and value is not None:
+                if (metric_key, "USER") in definition_ids and value is not None:
                     update_metric_and_claim(
                         conn,
-                        type_ids[(metric_key, "USER")],
+                        definition_ids[(metric_key, "USER")],
                         "USER",
                         user_id,
                         float(value),
                     )
 
-        # Placeholder for AI trust state until approval/apply logs exist.
+        # AI trust is derived from recent generated and applied outputs.
         for workspace_id in workspaces:
             update_metric_and_claim(
                 conn,
-                type_ids[("ai_trust_state", "WORKSPACE")],
+                definition_ids[("ai_trust_state", "WORKSPACE")],
                 "WORKSPACE",
                 workspace_id,
                 compute_ai_trust_state(conn, workspace_id),

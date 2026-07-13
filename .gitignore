@@ -12,6 +12,9 @@ node_modules
 
 # testing
 /coverage
+/test-results
+/playwright-report
+/blob-report
 
 # next.js
 /.next/
@@ -58,3 +61,5 @@ tfplan
 
 # local tooling artifacts
 .tornado/
+__pycache__/
+*.py[cod]

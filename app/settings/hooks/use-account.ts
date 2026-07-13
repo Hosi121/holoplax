@@ -77,6 +77,7 @@ export function useAccount({
       body: JSON.stringify({
         filename: file.name,
         contentType: file.type || "image/png",
+        size: file.size,
       }),
     });
     if (!res.ok) {
@@ -86,11 +87,17 @@ export function useAccount({
     const data = await res.json();
     // Only mark the new image URL if the storage PUT actually succeeded —
     // otherwise we'd save a URL pointing at an object that was never uploaded.
-    const putRes = await fetch(data.uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "image/png" },
-      body: file,
-    });
+    let putRes: Response;
+    try {
+      putRes = await fetch(data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "image/png" },
+        body: file,
+      });
+    } catch {
+      onError?.("画像をアップロードできませんでした。接続を確認してください。");
+      return;
+    }
     if (!putRes.ok) {
       onError?.("画像をアップロードできませんでした。");
       return;

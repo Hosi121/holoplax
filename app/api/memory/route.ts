@@ -249,6 +249,9 @@ export async function POST(request: Request) {
       if (!isMemoryScope(definition.scope) || !isMemoryValueType(definition.valueType)) {
         return errors.badRequest("invalid memory type configuration");
       }
+      if (definition.updatePolicy !== "manual") {
+        return errors.badRequest("derived memory cannot be edited manually");
+      }
 
       if (definition.scope === "WORKSPACE" && !workspaceId) {
         return errors.badRequest("workspace is required");
@@ -277,7 +280,7 @@ export async function POST(request: Request) {
           userId: definition.scope === "USER" ? userId : null,
           workspaceId: definition.scope === "WORKSPACE" ? workspaceId : null,
           ...parsed.data,
-          source: "EXPLICIT" as MemorySource,
+          provenance: "EXPLICIT" as MemorySource,
           status: "ACTIVE" as MemoryStatus,
           validFrom: now,
           confidence: 0.7,

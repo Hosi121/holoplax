@@ -18,14 +18,16 @@ const cspDirectives = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
+  `img-src 'self' data: blob: https:${process.env.NODE_ENV === "production" ? "" : " http://localhost:9000 http://127.0.0.1:9000"}`,
   "font-src 'self' data:",
-  "connect-src 'self'",
+  // Avatar uploads use a short-lived pre-signed URL. Production targets S3
+  // over HTTPS; localhost permits the development MinIO endpoint.
+  `connect-src 'self' https:${process.env.NODE_ENV === "production" ? "" : " http://localhost:9000 http://127.0.0.1:9000"}`,
   "frame-ancestors 'none'",
   "form-action 'self'",
   "object-src 'none'",
   "base-uri 'self'",
-  "upgrade-insecure-requests",
+  ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [

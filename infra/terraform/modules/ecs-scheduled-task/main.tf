@@ -120,7 +120,7 @@ data "aws_iam_policy_document" "eventbridge_ecs" {
   }
 
   statement {
-    actions   = ["iam:PassRole"]
+    actions = ["iam:PassRole"]
     resources = [
       aws_iam_role.task_execution.arn,
       aws_iam_role.task.arn,

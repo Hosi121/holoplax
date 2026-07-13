@@ -101,12 +101,16 @@ export function useMemory({ ready, workspaceId, onWarning, onError, onSuccess }:
   }, [ready, workspaceId, onError]);
 
   const userMemoryDefinitions = useMemo(
-    () => memoryDefinitions.filter((type) => type.scope === "USER"),
+    () =>
+      memoryDefinitions.filter((type) => type.scope === "USER" && type.updatePolicy === "manual"),
     [memoryDefinitions],
   );
 
   const workspaceMemoryDefinitions = useMemo(
-    () => memoryDefinitions.filter((type) => type.scope === "WORKSPACE"),
+    () =>
+      memoryDefinitions.filter(
+        (type) => type.scope === "WORKSPACE" && type.updatePolicy === "manual",
+      ),
     [memoryDefinitions],
   );
 

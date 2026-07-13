@@ -15,6 +15,21 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = var.public_read ? false : true
 }
 
+# Browser clients upload avatars directly with a short-lived pre-signed PUT.
+# Authorization still comes from the signature; CORS only permits the browser
+# to send the request and read its status.
+resource "aws_s3_bucket_cors_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD", "PUT"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket_policy" "public_read" {
   count      = var.public_read ? 1 : 0
   bucket     = aws_s3_bucket.this.id
@@ -26,8 +41,8 @@ data "aws_iam_policy_document" "public_read" {
   count = var.public_read ? 1 : 0
 
   statement {
-    sid     = "PublicRead"
-    actions = ["s3:GetObject"]
+    sid       = "PublicRead"
+    actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.this.arn}/*"]
 
     principals {
