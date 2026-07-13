@@ -3,7 +3,7 @@ import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { IntakeResolveSchema } from "../../../../lib/contracts/intake";
 import { parseBody } from "../../../../lib/http/validation";
-import { resolveIntakeItem } from "../../../../lib/intake/intake-service";
+import { resolveIntakeItem } from "../../../../modules/intake/index.server";
 
 export async function POST(request: Request) {
   return withApiHandler(
@@ -21,16 +21,16 @@ export async function POST(request: Request) {
         code: "INTAKE_VALIDATION",
       });
       return ok(
-        await resolveIntakeItem({
-          userId,
-          input: {
+        await resolveIntakeItem(
+          { userId },
+          {
             intakeId: body.intakeId,
             action: body.action,
             workspaceId: body.workspaceId,
             taskType: body.taskType,
             targetTaskId: body.targetTaskId,
           },
-        }),
+        ),
       );
     },
   );

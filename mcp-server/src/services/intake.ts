@@ -1,9 +1,8 @@
-import type { TaskType } from "@prisma/client";
 import {
   createIntakeMemo,
   listIntakeItems,
   resolveIntakeItem,
-} from "../../../lib/intake/intake-service.js";
+} from "../../../modules/intake/index.server.js";
 import type { ExecutionContext } from "../context.js";
 
 export const listIntake = (ctx: ExecutionContext) =>
@@ -14,7 +13,7 @@ export interface CreateMemoInput {
 }
 
 export const createMemo = (ctx: ExecutionContext, input: CreateMemoInput) =>
-  createIntakeMemo({ userId: ctx.userId, workspaceId: ctx.workspaceId, text: input.text });
+  createIntakeMemo({ userId: ctx.userId, workspaceId: ctx.workspaceId }, input.text);
 
 export interface ResolveIntakeInput {
   intakeId: string;
@@ -24,11 +23,11 @@ export interface ResolveIntakeInput {
 }
 
 export const resolveIntake = (ctx: ExecutionContext, input: ResolveIntakeInput) =>
-  resolveIntakeItem({
-    userId: ctx.userId,
-    input: {
+  resolveIntakeItem(
+    { userId: ctx.userId },
+    {
       ...input,
       workspaceId: ctx.workspaceId,
-      taskType: input.taskType as TaskType | undefined,
+      taskType: input.taskType as "EPIC" | "PBI" | "TASK" | undefined,
     },
-  });
+  );

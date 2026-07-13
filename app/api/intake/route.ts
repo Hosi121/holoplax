@@ -1,7 +1,7 @@
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import { listIntakeItems } from "../../../lib/intake/intake-service";
+import { listIntakeItems } from "../../../modules/intake/index.server";
 
 export async function GET() {
   return withApiHandler(

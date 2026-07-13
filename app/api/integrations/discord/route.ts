@@ -1,11 +1,10 @@
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
-import { logAudit } from "../../../../lib/audit";
 import { DiscordIntakeSchema } from "../../../../lib/contracts/integrations";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
 import { validateSharedToken, verifyIntegrationSignature } from "../../../../lib/integrations/auth";
-import prisma from "../../../../lib/prisma";
+import { captureDiscordIntake } from "../../../../modules/intake/index.server";
 
 export async function POST(request: Request) {
   const errors = createDomainErrors("INTEGRATION");
@@ -43,25 +42,13 @@ export async function POST(request: Request) {
       if (!userId) {
         return errors.badRequest("userId not resolved; set DISCORD_USER_ID or INTEGRATION_USER_ID");
       }
-      const user = await prisma.user.findFirst({
-        where: { id: userId, disabledAt: null },
-        select: { id: true },
-      });
-      if (!user) return errors.badRequest("configured integration user is invalid or disabled");
-
-      // Build description with metadata
-      const meta = [author && `by: ${author}`, channel && `ch: #${channel}`]
-        .filter(Boolean)
-        .join(" | ");
-      const bodyText = meta ? `${rawBody}\n\n---\n${meta}` : rawBody;
-
-      // Create IntakeItem (Global Inbox)
-      const item = await prisma.intakeItem.create({
-        data: {
-          origin: "DISCORD",
-          status: "PENDING",
-          title: title.slice(0, 140),
-          body: bodyText,
+      return ok(
+        await captureDiscordIntake({
+          userId,
+          title,
+          body: rawBody,
+          author,
+          channel,
           payload: {
             dueDate: body.dueDate ?? null,
             urgency: body.urgency ?? null,
@@ -70,16 +57,8 @@ export async function POST(request: Request) {
             threadUrl: body.threadUrl ?? null,
             messageUrl: body.messageUrl ?? null,
           },
-          user: { connect: { id: userId } },
-        },
-      });
-
-      await logAudit({
-        actorId: userId,
-        action: "INTEGRATION_DISCORD_INTAKE_CREATE",
-        metadata: { itemId: item.id, title: item.title, author, channel },
-      });
-      return ok({ itemId: item.id });
+        }),
+      );
     },
   );
 }

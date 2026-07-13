@@ -2,35 +2,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const tx = {
-    intakeItem: { updateMany: vi.fn(), update: vi.fn() },
+    intakeItem: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
     task: { create: vi.fn() },
+    workspaceMember: { findUnique: vi.fn() },
+    auditLog: { create: vi.fn() },
     $executeRaw: vi.fn(),
   };
   return {
     tx,
-    intakeFindUnique: vi.fn(),
-    intakeUpdateMany: vi.fn(),
-    membershipFindUnique: vi.fn(),
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    logAudit: vi.fn(),
     applyAutomation: vi.fn(),
   };
 });
 
 vi.mock("../prisma", () => ({
   default: {
-    intakeItem: {
-      findUnique: mocks.intakeFindUnique,
-      updateMany: mocks.intakeUpdateMany,
-    },
-    workspaceMember: { findUnique: mocks.membershipFindUnique },
     $transaction: mocks.transaction,
   },
 }));
-vi.mock("../audit", () => ({ logAudit: mocks.logAudit }));
 vi.mock("../automation", () => ({ applyAutomationForTask: mocks.applyAutomation }));
 
-import { resolveIntakeItem } from "../intake/intake-service";
+import { resolveIntakeItem } from "../../modules/intake/index.server";
 
 const intakeItem = {
   id: "intake-1",
@@ -44,9 +36,9 @@ const intakeItem = {
 describe("intake application service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.intakeFindUnique.mockResolvedValue(intakeItem);
-    mocks.membershipFindUnique.mockResolvedValue({ workspaceId: "workspace-1" });
-    mocks.logAudit.mockResolvedValue(undefined);
+    mocks.tx.intakeItem.findUnique.mockResolvedValue(intakeItem);
+    mocks.tx.workspaceMember.findUnique.mockResolvedValue({ workspaceId: "workspace-1" });
+    mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
     mocks.applyAutomation.mockResolvedValue(undefined);
   });
 
@@ -62,10 +54,10 @@ describe("intake application service", () => {
     mocks.tx.intakeItem.update.mockResolvedValue({ count: 1 });
 
     await expect(
-      resolveIntakeItem({
-        userId: "user-1",
-        input: { intakeId: "intake-1", action: "create", workspaceId: "workspace-1" },
-      }),
+      resolveIntakeItem(
+        { userId: "user-1" },
+        { intakeId: "intake-1", action: "create", workspaceId: "workspace-1" },
+      ),
     ).resolves.toEqual({ taskId: "task-1" });
 
     expect(mocks.tx.task.create).toHaveBeenCalledWith({
@@ -82,23 +74,20 @@ describe("intake application service", () => {
     mocks.tx.intakeItem.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
-      resolveIntakeItem({
-        userId: "user-1",
-        input: { intakeId: "intake-1", action: "create", workspaceId: "workspace-1" },
-      }),
-    ).rejects.toMatchObject({ code: "INTAKE_CONFLICT", status: 409 });
+      resolveIntakeItem(
+        { userId: "user-1" },
+        { intakeId: "intake-1", action: "create", workspaceId: "workspace-1" },
+      ),
+    ).rejects.toMatchObject({ code: "INTAKE_CONFLICT", kind: "conflict" });
     expect(mocks.tx.task.create).not.toHaveBeenCalled();
     expect(mocks.applyAutomation).not.toHaveBeenCalled();
   });
 
   it("cannot dismiss an item after another resolution won", async () => {
-    mocks.intakeUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.tx.intakeItem.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
-      resolveIntakeItem({
-        userId: "user-1",
-        input: { intakeId: "intake-1", action: "dismiss" },
-      }),
-    ).rejects.toMatchObject({ code: "INTAKE_CONFLICT", status: 409 });
+      resolveIntakeItem({ userId: "user-1" }, { intakeId: "intake-1", action: "dismiss" }),
+    ).rejects.toMatchObject({ code: "INTAKE_CONFLICT", kind: "conflict" });
   });
 });
