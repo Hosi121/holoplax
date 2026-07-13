@@ -14,6 +14,7 @@
 入力:
 - Task/WorkItem、TaskWorkflowEvent（作業状態の遷移）
 - SprintItem（コミット時ポイントのスナップショット）
+- SprintItemEvent（コミット、再追加、完了、除外、持ち越しの不変履歴）
 - ApprovalDecision/AutomationExecution（AI協働ログ）
 
 出力:
@@ -81,3 +82,5 @@ var_t = alpha * (y_t - y_hat_t)^2 + (1 - alpha) * var_{t-1}
 - 実行基盤: EC2 cron（user-data でセットアップ）
 - まずは EMA 更新のみで十分（学習/推論の重さを避ける）
 - イベント駆動は後で追加（TaskWorkflowEventをトリガに軽量更新）
+- TaskWorkflowEvent は集計に必要な作成日時・期限・ポイント・作成者を
+  スナップショットし、削除済みTaskへのJOINに依存しない。

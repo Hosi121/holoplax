@@ -1,4 +1,4 @@
-# Architecture (Draft)
+# Architecture
 
 ## Production (AWS / EC2)
 ```mermaid
@@ -43,9 +43,11 @@ flowchart LR
   App --> Workflow[TaskWorkflowEvent]
   Task --> Workflow
   Task --> Item[SprintItem snapshot]
+  Item --> ItemEvent[SprintItemEvent history]
   Item --> Sprint[Sprint]
   Workflow --> Audit[AuditLog]
   Task --> Dep[TaskDependency]
+  Dep --> Waiver[Required / Waived]
   Task --> Series[RoutineSeries]
   Series --> Rule[Active RoutineRule]
 ```
@@ -58,7 +60,7 @@ state comes from `workflowState`; capacity and historical reporting come from
 ```mermaid
 flowchart LR
   Cron[EC2 cron] --> Job[Metrics Job (uv + python)]
-  Job --> Read[Query Task + TaskWorkflowEvent]
+  Job --> Read[Query TaskWorkflowEvent snapshots]
   Read --> Metric[MemoryMetric (window)]
   Metric --> Claim[MemoryClaim (EMA)]
 ```
@@ -67,8 +69,10 @@ flowchart LR
 ```mermaid
 flowchart LR
   Intake[IntakeItem] --> Task[Task]
-  Task --> Suggest[AiSuggestion]
-  Task --> Prep[AiPrepOutput]
+  Task --> Job[TaskAutomationJob]
+  Job --> Worker[Retryable automation worker]
+  Worker --> Suggest[AiSuggestion]
+  Worker --> Prep[AiPrepOutput]
   Suggest --> Apply[AI Apply]
   Prep --> Approval[Approval/Apply]
   Apply --> TaskUpdate[Task Update]
@@ -93,3 +97,10 @@ flowchart LR
   infrastructure code.
 - The architecture check rejects cross-module internal imports and module
   dependency cycles.
+- General `Task` writes are statically restricted to the Tasks infrastructure.
+  Cross-aggregate operations that must share a Sprint, Intake, AI, or Workspace
+  transaction use the narrow shared consistency adapter; new direct table
+  writers fail the architecture check.
+- Task state-dependent reads and writes share a serializable transaction.
+- AI provider calls are downstream of durable `TaskAutomationJob` records;
+  successful task writes do not depend on provider availability.

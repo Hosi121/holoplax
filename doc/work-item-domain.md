@@ -40,6 +40,23 @@ row to the next, so occurrences had no stable series identity.
    occurrence creates a new work item without moving the series identity.
 9. Workspace work survives creator lifecycle. Removing a workspace member also
    removes active assignments in that workspace.
+10. Dependency cancellation does not satisfy a prerequisite. Removing a
+    dependency explicitly changes its edge from `REQUIRED` to `WAIVED`, keeping
+    the decision auditable and allowing the same edge to be reactivated.
+11. `SprintItem` is the current commitment snapshot; `SprintItemEvent` is its
+    append-only decision history. Recommit, reopen, completion, removal, and
+    carryover never erase earlier decisions. A carried item links to its prior
+    sprint item.
+12. Workflow events snapshot the task creation date, due date, estimate, and
+    creator needed by metrics. Historical metrics therefore do not join back to
+    a live task that may have been deleted. Deleting active work records a final
+    `CANCELED` transition before removing the task.
+13. Task automation is requested by a durable, revision-deduplicated job in the
+    same transaction as the task mutation. Workers claim jobs atomically, retry
+    transient failures, and recover stale claims.
+14. Every state-dependent task update read and write runs in one serializable
+    transaction. Serialization conflicts are retried before being surfaced as
+    an explicit conflict.
 
 ## Compatibility projection
 
@@ -61,6 +78,8 @@ workflow state and sprint commitment internally.
 5. Expose workflow controls to clients.
 6. Separate automation provenance and recurring series.
 7. Remove compatibility fields only after production backfill verification.
+8. Validate compatibility-era database checks and retain immutable history for
+   sprint and workflow reporting.
 
 ## Non-goals
 
