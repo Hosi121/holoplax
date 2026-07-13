@@ -75,13 +75,11 @@ export default function WorkspacesPage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchWorkspaces();
   }, [fetchWorkspaces]);
 
   useEffect(() => {
     if (!selectedId) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchMembers(selectedId);
   }, [selectedId, fetchMembers]);
 

@@ -55,11 +55,14 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    const stored = localStorage.getItem("theme") as Theme | null;
-    const initial = stored ?? "system";
-    setThemeState(initial);
-    applyTheme(initial);
-    setMounted(true);
+    const timer = window.setTimeout(() => {
+      const stored = localStorage.getItem("theme") as Theme | null;
+      const initial = stored ?? "system";
+      setThemeState(initial);
+      applyTheme(initial);
+      setMounted(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [applyTheme]);
 
   useEffect(() => {

@@ -107,7 +107,6 @@ export default function KanbanPage() {
   }, [ready, workspaceId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchTasks();
     void fetchMembers();
     void fetchSprint();

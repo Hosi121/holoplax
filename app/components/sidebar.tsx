@@ -228,15 +228,18 @@ const NavigationLinks = memo(function NavigationLinks({
 
   // Read persisted state on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored !== null) {
-        setCollapsed(stored === "true");
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored !== null) {
+          setCollapsed(stored === "true");
+        }
+      } catch {
+        // localStorage may be unavailable
       }
-    } catch {
-      // localStorage may be unavailable
-    }
-    setHydrated(true);
+      setHydrated(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleToggle = useCallback(() => {

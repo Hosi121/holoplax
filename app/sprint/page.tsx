@@ -110,13 +110,19 @@ export default function SprintPage() {
   }, [ready, workspaceId]);
 
   useEffect(() => {
-    void Promise.all([fetchTasks(), fetchSprint(), fetchSprintHistory(), fetchMembers()]);
+    const timer = window.setTimeout(() => {
+      void Promise.all([fetchTasks(), fetchSprint(), fetchSprintHistory(), fetchMembers()]);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchTasks, fetchSprint, fetchSprintHistory, fetchMembers]);
 
   // 1人しかいない場合は自動的に担当者を設定
   useEffect(() => {
     if (members.length === 1 && !newItem.assigneeId) {
-      setNewItem((prev) => ({ ...prev, assigneeId: members[0].id }));
+      const timer = window.setTimeout(() => {
+        setNewItem((prev) => ({ ...prev, assigneeId: members[0].id }));
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [members, newItem.assigneeId, setNewItem]);
 

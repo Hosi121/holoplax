@@ -37,10 +37,10 @@ export function QuickStartCard() {
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== "true") {
-      setDismissed(false);
-    }
+    const timer = window.setTimeout(() => {
+      setDismissed(localStorage.getItem(STORAGE_KEY) === "true");
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   if (dismissed) return null;
