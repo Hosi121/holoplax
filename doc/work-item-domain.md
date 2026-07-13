@@ -38,11 +38,15 @@ row to the next, so occurrences had no stable series identity.
    values remain until every client reads the separated representation.
 8. Recurrence has a stable definition and occurrence identity. Completing an
    occurrence creates a new work item without moving the series identity.
+   Deleting the occurrence that currently owns the active rule stops the
+   series; deleting an older occurrence does not.
 9. Workspace work survives creator lifecycle. Removing a workspace member also
    removes active assignments in that workspace.
 10. Dependency cancellation does not satisfy a prerequisite. Removing a
     dependency explicitly changes its edge from `REQUIRED` to `WAIVED`, keeping
     the decision auditable and allowing the same edge to be reactivated.
+    `TaskDependencyEvent` permanently snapshots each required, waived, and
+    reactivated decision even after either live task is deleted.
 11. `SprintItem` is the current commitment snapshot; `SprintItemEvent` is its
     append-only decision history. Recommit, reopen, completion, removal, and
     carryover never erase earlier decisions. A carried item links to its prior
@@ -50,13 +54,29 @@ row to the next, so occurrences had no stable series identity.
 12. Workflow events snapshot the task creation date, due date, estimate, and
     creator needed by metrics. Historical metrics therefore do not join back to
     a live task that may have been deleted. Deleting active work records a final
-    `CANCELED` transition before removing the task.
+    `CANCELED` transition before removing the task. Status events likewise
+    snapshot the permanent task key and title and survive task deletion.
 13. Task automation is requested by a durable, revision-deduplicated job in the
     same transaction as the task mutation. Workers claim jobs atomically, retry
-    transient failures, and recover stale claims.
+    transient failures, heartbeat active claims, recover stale claims, and
+    require an explicit operator action to retry terminal failures. The Node
+    process starts the poller independently of user traffic, and health reports
+    pending/running/failed queue counts.
 14. Every state-dependent task update read and write runs in one serializable
-    transaction. Serialization conflicts are retried before being surfaced as
-    an explicit conflict.
+    transaction through the shared unit-of-work adapter. Serialization
+    conflicts are retried before being surfaced as an explicit conflict.
+15. Single and bulk task commands use the same application lifecycle planner.
+    The planner owns compatibility projection, workflow transition, and policy
+    evaluation; persistence code does not define alternate rules.
+16. Bulk status persistence applies the planner's projected status and workflow
+    state as one explicit execution plan. Reopening `CANCELED` or `DONE` work
+    through either the single or bulk command returns it to `READY`.
+17. Dependency edges carry their workspace scope and both endpoints are guarded
+    by composite foreign keys. Self-dependencies and cross-workspace edges are
+    rejected by the database as well as the application.
+18. Audit rows survive actor deletion through nullable attribution, while
+    Memory claims, questions, and metrics require exactly one user or workspace
+    scope. Sprint planned end dates cannot precede their start dates.
 
 ## Compatibility projection
 

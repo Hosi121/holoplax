@@ -5,7 +5,7 @@
 flowchart LR
   User[User/Client] --> ALB[ALB (HTTP)]
   subgraph AWS[VPC (ap-northeast-3)]
-    ALB --> EC2[EC2 App (Next.js/Node + cron)]
+    ALB --> EC2[EC2 App (Next.js/Node + durable job poller)]
     EC2 --> RDS[(RDS PostgreSQL)]
     EC2 --> S3[(S3 Avatar Bucket)]
     SM[Secrets Manager] --> EC2
@@ -41,6 +41,7 @@ flowchart LR
   User[User] --> App[App/API]
   App --> Task[WorkItem / Task]
   App --> Workflow[TaskWorkflowEvent]
+  Task --> Status[TaskStatusEvent snapshot]
   Task --> Workflow
   Task --> Item[SprintItem snapshot]
   Item --> ItemEvent[SprintItemEvent history]
@@ -48,6 +49,7 @@ flowchart LR
   Workflow --> Audit[AuditLog]
   Task --> Dep[TaskDependency]
   Dep --> Waiver[Required / Waived]
+  Waiver --> DepEvent[TaskDependencyEvent]
   Task --> Series[RoutineSeries]
   Series --> Rule[Active RoutineRule]
 ```
@@ -101,6 +103,20 @@ flowchart LR
   Cross-aggregate operations that must share a Sprint, Intake, AI, or Workspace
   transaction use the narrow shared consistency adapter; new direct table
   writers fail the architecture check.
-- Task state-dependent reads and writes share a serializable transaction.
+- Lifecycle decisions are planned in the Tasks application layer and reused by
+  single-item and bulk commands. Persistence adapters supply facts and apply
+  the resulting plan.
+- Task status history is written only through one shared snapshot adapter;
+  dependency state and decision events are written only through the Task
+  aggregate writer. The architecture check rejects bypasses.
+- Task state-dependent reads and writes use one process-wide serializable
+  transaction adapter with bounded conflict retries.
 - AI provider calls are downstream of durable `TaskAutomationJob` records;
-  successful task writes do not depend on provider availability.
+  successful task writes do not depend on provider availability. A Node
+  instrumentation hook starts a non-overlapping poller, heartbeat-protects
+  claims, recovers stale workers, and exposes queue degradation via health.
+  Health classifies overdue PENDING and RUNNING jobs using independently
+  configurable age thresholds; queue depth alone is not considered healthy.
+- Task list consumers follow the cursor until `hasMore` is false. Sprint views
+  apply `sprintId` in the server query instead of loading workspace-wide DONE
+  work and filtering it in the browser.

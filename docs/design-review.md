@@ -26,6 +26,19 @@
 - Intake から作る Task に初期 status event と通常の automation を適用。
 - Web/MCP の AI service と入力 contract を統合し、MCP も provider・fallback・監査・利用量記録を利用。
 - MCP を root の application service を含む単一 bundle として構築し、Prisma singleton も共有。
+- Workspace owner の削除規則を schema と実DBで `RESTRICT` に統一。
+- Task status 履歴に不変の task key/title を保存し、Task 削除後も Review の活動履歴を保持。
+- dependency の REQUIRED/WAIVED/再有効化を append-only event として保存し、Task 削除後も意思決定を監査可能に変更。
+- 現在の RoutineRule を持つ Task の削除時だけ series を停止し、過去 occurrence の削除では停止しない規則を統一。
+- 全 Serializable transaction を bounded retry 付き共通 unit-of-work へ集約。
+- 単体更新と bulk 更新の lifecycle projection/policy を application planner へ集約。
+- automation job に常駐 poller、heartbeat、stale claim 回復、所有権付き完了CAS、terminal failure 再投入操作、health 可視化を追加。
+- Review の backlog 集計をDB集約へ変更し、固定1000件取得とクライアント再集計を廃止。
+- status event、dependency、Serializable transaction の直接バイパスを architecture check で禁止。
+- bulk lifecycle の検証結果と保存値を明示的 execution plan に統一し、CANCELED 再開規則も単体・一括で共通化。
+- task 一覧の全 consumer を cursor 完走へ変更し、Sprint は `sprintId` でDB側絞り込み。
+- automation health に設定可能な PENDING/RUNNING 滞留閾値を追加し、false-green を解消。
+- Sprint期間、Memory owner scope、dependency tenant/self edge、Audit actor削除時の履歴保持をDB制約化。
 
 ## 残存負債
 
@@ -34,16 +47,18 @@ nullable の legacy row として保持するが、新たに作る経路は Spri
 
 ### P2: nullable ownership の残存
 
-AiSuggestion / AiUsage / MemoryClaim などは USER scope と WORKSPACE scope を nullable FK の組で表す。
-部分 unique index で active claim の一意性は守っているが、所有規則はDB型だけでは表現しきれていない。
+MemoryClaim / MemoryQuestion / MemoryMetric は排他的 owner CHECK を持つ。AiSuggestion / AiUsage
+などは実行者とworkspace文脈を同時に保持するため nullable FK の組を残しており、用途の違いを型だけでは
+表現しきれていない。
 
 次の方針: scope 別テーブルへの分離、または owner kind/id の明示モデル化を設計してから移行する。
 
-### P2: TaskAutomationState が複数機能を一つの状態列に持つ
+### P2: 互換 TaskAutomationState の撤去
 
-委任状態と分割状態が同じ enum にあるため、両機能の同時進行を表現できない。
+automation workflow は `automationStatus`、分割由来の構造は `hierarchyRole` に分離済みだが、
+旧クライアント向け projection として `TaskAutomationState` をまだ dual-write している。
 
-次の方針: delegation と split workflow を個別状態へ分離する。既存データ移行が必要。
+次の方針: クライアント移行と本番 backfill 検証後に互換列と projection 関数を撤去する。
 
 ### P2: 依存監査で自動修正不能な項目
 
