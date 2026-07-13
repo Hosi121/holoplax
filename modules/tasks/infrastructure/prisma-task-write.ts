@@ -34,7 +34,7 @@ export async function taskDependencyWouldCycle(
   params: { taskId: string; workspaceId: string; dependencyIds: string[] },
 ): Promise<boolean> {
   const rows = await tx.taskDependency.findMany({
-    where: { task: { workspaceId: params.workspaceId } },
+    where: { task: { workspaceId: params.workspaceId }, state: "REQUIRED" },
     select: { taskId: true, dependsOnId: true },
   });
   const graph = new Map<string, string[]>();
@@ -106,8 +106,8 @@ const normalizeChecklistForReset = (value: unknown) => {
 };
 
 /**
- * Replace a task's dependency edges with the given ids, keeping only those that
- * belong to the same workspace and are not the task itself.
+ * Reconcile required dependencies without erasing history. Removing an id is
+ * an explicit waiver; adding it again reactivates the same edge.
  */
 export async function syncTaskDependencies(
   tx: Tx,
@@ -120,14 +120,20 @@ export async function syncTaskDependencies(
         select: { id: true },
       })
     : [];
-  await tx.taskDependency.deleteMany({ where: { taskId } });
-  if (allowed.length > 0) {
-    await tx.taskDependency.createMany({
-      data: allowed
-        .map((dep) => dep.id)
-        .filter((depId) => depId && depId !== taskId)
-        .map((depId) => ({ taskId, dependsOnId: depId })),
-      skipDuplicates: true,
+  const allowedIds = allowed.map((dep) => dep.id).filter((depId) => depId && depId !== taskId);
+  await tx.taskDependency.updateMany({
+    where: {
+      taskId,
+      state: "REQUIRED",
+      ...(allowedIds.length ? { dependsOnId: { notIn: allowedIds } } : {}),
+    },
+    data: { state: "WAIVED", waivedAt: new Date() },
+  });
+  for (const dependsOnId of allowedIds) {
+    await tx.taskDependency.upsert({
+      where: { taskId_dependsOnId: { taskId, dependsOnId } },
+      create: { taskId, dependsOnId },
+      update: { state: "REQUIRED", waivedAt: null },
     });
   }
 }

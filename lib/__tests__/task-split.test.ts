@@ -10,7 +10,15 @@ const createTx = (options: {
   parentStatus?: "BACKLOG" | "SPRINT";
   parentType?: "EPIC" | "PBI" | "TASK";
 }) => {
-  const create = vi.fn().mockResolvedValue({ id: "child" });
+  const create = vi.fn().mockResolvedValue({
+    id: "child",
+    title: "Child",
+    type: "TASK",
+    points: 3,
+    createdAt: new Date(),
+    dueDate: null,
+    userId: "user",
+  });
   const tx = {
     task: {
       findFirst: vi.fn().mockResolvedValue({
@@ -20,6 +28,12 @@ const createTx = (options: {
       }),
       updateMany: vi.fn().mockResolvedValue({ count: options.claimed ?? 1 }),
       create,
+      findUnique: vi.fn().mockResolvedValue({
+        createdAt: new Date(),
+        dueDate: null,
+        points: 3,
+        userId: "user",
+      }),
       aggregate: vi.fn().mockResolvedValue({ _sum: { points: options.committedPoints ?? 0 } }),
     },
     sprint: {
@@ -28,11 +42,23 @@ const createTx = (options: {
     taskStatusEvent: { create: vi.fn().mockResolvedValue({ id: "event" }) },
     taskWorkflowEvent: { create: vi.fn().mockResolvedValue({ id: "workflow-event" }) },
     sprintItem: {
-      upsert: vi.fn().mockResolvedValue({ id: "sprint-item" }),
+      findUnique: vi.fn().mockResolvedValue(null),
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({
+        id: "sprint-item",
+        taskTitle: "Child",
+        taskType: "TASK",
+        committedPoints: 3,
+      }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       aggregate: vi
         .fn()
         .mockResolvedValue({ _sum: { committedPoints: options.committedPoints ?? 0 } }),
+    },
+    sprintItemEvent: {
+      create: vi.fn().mockResolvedValue({ id: "sprint-event" }),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   } as unknown as Prisma.TransactionClient;
   return { tx, create };

@@ -32,14 +32,32 @@ export interface AdminOperationsPort {
   listUserTasks(userId: string): Promise<unknown[]>;
 }
 
-export const createAdminOperations = (port: AdminOperationsPort) => ({
+export const createAdminOperations = (
+  port: AdminOperationsPort,
+  processAutomation: (options: { limit: number }) => Promise<{
+    processed: number;
+    succeeded: number;
+    failed: number;
+  }>,
+) => ({
   getAiSetting: () => port.getAiSetting(),
   updateAiSetting: (
     actorId: string,
     input: Parameters<AdminOperationsPort["updateAiSetting"]>[1],
   ) => port.updateAiSetting(actorId, input),
   getAudit: (input: Parameters<AdminOperationsPort["getAudit"]>[0]) => port.getAudit(input),
-  runMaintenance: (actorId: string) => port.runMaintenance(actorId),
+  runMaintenance: async (actorId: string) => {
+    const [deleted, automation] = await Promise.all([
+      port.runMaintenance(actorId),
+      processAutomation({ limit: 25 }),
+    ]);
+    return {
+      ...deleted,
+      automationProcessed: automation.processed,
+      automationSucceeded: automation.succeeded,
+      automationFailed: automation.failed,
+    };
+  },
   listUsers: (input: Parameters<AdminOperationsPort["listUsers"]>[0]) => port.listUsers(input),
   createUser: (actorId: string, input: Parameters<AdminOperationsPort["createUser"]>[1]) =>
     port.createUser(actorId, input),

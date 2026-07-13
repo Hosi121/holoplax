@@ -1,10 +1,12 @@
 import type { Prisma, TaskType } from "@prisma/client";
-import { logger } from "../../../lib/logger";
 import prisma from "../../../lib/prisma";
 import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
 import type { ConvertIntakeTaskCommandPort } from "../application/convert-intake-task-command";
-import { applyAutomationForTask } from "./prisma-task-automation";
+import {
+  drainTaskAutomationForWorkspace,
+  enqueueTaskAutomation,
+} from "./prisma-task-automation-jobs";
 import { persistNewTask } from "./prisma-task-writer";
 
 const badRequest = (message: string) =>
@@ -84,23 +86,16 @@ export const prismaConvertIntakeTaskCommandPort: ConvertIntakeTaskCommandPort = 
           metadata: { intakeId: item.id, taskId: created.id },
         },
       });
+      await enqueueTaskAutomation(tx, {
+        task: created,
+        workspaceId: command.workspaceId,
+        requestedById: actor.userId,
+      });
       return created;
     });
     if (!task) throw conflict("intake item already converted or dismissed");
 
-    try {
-      await applyAutomationForTask({
-        userId: actor.userId,
-        workspaceId: command.workspaceId,
-        task,
-      });
-    } catch (error) {
-      logger.error(
-        "INTAKE_CREATE automation failed",
-        { taskId: task.id, workspaceId: command.workspaceId },
-        error,
-      );
-    }
+    await drainTaskAutomationForWorkspace(command.workspaceId);
     return { taskId: task.id };
   },
 };

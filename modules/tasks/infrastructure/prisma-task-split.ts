@@ -9,8 +9,8 @@ import {
   TASK_TYPE,
 } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import { removeTaskFromActiveSprint } from "../../shared/infrastructure/prisma-sprint-items";
 import { checkSprintCapacity } from "./prisma-sprint-capacity";
-import { removeTaskFromActiveSprint } from "./prisma-sprint-items";
 import { persistNewTask } from "./prisma-task-writer";
 
 type Tx = Prisma.TransactionClient;

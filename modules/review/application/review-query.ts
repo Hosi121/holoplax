@@ -31,6 +31,14 @@ export type ReviewSprintItem = {
   outcome: "COMMITTED" | "COMPLETED" | "REMOVED" | "CARRYOVER";
   completedAt: Date | null;
   removedAt: Date | null;
+  carriedFromId: string | null;
+  events: Array<{
+    type: "COMMITTED" | "RECOMMITTED" | "COMPLETED" | "REOPENED" | "REMOVED" | "CARRYOVER";
+    taskTitle: string;
+    taskType: "EPIC" | "PBI" | "TASK";
+    committedPoints: number;
+    occurredAt: Date;
+  }>;
 };
 
 export type ReviewTask = {

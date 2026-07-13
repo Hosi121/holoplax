@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const tx = {
     intakeItem: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
-    task: { create: vi.fn() },
+    task: { create: vi.fn(), findUnique: vi.fn() },
     workspaceMember: { findUnique: vi.fn() },
     auditLog: { create: vi.fn() },
     taskWorkflowEvent: { create: vi.fn() },
@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => {
   return {
     tx,
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    applyAutomation: vi.fn(),
+    enqueueAutomation: vi.fn(),
+    drainAutomation: vi.fn(),
   };
 });
 
@@ -21,9 +22,10 @@ vi.mock("../prisma", () => ({
     $transaction: mocks.transaction,
   },
 }));
-vi.mock("../../modules/tasks/infrastructure/prisma-task-automation", () => ({
-  applyAutomationForTask: mocks.applyAutomation,
-  prismaTaskAutomationPort: { run: mocks.applyAutomation },
+vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
+  enqueueTaskAutomation: mocks.enqueueAutomation,
+  drainTaskAutomationForWorkspace: mocks.drainAutomation,
+  processTaskAutomationJobs: mocks.drainAutomation,
 }));
 
 import { resolveIntakeItem } from "../../modules/intake/index.server";
@@ -44,7 +46,14 @@ describe("intake application service", () => {
     mocks.tx.workspaceMember.findUnique.mockResolvedValue({ workspaceId: "workspace-1" });
     mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
     mocks.tx.taskWorkflowEvent.create.mockResolvedValue({ id: "workflow-event-1" });
-    mocks.applyAutomation.mockResolvedValue(undefined);
+    mocks.enqueueAutomation.mockResolvedValue(undefined);
+    mocks.drainAutomation.mockResolvedValue({ processed: 1, succeeded: 1, failed: 0 });
+    mocks.tx.task.findUnique.mockResolvedValue({
+      createdAt: new Date(),
+      dueDate: null,
+      points: 3,
+      userId: "user-1",
+    });
   });
 
   it("claims an intake item and creates a task with its initial status event atomically", async () => {
@@ -55,6 +64,8 @@ describe("intake application service", () => {
       description: intakeItem.body,
       points: 3,
       status: "BACKLOG",
+      workflowState: "READY",
+      updatedAt: new Date(),
     });
     mocks.tx.intakeItem.update.mockResolvedValue({ count: 1 });
 
@@ -72,7 +83,8 @@ describe("intake application service", () => {
         },
       }),
     });
-    expect(mocks.applyAutomation).toHaveBeenCalledOnce();
+    expect(mocks.enqueueAutomation).toHaveBeenCalledOnce();
+    expect(mocks.drainAutomation).toHaveBeenCalledOnce();
   });
 
   it("does not create a second task after the intake item was already claimed", async () => {
@@ -85,7 +97,7 @@ describe("intake application service", () => {
       ),
     ).rejects.toMatchObject({ code: "INTAKE_CONFLICT", kind: "conflict" });
     expect(mocks.tx.task.create).not.toHaveBeenCalled();
-    expect(mocks.applyAutomation).not.toHaveBeenCalled();
+    expect(mocks.enqueueAutomation).not.toHaveBeenCalled();
   });
 
   it("cannot dismiss an item after another resolution won", async () => {

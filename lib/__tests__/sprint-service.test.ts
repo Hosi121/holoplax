@@ -12,7 +12,15 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
       findMany: vi.fn(),
     },
-    sprintItem: { aggregate: vi.fn(), updateMany: vi.fn(), createMany: vi.fn() },
+    sprintItem: {
+      aggregate: vi.fn(),
+      updateMany: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+    },
+    sprintItemEvent: { create: vi.fn(), createMany: vi.fn() },
     velocityEntry: { create: vi.fn() },
     taskStatusEvent: { createMany: vi.fn() },
     auditLog: { create: vi.fn(), createMany: vi.fn() },
@@ -20,6 +28,7 @@ const mocks = vi.hoisted(() => {
   return {
     tx,
     sprintFindMany: vi.fn(),
+    sprintItemGroupBy: vi.fn(),
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
   };
 });
@@ -29,6 +38,7 @@ vi.mock("../prisma", () => ({
     sprint: {
       findMany: mocks.sprintFindMany,
     },
+    sprintItem: { groupBy: mocks.sprintItemGroupBy },
     $transaction: mocks.transaction,
   },
 }));
@@ -53,6 +63,10 @@ describe("sprint application service", () => {
   });
 
   it("computes sprint summaries in one query", async () => {
+    mocks.sprintItemGroupBy
+      .mockResolvedValueOnce([{ sprintId: "sprint-1", _sum: { committedPoints: 8 } }])
+      .mockResolvedValueOnce([{ sprintId: "sprint-1", _sum: { committedPoints: 5 } }])
+      .mockResolvedValueOnce([{ sprintId: "sprint-1", _sum: { committedPoints: 5 } }]);
     mocks.sprintFindMany.mockResolvedValue([
       {
         ...closedSprint,
@@ -75,6 +89,15 @@ describe("sprint application service", () => {
     mocks.tx.sprint.findUniqueOrThrow.mockResolvedValue(closedSprint);
     mocks.tx.sprintItem.aggregate.mockResolvedValue({ _sum: { committedPoints: 8 } });
     mocks.tx.sprintItem.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.sprintItem.findMany.mockResolvedValue([
+      {
+        id: "item-1",
+        taskTitle: "Task",
+        taskType: "TASK",
+        committedPoints: 3,
+      },
+    ]);
+    mocks.tx.sprintItemEvent.createMany.mockResolvedValue({ count: 1 });
     mocks.tx.task.findMany.mockResolvedValue([{ id: "task-1" }]);
     mocks.tx.task.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.velocityEntry.create.mockResolvedValue({ id: "velocity-1" });

@@ -1,8 +1,12 @@
 import type { Task } from "@prisma/client";
-import { logger } from "../../../lib/logger";
 import prisma from "../../../lib/prisma";
 import { TASK_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import {
+  commitTaskToSprint,
+  completeTaskCommitment,
+  removeTaskFromActiveSprint,
+} from "../../shared/infrastructure/prisma-sprint-items";
 import type {
   BulkTaskCommand,
   BulkTaskCommandPort,
@@ -13,11 +17,9 @@ import { findTaskPolicyViolation } from "../domain/task-policy";
 import { nextWorkflowState } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
 import {
-  commitTaskToSprint,
-  completeTaskCommitment,
-  removeTaskFromActiveSprint,
-} from "./prisma-sprint-items";
-import { applyAutomationForTask as runTaskAutomation } from "./prisma-task-automation";
+  drainTaskAutomationForWorkspace,
+  enqueueTaskAutomation,
+} from "./prisma-task-automation-jobs";
 import { createNextRoutineOccurrence } from "./prisma-task-write";
 import { recordWorkflowTransition } from "./prisma-workflow-events";
 
@@ -25,12 +27,15 @@ const badRequest = (message: string) =>
   new ApplicationError("TASK_BAD_REQUEST", message, "bad_request");
 const notFound = (message: string) => new ApplicationError("TASK_NOT_FOUND", message, "not_found");
 
-type AutomationTask = Pick<Task, "id" | "title" | "description" | "points" | "status">;
+type AutomationTask = Pick<
+  Task,
+  "id" | "title" | "description" | "points" | "status" | "workflowState" | "updatedAt"
+>;
 
 const executeBulkCommand = async (
   actor: { userId: string; workspaceId: string },
   command: BulkTaskCommand,
-): Promise<{ result: BulkTaskResult; automationTasks: AutomationTask[] }> =>
+): Promise<BulkTaskResult> =>
   prisma.$transaction(
     async (tx) => {
       const taskIds = [...new Set(command.taskIds)];
@@ -40,6 +45,7 @@ const executeBulkCommand = async (
           routineRule: true,
           children: { select: { workflowState: true } },
           dependencies: {
+            where: { state: "REQUIRED" },
             select: {
               dependsOnId: true,
               dependsOn: { select: { workflowState: true } },
@@ -55,6 +61,17 @@ const executeBulkCommand = async (
         const removedAt = new Date();
         for (const task of tasks) {
           await removeTaskFromActiveSprint(tx, { taskId: task.id, removedAt });
+          if (task.workflowState !== "DONE" && task.workflowState !== "CANCELED") {
+            await recordWorkflowTransition(tx, {
+              taskId: task.id,
+              workspaceId: actor.workspaceId,
+              actorId: actor.userId,
+              fromState: task.workflowState,
+              toState: "CANCELED",
+              trigger: "BULK",
+              createdAt: removedAt,
+            });
+          }
         }
         const deleted = await tx.task.deleteMany({
           where: { id: { in: taskIds }, workspaceId: actor.workspaceId },
@@ -67,10 +84,7 @@ const executeBulkCommand = async (
             metadata: { taskIds },
           },
         });
-        return {
-          result: { ok: true, action: "delete", deletedCount: deleted.count },
-          automationTasks: [],
-        };
+        return { ok: true, action: "delete", deletedCount: deleted.count };
       }
 
       if (command.action === "status") {
@@ -190,6 +204,13 @@ const executeBulkCommand = async (
             if (next) automationTasks.push(next);
           }
         }
+        for (const automationTask of automationTasks) {
+          await enqueueTaskAutomation(tx, {
+            task: automationTask,
+            workspaceId: actor.workspaceId,
+            requestedById: actor.userId,
+          });
+        }
         await tx.auditLog.create({
           data: {
             actorId: actor.userId,
@@ -198,10 +219,7 @@ const executeBulkCommand = async (
             metadata: { taskIds, status: command.status },
           },
         });
-        return {
-          result: { ok: true, action: "status", updatedCount: taskIds.length },
-          automationTasks,
-        };
+        return { ok: true, action: "status", updatedCount: taskIds.length };
       }
 
       if (command.points === undefined) {
@@ -236,24 +254,23 @@ const executeBulkCommand = async (
           metadata: { taskIds, points: command.points },
         },
       });
-      return {
-        result: { ok: true, action: "points", updatedCount: taskIds.length },
-        automationTasks: tasks.map((task) => ({ ...task, points: command.points as number })),
-      };
+      const queuedAt = new Date();
+      for (const task of tasks) {
+        await enqueueTaskAutomation(tx, {
+          task: { ...task, points: command.points, updatedAt: queuedAt },
+          workspaceId: actor.workspaceId,
+          requestedById: actor.userId,
+        });
+      }
+      return { ok: true, action: "points", updatedCount: taskIds.length };
     },
     { isolationLevel: "Serializable" },
   );
 
 export const prismaBulkTaskCommandPort: BulkTaskCommandPort = {
   async execute(actor, command) {
-    const { result, automationTasks } = await executeBulkCommand(actor, command);
-    for (const task of automationTasks) {
-      try {
-        await runTaskAutomation({ ...actor, task });
-      } catch (error) {
-        logger.error("TASK_BULK automation failed", { taskId: task.id }, error);
-      }
-    }
+    const result = await executeBulkCommand(actor, command);
+    await drainTaskAutomationForWorkspace(actor.workspaceId);
     return result;
   },
 };

@@ -1,5 +1,6 @@
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { clearWorkspaceTaskAssignee } from "../../shared/infrastructure/prisma-task-consistency";
 import type { WorkspaceMemberCommandPort } from "../application/member-commands";
 import type { WorkspaceRole } from "../domain/workspace-types";
 
@@ -115,10 +116,7 @@ export async function removeWorkspaceMember(params: MemberParams) {
       // Assignment is workspace membership, not merely a reference to a User.
       // Clear it in the same transaction so a removed member cannot remain an
       // assignee in a workspace they can no longer access.
-      await tx.task.updateMany({
-        where: { workspaceId, assigneeId: targetUserId },
-        data: { assigneeId: null },
-      });
+      await clearWorkspaceTaskAssignee(tx, { workspaceId, assigneeId: targetUserId });
       await tx.workspaceMember.delete({
         where: { workspaceId_userId: { workspaceId, userId: targetUserId } },
       });

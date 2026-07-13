@@ -1,4 +1,4 @@
-import type { Task, TaskStatus } from "@prisma/client";
+import { Prisma, type Task, type TaskStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import type { z } from "zod";
 import { normalizeSeverity } from "../../../lib/ai-normalization";
@@ -9,6 +9,11 @@ import prisma from "../../../lib/prisma";
 import { isTaskStatus, isTaskType } from "../../../lib/tasks/task-values";
 import { TASK_STATUS, TASK_TYPE } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import {
+  commitTaskToSprint,
+  completeTaskCommitment,
+  removeTaskFromActiveSprint,
+} from "../../shared/infrastructure/prisma-sprint-items";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { findTaskHierarchyViolation, findTaskPolicyViolation } from "../domain/task-policy";
 import {
@@ -19,11 +24,9 @@ import {
 } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
 import {
-  commitTaskToSprint,
-  completeTaskCommitment,
-  removeTaskFromActiveSprint,
-} from "./prisma-sprint-items";
-import { applyAutomationForTask as runTaskAutomation } from "./prisma-task-automation";
+  drainTaskAutomationForWorkspace,
+  enqueueTaskAutomation,
+} from "./prisma-task-automation-jobs";
 import {
   createNextRoutineOccurrence,
   nextRoutineAt,
@@ -43,6 +46,29 @@ const badRequest = (message: string) =>
   new ApplicationError("TASK_BAD_REQUEST", message, "bad_request");
 const notFound = (message = "not found") =>
   new ApplicationError("TASK_NOT_FOUND", message, "not_found");
+
+const runSerializableTaskTransaction = async <T>(
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(operation, { isolationLevel: "Serializable" });
+    } catch (caught) {
+      const serializationConflict =
+        caught instanceof Prisma.PrismaClientKnownRequestError && caught.code === "P2034";
+      if (serializationConflict && attempt < 2) continue;
+      if (serializationConflict) {
+        throw new ApplicationError(
+          "TASK_CONCURRENT_UPDATE",
+          "task changed concurrently; retry the operation",
+          "conflict",
+        );
+      }
+      throw caught;
+    }
+  }
+  throw new Error("unreachable serializable transaction state");
+};
 
 // On create, an absent/invalid checklist is normalized to null (cleared).
 const toChecklistForCreate = (value: unknown) => {
@@ -132,139 +158,123 @@ export async function createTask(params: {
     routineCadence === "DAILY" || routineCadence === "WEEKLY" ? routineCadence : null;
   const normalizedChecklist = toChecklistForCreate(checklist);
 
-  const task = await prisma.$transaction(
-    async (tx) => {
-      // All state-dependent validation shares the write transaction. This
-      // prevents concurrent sprint additions from both passing capacity checks.
-      const [member, allowedDependencies, parent, activeSprint] = await Promise.all([
-        assigneeId
-          ? tx.workspaceMember.findUnique({
-              where: { workspaceId_userId: { workspaceId, userId: assigneeId } },
-              select: { userId: true },
-            })
-          : Promise.resolve(null),
-        dependencyList.length
-          ? tx.task.findMany({
-              where: { id: { in: dependencyList }, workspaceId },
-              select: { id: true, workflowState: true },
-            })
-          : Promise.resolve([]),
-        parentCandidate
-          ? tx.task.findFirst({
-              where: { id: parentCandidate, workspaceId },
-              select: { id: true, type: true, status: true },
-            })
-          : Promise.resolve(null),
-        statusValue === TASK_STATUS.SPRINT
-          ? findActiveSprint(tx, workspaceId)
-          : Promise.resolve(null),
-      ]);
-      const uniqueRequestedDependencies = [...new Set(dependencyList.filter(Boolean))];
-      if (assigneeId && !member) throw badRequest("assignee must be a workspace member");
-      if (parentCandidate && !parent) throw badRequest("parent task not found in workspace");
-      const hierarchyViolation = findTaskHierarchyViolation({
-        type: typeValue,
-        parentType: parent?.type,
-      });
-      if (hierarchyViolation) throw badRequest(hierarchyViolation);
-      if (parent?.status === TASK_STATUS.SPRINT) {
-        throw badRequest("remove a parent from the sprint before adding child work items");
-      }
-      if (allowedDependencies.length !== uniqueRequestedDependencies.length) {
-        throw badRequest("one or more dependencies were not found in workspace");
-      }
+  const task = await runSerializableTaskTransaction(async (tx) => {
+    // All state-dependent validation shares the write transaction. This
+    // prevents concurrent sprint additions from both passing capacity checks.
+    const [member, allowedDependencies, parent, activeSprint] = await Promise.all([
+      assigneeId
+        ? tx.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: assigneeId } },
+            select: { userId: true },
+          })
+        : Promise.resolve(null),
+      dependencyList.length
+        ? tx.task.findMany({
+            where: { id: { in: dependencyList }, workspaceId },
+            select: { id: true, workflowState: true },
+          })
+        : Promise.resolve([]),
+      parentCandidate
+        ? tx.task.findFirst({
+            where: { id: parentCandidate, workspaceId },
+            select: { id: true, type: true, status: true },
+          })
+        : Promise.resolve(null),
+      statusValue === TASK_STATUS.SPRINT
+        ? findActiveSprint(tx, workspaceId)
+        : Promise.resolve(null),
+    ]);
+    const uniqueRequestedDependencies = [...new Set(dependencyList.filter(Boolean))];
+    if (assigneeId && !member) throw badRequest("assignee must be a workspace member");
+    if (parentCandidate && !parent) throw badRequest("parent task not found in workspace");
+    const hierarchyViolation = findTaskHierarchyViolation({
+      type: typeValue,
+      parentType: parent?.type,
+    });
+    if (hierarchyViolation) throw badRequest(hierarchyViolation);
+    if (parent?.status === TASK_STATUS.SPRINT) {
+      throw badRequest("remove a parent from the sprint before adding child work items");
+    }
+    if (allowedDependencies.length !== uniqueRequestedDependencies.length) {
+      throw badRequest("one or more dependencies were not found in workspace");
+    }
 
-      const policyViolation = findTaskPolicyViolation({
-        type: typeValue,
+    const policyViolation = findTaskPolicyViolation({
+      type: typeValue,
+      status: statusValue,
+      workflowState: workflowStateValue,
+      checklist: normalizedChecklist,
+      hasUnresolvedDependencies: allowedDependencies.some(
+        (dependency) => dependency.workflowState !== "DONE",
+      ),
+    });
+    if (policyViolation) throw badRequest(policyViolation);
+    if (statusValue === TASK_STATUS.SPRINT && !activeSprint) {
+      throw badRequest("active sprint not found");
+    }
+    if (activeSprint) {
+      const { exceeded } = await checkSprintCapacity(tx, {
+        workspaceId,
+        additionalPoints: Number(points),
+        activeSprint,
+      });
+      if (exceeded) throw badRequest("sprint capacity exceeded");
+    }
+
+    const allowedDependencyIds = new Set(allowedDependencies.map(({ id }) => id));
+    const dependsOnIds = [
+      ...new Set(dependencyList.filter((id) => id && allowedDependencyIds.has(id))),
+    ];
+    const created = await persistNewTask(
+      tx,
+      {
+        title,
+        description: description ?? "",
+        definitionOfDone: typeof definitionOfDone === "string" ? definitionOfDone : "",
+        checklist: toNullableJsonInput(normalizedChecklist),
+        points: Number(points),
+        urgency: normalizeSeverity(urgency),
+        risk: normalizeSeverity(risk),
         status: statusValue,
         workflowState: workflowStateValue,
-        checklist: normalizedChecklist,
-        hasUnresolvedDependencies: allowedDependencies.some(
-          (dependency) => dependency.workflowState !== "DONE",
-        ),
-      });
-      if (policyViolation) throw badRequest(policyViolation);
-      if (statusValue === TASK_STATUS.SPRINT && !activeSprint) {
-        throw badRequest("active sprint not found");
-      }
-      if (activeSprint) {
-        const { exceeded } = await checkSprintCapacity(tx, {
-          workspaceId,
-          additionalPoints: Number(points),
-          activeSprint,
-        });
-        if (exceeded) throw badRequest("sprint capacity exceeded");
-      }
-
-      const allowedDependencyIds = new Set(allowedDependencies.map(({ id }) => id));
-      const dependsOnIds = [
-        ...new Set(dependencyList.filter((id) => id && allowedDependencyIds.has(id))),
-      ];
-      const created = await persistNewTask(
-        tx,
-        {
-          title,
-          description: description ?? "",
-          definitionOfDone: typeof definitionOfDone === "string" ? definitionOfDone : "",
-          checklist: toNullableJsonInput(normalizedChecklist),
-          points: Number(points),
-          urgency: normalizeSeverity(urgency),
-          risk: normalizeSeverity(risk),
-          status: statusValue,
-          workflowState: workflowStateValue,
-          dueDate: dueDate ? new Date(dueDate) : null,
-          tags: Array.isArray(tags) ? tags.map(String) : [],
-          type: typeValue,
-          sprintId: activeSprint?.id ?? null,
-          parentId: parent?.id ?? null,
-          assigneeId: assigneeId && member ? assigneeId : null,
-          userId,
-          workspaceId,
-          origin,
-          dependencyIds: dependsOnIds,
-          routineRule: cadenceValue
-            ? {
-                cadence: cadenceValue,
-                nextAt: routineNextAt
-                  ? new Date(routineNextAt)
-                  : nextRoutineAt(cadenceValue, dueDate ? new Date(dueDate) : new Date()),
-              }
-            : null,
-        },
-        { actorId: userId, trigger: "API" },
-      );
-      await tx.auditLog.create({
-        data: {
-          actorId: userId,
-          action: "TASK_CREATE",
-          targetWorkspaceId: workspaceId,
-          metadata: { taskId: created.id, status: created.status },
-        },
-      });
-      return created;
-    },
-    { isolationLevel: "Serializable" },
-  );
-
-  if (task.workflowState !== "DONE" && task.workflowState !== "CANCELED") {
-    try {
-      await runTaskAutomation({
+        dueDate: dueDate ? new Date(dueDate) : null,
+        tags: Array.isArray(tags) ? tags.map(String) : [],
+        type: typeValue,
+        sprintId: activeSprint?.id ?? null,
+        parentId: parent?.id ?? null,
+        assigneeId: assigneeId && member ? assigneeId : null,
         userId,
         workspaceId,
-        task: {
-          id: task.id,
-          title: task.title,
-          description: task.description ?? "",
-          points: task.points,
-          status: task.status,
-        },
-      });
-    } catch (error) {
-      // The command has committed successfully. Provider failure must not turn a
-      // successful create into a retryable API error and duplicate the task.
-      logger.error("TASK_CREATE automation failed", { taskId: task.id, workspaceId }, error);
-    }
-  }
+        origin,
+        dependencyIds: dependsOnIds,
+        routineRule: cadenceValue
+          ? {
+              cadence: cadenceValue,
+              nextAt: routineNextAt
+                ? new Date(routineNextAt)
+                : nextRoutineAt(cadenceValue, dueDate ? new Date(dueDate) : new Date()),
+            }
+          : null,
+      },
+      { actorId: userId, trigger: "API" },
+    );
+    await tx.auditLog.create({
+      data: {
+        actorId: userId,
+        action: "TASK_CREATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { taskId: created.id, status: created.status },
+      },
+    });
+    await enqueueTaskAutomation(tx, {
+      task: created,
+      workspaceId,
+      requestedById: userId,
+    });
+    return created;
+  });
+
+  await drainTaskAutomationForWorkspace(workspaceId);
   return task;
 }
 
@@ -295,34 +305,34 @@ export async function updateTask(params: {
   ) {
     throw badRequest("status and workflowState describe conflicting lifecycle states");
   }
-  const data: Record<string, unknown> = {};
+  const baseData: Record<string, unknown> = {};
 
-  if (body.title) data.title = body.title;
-  if (typeof body.description === "string") data.description = body.description;
+  if (body.title) baseData.title = body.title;
+  if (typeof body.description === "string") baseData.description = body.description;
   if (typeof body.definitionOfDone === "string") {
-    data.definitionOfDone = body.definitionOfDone;
+    baseData.definitionOfDone = body.definitionOfDone;
   }
   const checklistValue = toChecklistForUpdate(body.checklist);
   if (checklistValue !== undefined) {
-    data.checklist = checklistValue;
+    baseData.checklist = checklistValue;
   }
   // points is already a valid Fibonacci number (TaskPointsSchema validated at parse time)
   if (body.points !== undefined && body.points !== null) {
-    data.points = body.points;
+    baseData.points = body.points;
   }
-  if (body.urgency) data.urgency = body.urgency;
-  if (body.risk) data.risk = body.risk;
+  if (body.urgency) baseData.urgency = body.urgency;
+  if (body.risk) baseData.risk = body.risk;
   // type is already a valid TaskType (TaskTypeSchema validated at parse time)
   if (body.type !== undefined) {
-    data.type = body.type;
+    baseData.type = body.type;
   }
   // automationState is intentionally not writable by users.
   // It is managed exclusively by the server-side automation engine.
   if (body.dueDate !== undefined) {
-    data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
+    baseData.dueDate = body.dueDate ? new Date(body.dueDate) : null;
   }
   if (body.tags !== undefined) {
-    data.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
+    baseData.tags = Array.isArray(body.tags) ? body.tags.map((tag: string) => String(tag)) : [];
   }
   // The legacy status remains an API compatibility projection. Its planning
   // placement and the execution workflow are resolved after loading the
@@ -339,334 +349,327 @@ export async function updateTask(params: {
       ? new Date(body.routineNextAt)
       : null;
 
-  // Fetch task with related data in a single query.
-  const currentTask = await prisma.task.findFirst({
-    where: { id, workspaceId },
-    include: {
-      routineRule: true,
-      parent: { select: { type: true, status: true } },
-      children: { select: { type: true, workflowState: true } },
-      sprint: { select: { status: true } },
-      dependencies:
-        requestedStatus === TASK_STATUS.DONE ||
-        body.workflowState === "IN_PROGRESS" ||
-        body.workflowState === "BLOCKED" ||
-        body.workflowState === "DONE"
-          ? {
-              where: { dependsOn: { workflowState: { not: "DONE" } } },
-              select: {
-                dependsOn: {
-                  select: { id: true, title: true, status: true, workflowState: true },
+  const { task } = await runSerializableTaskTransaction(async (tx) => {
+    // A serializable transaction can be retried after a write conflict. Start
+    // each attempt from immutable request data so mutations calculated from a
+    // stale snapshot cannot leak into the next attempt.
+    const data: Record<string, unknown> = { ...baseData };
+    // Every state-dependent read participates in the same serializable
+    // transaction as the write. Concurrent capacity, hierarchy, dependency,
+    // and workflow changes therefore cannot both commit from stale snapshots.
+    const currentTask = await tx.task.findFirst({
+      where: { id, workspaceId },
+      include: {
+        routineRule: true,
+        parent: { select: { type: true, status: true } },
+        children: { select: { type: true, workflowState: true } },
+        sprint: { select: { status: true } },
+        dependencies:
+          requestedStatus === TASK_STATUS.DONE ||
+          body.workflowState === "IN_PROGRESS" ||
+          body.workflowState === "BLOCKED" ||
+          body.workflowState === "DONE"
+            ? {
+                where: { state: "REQUIRED", dependsOn: { workflowState: { not: "DONE" } } },
+                select: {
+                  dependsOn: {
+                    select: { id: true, title: true, status: true, workflowState: true },
+                  },
                 },
-              },
-            }
-          : false,
-    },
-  });
-  if (!currentTask) {
-    throw notFound();
-  }
-
-  const workflowStateValue = nextWorkflowState({
-    current: currentTask.workflowState,
-    requestedStatus,
-    requestedWorkflowState: body.workflowState,
-  });
-  const statusValue = projectLegacyStatus({
-    current: currentTask.sprint?.status === "ACTIVE" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG,
-    requestedStatus,
-    workflowState: workflowStateValue,
-  });
-  if (workflowStateValue !== currentTask.workflowState) data.workflowState = workflowStateValue;
-  if (statusValue !== currentTask.status) data.status = statusValue;
-  logger.debug("TASK_UPDATE narrowed", {
-    statusValue,
-    workflowStateValue,
-    typeValue: data.type ?? null,
-  });
-
-  const effectiveChecklist = checklistValue === undefined ? currentTask.checklist : checklistValue;
-  const effectiveType = (body.type ?? currentTask.type) as "EPIC" | "PBI" | "TASK";
-  const hierarchyViolation = findTaskHierarchyViolation({
-    type: effectiveType,
-    parentType: currentTask.parent?.type,
-    childTypes: currentTask.children.map(({ type }) => type),
-  });
-  if (hierarchyViolation && body.parentId === undefined) throw badRequest(hierarchyViolation);
-  const policyViolation = findTaskPolicyViolation({
-    type: effectiveType,
-    status: statusValue,
-    workflowState: workflowStateValue,
-    checklist: effectiveChecklist,
-    hasUnresolvedDependencies:
-      (workflowStateValue === "IN_PROGRESS" ||
-        workflowStateValue === "BLOCKED" ||
-        workflowStateValue === "DONE") &&
-      !Array.isArray(body.dependencyIds) &&
-      Boolean(currentTask.dependencies?.length),
-    hasIncompleteChildren: currentTask.children.some(
-      (child) => child.workflowState !== "DONE" && child.workflowState !== "CANCELED",
-    ),
-  });
-  if (policyViolation) throw badRequest(policyViolation);
-
-  if (
-    (body.title !== undefined || body.description !== undefined || body.points !== undefined) &&
-    (currentTask.automationStatus === "PREPARED" ||
-      currentTask.automationStatus === "SPLIT_REJECTED")
-  ) {
-    data.automationStatus = "NONE";
-    data.automationState = projectLegacyAutomationState({
-      automationStatus: "NONE",
-      hierarchyRole: currentTask.hierarchyRole,
+              }
+            : false,
+      },
     });
-  }
-
-  if (
-    (workflowStateValue === "IN_PROGRESS" ||
-      workflowStateValue === "BLOCKED" ||
-      workflowStateValue === "DONE") &&
-    !Array.isArray(body.dependencyIds) &&
-    currentTask.dependencies &&
-    currentTask.dependencies.length > 0
-  ) {
-    throw badRequest("dependencies must be done before moving");
-  }
-
-  // Batch the assignee/parent validation and the sprint capacity read.
-  const needsAssigneeCheck = body.assigneeId !== undefined && body.assigneeId;
-  const needsParentCheck = body.parentId !== undefined && body.parentId && body.parentId !== id;
-  const willBeInSprint = statusValue === TASK_STATUS.SPRINT;
-  const needsSprintCheck = willBeInSprint && currentTask.sprint?.status !== "ACTIVE";
-
-  const [memberResult, parentResult, capacity] = await Promise.all([
-    needsAssigneeCheck
-      ? prisma.workspaceMember.findUnique({
-          where: { workspaceId_userId: { workspaceId, userId: String(body.assigneeId) } },
-          select: { userId: true },
-        })
-      : Promise.resolve(null),
-    needsParentCheck
-      ? prisma.task.findFirst({
-          where: { id: String(body.parentId), workspaceId },
-          select: { id: true, type: true, status: true },
-        })
-      : Promise.resolve(null),
-    needsSprintCheck
-      ? checkSprintCapacity(prisma, {
-          workspaceId,
-          additionalPoints:
-            typeof data.points === "number" ? data.points : (currentTask.points ?? 0),
-        })
-      : Promise.resolve(null),
-  ]);
-
-  if (body.assigneeId !== undefined) {
-    if (body.assigneeId && !memberResult) {
-      throw badRequest("assignee must be a workspace member");
+    if (!currentTask) {
+      throw notFound();
     }
-    data.assigneeId = body.assigneeId && memberResult ? String(body.assigneeId) : null;
-  }
 
-  if (body.parentId !== undefined) {
-    if (body.parentId && body.parentId !== id && !parentResult) {
-      throw badRequest("parent task not found in workspace");
-    }
-    data.parentId = body.parentId && body.parentId !== id && parentResult ? parentResult.id : null;
-  }
-
-  const effectiveParentType =
-    body.parentId !== undefined ? parentResult?.type : currentTask.parent?.type;
-  const proposedHierarchyViolation = findTaskHierarchyViolation({
-    type: effectiveType,
-    parentType: effectiveParentType,
-    childTypes: currentTask.children.map(({ type }) => type),
-  });
-  if (proposedHierarchyViolation) throw badRequest(proposedHierarchyViolation);
-  if (parentResult?.status === TASK_STATUS.SPRINT) {
-    throw badRequest("remove a parent from the sprint before adding child work items");
-  }
-  if (statusValue === TASK_STATUS.SPRINT && currentTask.children.length > 0) {
-    throw badRequest("only leaf work items can be committed to a sprint");
-  }
-
-  if (needsSprintCheck) {
-    if (!capacity?.activeSprint) {
-      throw badRequest("active sprint not found");
-    }
-    if (capacity.exceeded) {
-      throw badRequest("sprint capacity exceeded");
-    }
-  }
-
-  const proposedDependencyIds = Array.isArray(body.dependencyIds)
-    ? [...new Set(body.dependencyIds.map(String).filter((depId) => depId !== id))]
-    : null;
-  if (proposedDependencyIds) {
-    const proposedDependencies = await prisma.task.findMany({
-      where: { id: { in: proposedDependencyIds }, workspaceId },
-      select: { id: true, workflowState: true },
+    const workflowStateValue = nextWorkflowState({
+      current: currentTask.workflowState,
+      requestedStatus,
+      requestedWorkflowState: body.workflowState,
     });
-    if (proposedDependencies.length !== proposedDependencyIds.length) {
-      throw badRequest("one or more dependencies were not found in workspace");
+    const statusValue = projectLegacyStatus({
+      current: currentTask.sprint?.status === "ACTIVE" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG,
+      requestedStatus,
+      workflowState: workflowStateValue,
+    });
+    if (workflowStateValue !== currentTask.workflowState) data.workflowState = workflowStateValue;
+    if (statusValue !== currentTask.status) data.status = statusValue;
+    logger.debug("TASK_UPDATE narrowed", {
+      statusValue,
+      workflowStateValue,
+      typeValue: data.type ?? null,
+    });
+
+    const effectiveChecklist =
+      checklistValue === undefined ? currentTask.checklist : checklistValue;
+    const effectiveType = (body.type ?? currentTask.type) as "EPIC" | "PBI" | "TASK";
+    const hierarchyViolation = findTaskHierarchyViolation({
+      type: effectiveType,
+      parentType: currentTask.parent?.type,
+      childTypes: currentTask.children.map(({ type }) => type),
+    });
+    if (hierarchyViolation && body.parentId === undefined) throw badRequest(hierarchyViolation);
+    const policyViolation = findTaskPolicyViolation({
+      type: effectiveType,
+      status: statusValue,
+      workflowState: workflowStateValue,
+      checklist: effectiveChecklist,
+      hasUnresolvedDependencies:
+        (workflowStateValue === "IN_PROGRESS" ||
+          workflowStateValue === "BLOCKED" ||
+          workflowStateValue === "DONE") &&
+        !Array.isArray(body.dependencyIds) &&
+        Boolean(currentTask.dependencies?.length),
+      hasIncompleteChildren: currentTask.children.some(
+        (child) => child.workflowState !== "DONE" && child.workflowState !== "CANCELED",
+      ),
+    });
+    if (policyViolation) throw badRequest(policyViolation);
+
+    if (
+      (body.title !== undefined || body.description !== undefined || body.points !== undefined) &&
+      (currentTask.automationStatus === "PREPARED" ||
+        currentTask.automationStatus === "SPLIT_REJECTED")
+    ) {
+      data.automationStatus = "NONE";
+      data.automationState = projectLegacyAutomationState({
+        automationStatus: "NONE",
+        hierarchyRole: currentTask.hierarchyRole,
+      });
     }
+
     if (
       (workflowStateValue === "IN_PROGRESS" ||
         workflowStateValue === "BLOCKED" ||
         workflowStateValue === "DONE") &&
-      proposedDependencies.some((dependency) => dependency.workflowState !== "DONE")
+      !Array.isArray(body.dependencyIds) &&
+      currentTask.dependencies &&
+      currentTask.dependencies.length > 0
     ) {
       throw badRequest("dependencies must be done before moving");
     }
-  }
 
-  if (statusValue === TASK_STATUS.SPRINT && capacity?.activeSprint) {
-    data.sprintId = capacity.activeSprint.id;
-  }
-  if (statusValue === TASK_STATUS.BACKLOG || workflowStateValue === "CANCELED") {
-    data.sprintId = null;
-  }
+    // Batch the assignee/parent validation and the sprint capacity read.
+    const needsAssigneeCheck = body.assigneeId !== undefined && body.assigneeId;
+    const needsParentCheck = body.parentId !== undefined && body.parentId && body.parentId !== id;
+    const willBeInSprint = statusValue === TASK_STATUS.SPRINT;
+    const needsSprintCheck = willBeInSprint && currentTask.sprint?.status !== "ACTIVE";
 
-  const { task, createdRoutineTask } = await prisma.$transaction(
-    async (tx) => {
-      if (
-        proposedDependencyIds &&
-        (await taskDependencyWouldCycle(tx, {
-          taskId: id,
-          workspaceId,
-          dependencyIds: proposedDependencyIds,
-        }))
-      ) {
-        throw badRequest("task dependencies cannot contain a cycle");
-      }
-      if (
-        body.parentId !== undefined &&
-        (await taskParentWouldCycle(tx, {
-          taskId: id,
-          workspaceId,
-          parentId: body.parentId ? String(body.parentId) : null,
-        }))
-      ) {
-        throw badRequest("task hierarchy cannot contain a cycle");
-      }
-      const updated = await tx.task.updateMany({ where: { id, workspaceId }, data });
-      if (!updated.count) {
-        throw new Error("TASK_NOT_FOUND");
-      }
-
-      const updatedTask = await tx.task.findFirst({
-        where: { id, workspaceId },
-        include: {
-          routineRule: { select: { nextAt: true, cadence: true, seriesId: true } },
-        },
-      });
-
-      if (Array.isArray(body.dependencyIds)) {
-        await syncTaskDependencies(tx, {
-          taskId: id,
-          workspaceId,
-          dependencyIds: body.dependencyIds.map((depId: string) => String(depId)),
-        });
-      }
-
-      if (updatedTask) {
-        await syncRoutineRule(tx, {
-          task: updatedTask,
-          cadenceValue,
-          routineNextAt,
-          shouldClearRoutine,
-        });
-        if (statusValue === TASK_STATUS.SPRINT && updatedTask.sprintId) {
-          await commitTaskToSprint(tx, {
-            sprintId: updatedTask.sprintId,
-            task: updatedTask,
-          });
-        } else if (statusValue === TASK_STATUS.BACKLOG || workflowStateValue === "CANCELED") {
-          await removeTaskFromActiveSprint(tx, { taskId: updatedTask.id });
-        }
-        if (workflowStateValue === "DONE" && updatedTask.sprintId) {
-          await completeTaskCommitment(tx, {
-            taskId: updatedTask.id,
-            sprintId: updatedTask.sprintId,
-          });
-        }
-        await recordWorkflowTransition(tx, {
-          taskId: updatedTask.id,
-          workspaceId,
-          actorId: userId,
-          fromState: currentTask.workflowState,
-          toState: workflowStateValue,
-          trigger: "API",
-        });
-      }
-
-      await tx.auditLog.create({
-        data: {
-          actorId: userId,
-          action: "TASK_UPDATE",
-          targetWorkspaceId: workspaceId,
-          metadata: { taskId: id },
-        },
-      });
-
-      if (updatedTask && currentTask.status !== statusValue) {
-        await tx.taskStatusEvent.create({
-          data: {
-            taskId: updatedTask.id,
-            fromStatus: currentTask.status ?? null,
-            toStatus: statusValue,
-            actorId: userId,
-            trigger: "API",
+    const [memberResult, parentResult, capacity] = await Promise.all([
+      needsAssigneeCheck
+        ? tx.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: String(body.assigneeId) } },
+            select: { userId: true },
+          })
+        : Promise.resolve(null),
+      needsParentCheck
+        ? tx.task.findFirst({
+            where: { id: String(body.parentId), workspaceId },
+            select: { id: true, type: true, status: true },
+          })
+        : Promise.resolve(null),
+      needsSprintCheck
+        ? checkSprintCapacity(tx, {
             workspaceId,
-          },
+            additionalPoints:
+              typeof data.points === "number" ? data.points : (currentTask.points ?? 0),
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (body.assigneeId !== undefined) {
+      if (body.assigneeId && !memberResult) {
+        throw badRequest("assignee must be a workspace member");
+      }
+      data.assigneeId = body.assigneeId && memberResult ? String(body.assigneeId) : null;
+    }
+
+    if (body.parentId !== undefined) {
+      if (body.parentId && body.parentId !== id && !parentResult) {
+        throw badRequest("parent task not found in workspace");
+      }
+      data.parentId =
+        body.parentId && body.parentId !== id && parentResult ? parentResult.id : null;
+    }
+
+    const effectiveParentType =
+      body.parentId !== undefined ? parentResult?.type : currentTask.parent?.type;
+    const proposedHierarchyViolation = findTaskHierarchyViolation({
+      type: effectiveType,
+      parentType: effectiveParentType,
+      childTypes: currentTask.children.map(({ type }) => type),
+    });
+    if (proposedHierarchyViolation) throw badRequest(proposedHierarchyViolation);
+    if (parentResult?.status === TASK_STATUS.SPRINT) {
+      throw badRequest("remove a parent from the sprint before adding child work items");
+    }
+    if (statusValue === TASK_STATUS.SPRINT && currentTask.children.length > 0) {
+      throw badRequest("only leaf work items can be committed to a sprint");
+    }
+
+    if (needsSprintCheck) {
+      if (!capacity?.activeSprint) {
+        throw badRequest("active sprint not found");
+      }
+      if (capacity.exceeded) {
+        throw badRequest("sprint capacity exceeded");
+      }
+    }
+
+    const proposedDependencyIds = Array.isArray(body.dependencyIds)
+      ? [...new Set(body.dependencyIds.map(String).filter((depId) => depId !== id))]
+      : null;
+    if (proposedDependencyIds) {
+      const proposedDependencies = await tx.task.findMany({
+        where: { id: { in: proposedDependencyIds }, workspaceId },
+        select: { id: true, workflowState: true },
+      });
+      if (proposedDependencies.length !== proposedDependencyIds.length) {
+        throw badRequest("one or more dependencies were not found in workspace");
+      }
+      if (
+        (workflowStateValue === "IN_PROGRESS" ||
+          workflowStateValue === "BLOCKED" ||
+          workflowStateValue === "DONE") &&
+        proposedDependencies.some((dependency) => dependency.workflowState !== "DONE")
+      ) {
+        throw badRequest("dependencies must be done before moving");
+      }
+    }
+
+    if (statusValue === TASK_STATUS.SPRINT && capacity?.activeSprint) {
+      data.sprintId = capacity.activeSprint.id;
+    }
+    if (statusValue === TASK_STATUS.BACKLOG || workflowStateValue === "CANCELED") {
+      data.sprintId = null;
+    }
+
+    if (
+      proposedDependencyIds &&
+      (await taskDependencyWouldCycle(tx, {
+        taskId: id,
+        workspaceId,
+        dependencyIds: proposedDependencyIds,
+      }))
+    ) {
+      throw badRequest("task dependencies cannot contain a cycle");
+    }
+    if (
+      body.parentId !== undefined &&
+      (await taskParentWouldCycle(tx, {
+        taskId: id,
+        workspaceId,
+        parentId: body.parentId ? String(body.parentId) : null,
+      }))
+    ) {
+      throw badRequest("task hierarchy cannot contain a cycle");
+    }
+    const updated = await tx.task.updateMany({ where: { id, workspaceId }, data });
+    if (!updated.count) {
+      throw new Error("TASK_NOT_FOUND");
+    }
+
+    const updatedTask = await tx.task.findFirst({
+      where: { id, workspaceId },
+      include: {
+        routineRule: { select: { nextAt: true, cadence: true, seriesId: true } },
+      },
+    });
+
+    if (Array.isArray(body.dependencyIds)) {
+      await syncTaskDependencies(tx, {
+        taskId: id,
+        workspaceId,
+        dependencyIds: body.dependencyIds.map((depId: string) => String(depId)),
+      });
+    }
+
+    if (updatedTask) {
+      await syncRoutineRule(tx, {
+        task: updatedTask,
+        cadenceValue,
+        routineNextAt,
+        shouldClearRoutine,
+      });
+      if (statusValue === TASK_STATUS.SPRINT && updatedTask.sprintId) {
+        await commitTaskToSprint(tx, {
+          sprintId: updatedTask.sprintId,
+          task: updatedTask,
+        });
+      } else if (statusValue === TASK_STATUS.BACKLOG || workflowStateValue === "CANCELED") {
+        await removeTaskFromActiveSprint(tx, { taskId: updatedTask.id });
+      }
+      if (workflowStateValue === "DONE" && updatedTask.sprintId) {
+        await completeTaskCommitment(tx, {
+          taskId: updatedTask.id,
+          sprintId: updatedTask.sprintId,
         });
       }
+      await recordWorkflowTransition(tx, {
+        taskId: updatedTask.id,
+        workspaceId,
+        actorId: userId,
+        fromState: currentTask.workflowState,
+        toState: workflowStateValue,
+        trigger: "API",
+      });
+    }
 
-      const newRoutineTask =
-        updatedTask &&
-        workflowStateValue === "DONE" &&
-        currentTask.workflowState !== "DONE" &&
-        updatedTask.routineRule != null
-          ? await createNextRoutineOccurrence(tx, { task: updatedTask, userId, workspaceId })
-          : null;
+    await tx.auditLog.create({
+      data: {
+        actorId: userId,
+        action: "TASK_UPDATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { taskId: id },
+      },
+    });
 
-      return { task: updatedTask, createdRoutineTask: newRoutineTask };
-    },
-    { isolationLevel: "Serializable" },
-  );
+    if (updatedTask && currentTask.status !== statusValue) {
+      await tx.taskStatusEvent.create({
+        data: {
+          taskId: updatedTask.id,
+          fromStatus: currentTask.status ?? null,
+          toStatus: statusValue,
+          actorId: userId,
+          trigger: "API",
+          workspaceId,
+        },
+      });
+    }
+
+    const newRoutineTask =
+      updatedTask &&
+      workflowStateValue === "DONE" &&
+      currentTask.workflowState !== "DONE" &&
+      updatedTask.routineRule != null
+        ? await createNextRoutineOccurrence(tx, { task: updatedTask, userId, workspaceId })
+        : null;
+
+    if (newRoutineTask) {
+      await enqueueTaskAutomation(tx, {
+        task: newRoutineTask,
+        workspaceId,
+        requestedById: userId,
+      });
+    }
+    if (updatedTask) {
+      await enqueueTaskAutomation(tx, {
+        task: updatedTask,
+        workspaceId,
+        requestedById: userId,
+      });
+    }
+
+    return { task: updatedTask };
+  });
 
   if (!task) {
     throw notFound();
   }
 
-  // Automation runs outside the transaction (may have side effects).
-  if (createdRoutineTask) {
-    await runTaskAutomation({
-      userId,
-      workspaceId,
-      task: {
-        id: createdRoutineTask.id,
-        title: createdRoutineTask.title,
-        description: createdRoutineTask.description ?? "",
-        points: createdRoutineTask.points,
-        status: createdRoutineTask.status,
-      },
-    });
-  }
-  if (task.workflowState !== "DONE" && task.workflowState !== "CANCELED") {
-    await runTaskAutomation({
-      userId,
-      workspaceId,
-      task: {
-        id: task.id,
-        title: task.title,
-        description: task.description ?? "",
-        points: task.points,
-        status: task.status,
-      },
-    });
-  }
-
+  await drainTaskAutomationForWorkspace(workspaceId);
   return task;
 }
 
@@ -678,6 +681,21 @@ export async function deleteTask(params: {
 }): Promise<void> {
   const { userId, workspaceId, taskId: id } = params;
   await prisma.$transaction(async (tx) => {
+    const task = await tx.task.findFirst({
+      where: { id, workspaceId },
+      select: { id: true, workflowState: true },
+    });
+    if (!task) throw notFound();
+    if (task.workflowState !== "DONE" && task.workflowState !== "CANCELED") {
+      await recordWorkflowTransition(tx, {
+        taskId: task.id,
+        workspaceId,
+        actorId: userId,
+        fromState: task.workflowState,
+        toState: "CANCELED",
+        trigger: "API",
+      });
+    }
     // Relations are ON DELETE CASCADE. Scope and delete the aggregate root
     // first so a foreign-workspace id cannot mutate any related records.
     await removeTaskFromActiveSprint(tx, { taskId: id });

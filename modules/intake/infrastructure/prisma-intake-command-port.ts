@@ -1,6 +1,7 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import { applyTaskDescriptionAppendix } from "../../shared/infrastructure/prisma-task-consistency";
 import type { IntakeCommandPort, IntakeDuplicate } from "../application/intake-types";
 import { deriveIntakeTitle, intakeTitleSimilarity } from "../domain/intake-text";
 
@@ -151,12 +152,12 @@ export const prismaIntakeCommandPort: IntakeCommandPort = {
         });
         if (!guard.count) throw conflict("intake item already converted or dismissed");
         const appendix = `\n\n---\nInbox取り込み:\n${item.body}`;
-        const updated = await tx.$executeRaw(
-          Prisma.sql`UPDATE "Task"
-            SET "description" = COALESCE("description", '') || ${appendix},
-                "updatedAt" = NOW()
-            WHERE "id" = ${targetTaskId} AND "workspaceId" = ${workspaceId}`,
-        );
+        const updated = await applyTaskDescriptionAppendix(tx, {
+          taskId: targetTaskId,
+          workspaceId,
+          appendix,
+          action: "apply",
+        });
         if (!updated) throw badRequest("invalid targetTaskId");
         await tx.auditLog.create({
           data: {

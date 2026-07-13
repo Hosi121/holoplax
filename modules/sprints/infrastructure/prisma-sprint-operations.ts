@@ -1,6 +1,14 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
+import {
+  carryOverSprintCommitments,
+  commitTaskToSprint,
+} from "../../shared/infrastructure/prisma-sprint-items";
+import {
+  attachLegacySprintProjection,
+  clearClosedSprintProjection,
+} from "../../shared/infrastructure/prisma-task-consistency";
 import type { SprintOperationsPort } from "../application/sprint-operations";
 
 const sprintSelect = {
@@ -13,32 +21,46 @@ const sprintSelect = {
   endedAt: true,
 } as const;
 
-const sprintItemsSelect = {
-  committedPoints: true,
-  outcome: true,
-  removedAt: true,
-} as const;
-
 const error = (kind: "bad_request" | "not_found" | "conflict", message: string) =>
   new ApplicationError(`SPRINT_${kind.toUpperCase()}`, message, kind);
 
-const summarize = (
-  items: Array<{ outcome: string; committedPoints: number; removedAt: Date | null }>,
-) => ({
-  committedPoints: items.reduce((sum, item) => sum + item.committedPoints, 0),
-  activePoints: items.reduce(
-    (sum, item) =>
-      sum +
-      (item.removedAt === null && (item.outcome === "COMMITTED" || item.outcome === "COMPLETED")
-        ? item.committedPoints
-        : 0),
-    0,
-  ),
-  completedPoints: items.reduce(
-    (sum, item) => sum + (item.outcome === "COMPLETED" ? item.committedPoints : 0),
-    0,
-  ),
-});
+const emptySummary = () => ({ committedPoints: 0, activePoints: 0, completedPoints: 0 });
+
+const loadSummaries = async (sprintIds: string[]) => {
+  if (!sprintIds.length) return new Map<string, ReturnType<typeof emptySummary>>();
+  const [committed, active, completed] = await Promise.all([
+    prisma.sprintItem.groupBy({
+      by: ["sprintId"],
+      where: { sprintId: { in: sprintIds } },
+      _sum: { committedPoints: true },
+    }),
+    prisma.sprintItem.groupBy({
+      by: ["sprintId"],
+      where: {
+        sprintId: { in: sprintIds },
+        removedAt: null,
+        outcome: { in: ["COMMITTED", "COMPLETED"] },
+      },
+      _sum: { committedPoints: true },
+    }),
+    prisma.sprintItem.groupBy({
+      by: ["sprintId"],
+      where: { sprintId: { in: sprintIds }, outcome: "COMPLETED" },
+      _sum: { committedPoints: true },
+    }),
+  ]);
+  const summaries = new Map(sprintIds.map((id) => [id, emptySummary()]));
+  for (const row of committed) {
+    summaries.get(row.sprintId)!.committedPoints = row._sum.committedPoints ?? 0;
+  }
+  for (const row of active) {
+    summaries.get(row.sprintId)!.activePoints = row._sum.committedPoints ?? 0;
+  }
+  for (const row of completed) {
+    summaries.get(row.sprintId)!.completedPoints = row._sum.committedPoints ?? 0;
+  }
+  return summaries;
+};
 
 export const prismaSprintOperationsPort: SprintOperationsPort = {
   async list(workspaceId, options = {}) {
@@ -50,20 +72,24 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
       where: { workspaceId, ...(options.status ? { status: options.status } : {}) },
       orderBy: { startedAt: "desc" },
       ...(take ? { take } : {}),
-      select: { ...sprintSelect, items: { select: sprintItemsSelect } },
+      select: sprintSelect,
     });
-    return sprints.map(({ items, ...sprint }) => ({ ...sprint, ...summarize(items) }));
+    const summaries = await loadSummaries(sprints.map(({ id }) => id));
+    return sprints.map((sprint) => ({
+      ...sprint,
+      ...(summaries.get(sprint.id) ?? emptySummary()),
+    }));
   },
 
   async current(workspaceId) {
     const sprint = await prisma.sprint.findFirst({
       where: { workspaceId, status: "ACTIVE" },
       orderBy: { startedAt: "desc" },
-      select: { ...sprintSelect, items: { select: sprintItemsSelect } },
+      select: sprintSelect,
     });
     if (!sprint) return null;
-    const { items, ...current } = sprint;
-    return { ...current, ...summarize(items) };
+    const summaries = await loadSummaries([sprint.id]);
+    return { ...sprint, ...(summaries.get(sprint.id) ?? emptySummary()) };
   },
 
   async create(actor, input = {}) {
@@ -93,22 +119,12 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
             },
             select: sprintSelect,
           });
-          await tx.task.updateMany({
-            where: { workspaceId: actor.workspaceId, status: "SPRINT" },
-            data: { sprintId: sprint.id },
+          await attachLegacySprintProjection(tx, {
+            workspaceId: actor.workspaceId,
+            sprintId: sprint.id,
           });
-          if (legacySprintTasks.length) {
-            await tx.sprintItem.createMany({
-              data: legacySprintTasks.map((task) => ({
-                sprintId: sprint.id,
-                taskId: task.id,
-                taskKey: task.id,
-                taskTitle: task.title,
-                taskType: task.type,
-                committedPoints: task.points,
-              })),
-              skipDuplicates: true,
-            });
+          for (const task of legacySprintTasks) {
+            await commitTaskToSprint(tx, { sprintId: sprint.id, task });
           }
           await tx.auditLog.create({
             data: {
@@ -169,14 +185,11 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
           where: { workspaceId: actor.workspaceId, sprintId: active.id, status: "SPRINT" },
           select: { id: true },
         });
-        await tx.task.updateMany({
-          where: { workspaceId: actor.workspaceId, sprintId: active.id, status: "SPRINT" },
-          data: { status: "BACKLOG", sprintId: null },
+        await clearClosedSprintProjection(tx, {
+          workspaceId: actor.workspaceId,
+          sprintId: active.id,
         });
-        await tx.sprintItem.updateMany({
-          where: { sprintId: active.id, outcome: "COMMITTED", removedAt: null },
-          data: { outcome: "CARRYOVER", removedAt: closedAt },
-        });
+        await carryOverSprintCommitments(tx, { sprintId: active.id, carriedAt: closedAt });
         if (sprintTasks.length) {
           await tx.taskStatusEvent.createMany({
             data: sprintTasks.map(({ id }) => ({

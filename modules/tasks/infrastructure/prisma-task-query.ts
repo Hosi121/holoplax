@@ -23,6 +23,7 @@ type PrismaTaskListFilters = {
 const taskRelations = {
   routineRule: { select: { cadence: true, nextAt: true } },
   dependencies: {
+    where: { state: "REQUIRED" },
     select: {
       dependsOnId: true,
       dependsOn: {

@@ -13,9 +13,9 @@ import type {
 } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { ApplicationError } from "../../shared/application/application-error";
+import { commitTaskToSprint } from "../../shared/infrastructure/prisma-sprint-items";
 import { findTaskPolicyViolation } from "../domain/task-policy";
 import { initialWorkflowState } from "../domain/task-workflow";
-import { commitTaskToSprint } from "./prisma-sprint-items";
 import { recordWorkflowTransition } from "./prisma-workflow-events";
 
 type Tx = Prisma.TransactionClient;

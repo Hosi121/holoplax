@@ -114,11 +114,18 @@ export const prismaAdminOperationsPort: AdminOperationsPort = {
       const mcpKeys = await tx.mcpApiKey.deleteMany({
         where: { OR: [{ revokedAt: { lt: now } }, { expiresAt: { lt: now } }] },
       });
+      const automationJobs = await tx.taskAutomationJob.deleteMany({
+        where: {
+          status: { in: ["SUCCEEDED", "CANCELED"] },
+          updatedAt: { lt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      });
       const deleted = {
         emailVerificationTokens: emailTokens.count,
         passwordResetTokens: resetTokens.count,
         workspaceInvites: invites.count,
         mcpApiKeys: mcpKeys.count,
+        taskAutomationJobs: automationJobs.count,
       };
       await tx.auditLog.create({
         data: { actorId, action: "ADMIN_MAINTENANCE_RUN", metadata: deleted },

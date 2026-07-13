@@ -5,6 +5,7 @@ import { generateSplitSuggestions } from "../../../lib/ai-suggestions";
 import prisma from "../../../lib/prisma";
 import { TASK_TYPE } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
+import { applyTaskDescriptionAppendix } from "../../shared/infrastructure/prisma-task-consistency";
 import type { AiOperationsPort, AiPrepType } from "../application/ai-operations";
 
 const badRequest = (message: string) =>
@@ -249,11 +250,15 @@ export const prismaAiOperationsPort: AiOperationsPort = {
         description = description.replace(appendix, "");
         status = "APPROVED";
       }
-      if (description !== existing.task.description) {
-        await tx.task.update({
-          where: { id: existing.task.id },
-          data: { description },
+      if (input.action === "apply" || input.action === "revert") {
+        const task = await applyTaskDescriptionAppendix(tx, {
+          taskId: existing.task.id,
+          workspaceId: input.workspaceId,
+          appendix,
+          action: input.action,
         });
+        if (!task) throw badRequest("task not found");
+        description = task.description;
       }
       const updated = await tx.aiPrepOutput.update({
         where: { id: existing.id },

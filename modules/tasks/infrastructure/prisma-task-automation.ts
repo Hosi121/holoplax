@@ -3,7 +3,6 @@ import { hasNoDelegateTag } from "../../../lib/automation-constants";
 import prisma from "../../../lib/prisma";
 import { AUTOMATION_STATUS, TASK_STATUS } from "../../../lib/types";
 import { generateAiPrep } from "../../ai/index.server";
-import type { TaskAutomationPort } from "../application/run-task-automation";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { splitTaskIntoChildren } from "./prisma-task-split";
 
@@ -176,7 +175,3 @@ export async function applyAutomationForTask(params: {
     });
   });
 }
-
-export const prismaTaskAutomationPort: TaskAutomationPort = {
-  run: applyAutomationForTask,
-};

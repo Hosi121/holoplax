@@ -2,17 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const tx = {
-    task: { findMany: vi.fn(), updateMany: vi.fn() },
+    task: { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
     routineRule: { findUnique: vi.fn() },
     taskStatusEvent: { createMany: vi.fn() },
     taskWorkflowEvent: { create: vi.fn() },
-    sprintItem: { updateMany: vi.fn() },
+    sprintItem: { updateMany: vi.fn(), findUnique: vi.fn() },
+    sprintItemEvent: { create: vi.fn() },
     auditLog: { create: vi.fn() },
   };
   return {
     tx,
     transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
-    runAutomation: vi.fn(),
+    enqueueAutomation: vi.fn(),
+    drainAutomation: vi.fn(),
   };
 });
 
@@ -20,8 +22,9 @@ vi.mock("../prisma", () => ({
   default: { $transaction: mocks.transaction },
 }));
 
-vi.mock("../../modules/automation/index.server", () => ({
-  runTaskAutomation: mocks.runAutomation,
+vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
+  enqueueTaskAutomation: mocks.enqueueAutomation,
+  drainTaskAutomationForWorkspace: mocks.drainAutomation,
 }));
 
 import { prismaBulkTaskCommandPort } from "../../modules/tasks/infrastructure/prisma-bulk-task-command";
@@ -43,13 +46,29 @@ describe("bulk task commands", () => {
         children: [],
         routineRule: null,
         dependencies: [],
+        updatedAt: new Date("2026-07-13T00:00:00Z"),
       },
     ]);
     mocks.tx.task.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.task.findUnique.mockResolvedValue({
+      createdAt: new Date(),
+      dueDate: null,
+      points: 3,
+      userId: "user-1",
+    });
     mocks.tx.routineRule.findUnique.mockResolvedValue(null);
     mocks.tx.taskStatusEvent.createMany.mockResolvedValue({ count: 1 });
     mocks.tx.taskWorkflowEvent.create.mockResolvedValue({ id: "workflow-1" });
     mocks.tx.sprintItem.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.sprintItem.findUnique.mockResolvedValue({
+      id: "item-1",
+      taskTitle: "Task",
+      taskType: "TASK",
+      committedPoints: 3,
+      removedAt: null,
+      outcome: "COMMITTED",
+    });
+    mocks.tx.sprintItemEvent.create.mockResolvedValue({ id: "item-event-1" });
     mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
   });
 

@@ -4,8 +4,7 @@ import { generateSplitSuggestions } from "../../../lib/ai-suggestions";
 import prisma from "../../../lib/prisma";
 import { AUTOMATION_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
-import { projectLegacyAutomationState } from "../../tasks";
-import { applyPendingTaskSplit } from "../../tasks/index.server";
+import { applyPendingTaskSplit, rejectPendingTaskSplit } from "../../tasks/index.server";
 import type { ReviewTaskSplitCommandPort } from "../application/review-task-split-command";
 
 const STAGE_COOLDOWN_DAYS = 7;
@@ -72,38 +71,12 @@ export const prismaReviewTaskSplitCommandPort: ReviewTaskSplitCommandPort = {
         description: true,
         points: true,
         automationStatus: true,
-        hierarchyRole: true,
       },
     });
     if (!task) throw notFound("task not found");
 
     if (command.action === "reject") {
-      const rejected = await prisma.$transaction(async (tx) => {
-        const claimed = await tx.task.updateMany({
-          where: {
-            id: task.id,
-            workspaceId: actor.workspaceId,
-            automationStatus: AUTOMATION_STATUS.SPLIT_PENDING,
-          },
-          data: {
-            automationStatus: AUTOMATION_STATUS.SPLIT_REJECTED,
-            automationState: projectLegacyAutomationState({
-              automationStatus: "SPLIT_REJECTED",
-              hierarchyRole: task.hierarchyRole,
-            }),
-          },
-        });
-        if (claimed.count !== 1) return false;
-        await tx.auditLog.create({
-          data: {
-            actorId: actor.userId,
-            action: "AUTOMATION_SPLIT_REJECT",
-            targetWorkspaceId: actor.workspaceId,
-            metadata: { taskId: task.id },
-          },
-        });
-        return true;
-      });
+      const rejected = await rejectPendingTaskSplit(actor, task.id);
       return { status: rejected ? "rejected" : "no-pending" };
     }
 

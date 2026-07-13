@@ -29,7 +29,8 @@ const moduleEdges = new Map();
 
 for (const file of sourceFiles) {
   const path = toPosix(relative(root, file));
-  const imports = importTargets(readFileSync(file, "utf8"));
+  const source = readFileSync(file, "utf8");
+  const imports = importTargets(source);
   const sourceModule = moduleName(path);
   if (sourceModule && !/\.(?:test|spec)\.[jt]sx?$/.test(path)) {
     for (const target of imports) {
@@ -86,6 +87,23 @@ for (const file of sourceFiles) {
     (target) => /modules\/[^/]+\/(?:application|domain|infrastructure)\//.test(target),
   )) {
     report(file, "adapter must import a module through index.server only");
+  }
+
+  // Task is the aggregate owner for general writes. The one shared adapter is
+  // deliberately narrow: it contains only cross-aggregate projections that
+  // must participate in another module's transaction.
+  const ownsTaskWrites =
+    path.startsWith("modules/tasks/infrastructure/") ||
+    path === "modules/shared/infrastructure/prisma-task-consistency.ts" ||
+    path.startsWith("scripts/") ||
+    /\.(?:test|spec)\.[jt]sx?$/.test(path);
+  if (!ownsTaskWrites) {
+    const prismaTaskMutation =
+      /\b(?:prisma|tx|db)\.task\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\s*\(/;
+    const rawTaskMutation = /\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+"Task"/i;
+    if (prismaTaskMutation.test(source) || rawTaskMutation.test(source)) {
+      report(file, "Task writes must use the tasks module or the shared consistency adapter");
+    }
   }
 }
 

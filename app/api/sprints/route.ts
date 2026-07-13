@@ -23,7 +23,8 @@ export async function GET(request: Request) {
       const statusParam = searchParams.get("status");
       const limitParam = searchParams.get("limit");
       const parsedLimit = limitParam !== null ? Number.parseInt(limitParam, 10) : 20;
-      const limit = Number.isNaN(parsedLimit) || parsedLimit <= 0 ? undefined : parsedLimit;
+      const limit =
+        Number.isNaN(parsedLimit) || parsedLimit <= 0 ? 20 : Math.min(Math.trunc(parsedLimit), 100);
       const sprints = await listSprints(workspaceId, {
         status: isSprintStatus(statusParam) ? statusParam : undefined,
         limit,
