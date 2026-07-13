@@ -1,20 +1,35 @@
 import { NextResponse } from "next/server";
-import { isDatabaseReachable } from "../../../modules/system/index.server";
+import { getSystemHealth } from "../../../modules/system/index.server";
 
 export const dynamic = "force-dynamic";
 
 type HealthStatus = {
-  status: "healthy" | "unhealthy";
+  status: "healthy" | "degraded" | "unhealthy";
   database: "reachable" | "unreachable";
+  automation: {
+    pending: number;
+    running: number;
+    failed: number;
+    stalePending: number;
+    staleRunning: number;
+    oldestPendingAt: string | null;
+    oldestRunningAt: string | null;
+  };
   timestamp: string;
   version: string;
 };
 
 export async function GET() {
-  const reachable = await isDatabaseReachable();
+  const snapshot = await getSystemHealth();
+  const reachable = snapshot.databaseReachable;
   const health: HealthStatus = {
-    status: reachable ? "healthy" : "unhealthy",
+    status: snapshot.status,
     database: reachable ? "reachable" : "unreachable",
+    automation: {
+      ...snapshot.automation,
+      oldestPendingAt: snapshot.automation.oldestPendingAt?.toISOString() ?? null,
+      oldestRunningAt: snapshot.automation.oldestRunningAt?.toISOString() ?? null,
+    },
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version ?? "unknown",
   };
