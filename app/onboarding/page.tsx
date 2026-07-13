@@ -68,7 +68,7 @@ export default function OnboardingPage() {
         return;
       }
       await update({ user: { onboardingCompletedAt: new Date().toISOString() } });
-      router.push("/backlog");
+      router.push("/delegate");
     } finally {
       setSaving(false);
     }

@@ -3,6 +3,7 @@ import { TASK_STATUS, TASK_TYPE, TASK_WORKFLOW_STATE } from "./types";
 
 /** User-facing language. Internal API/DB enum names must not leak into the UI. */
 export const NAV_LABELS = {
+  delegate: "AIに任せる",
   backlog: "やること",
   sprint: "スプリント",
   review: "振り返り",

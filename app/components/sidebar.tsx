@@ -5,6 +5,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Bot,
   ChevronDown,
   Inbox,
   KanbanSquare,
@@ -38,6 +39,12 @@ const STORAGE_KEY = "holoplax-sidebar-collapsed";
 
 /* ── Primary workflow items (always visible) ── */
 const primaryItems: NavItem[] = [
+  {
+    label: NAV_LABELS.delegate,
+    href: "/delegate",
+    icon: Bot,
+    tooltip: "安全な仕事をAIに任せ、成果物を受け取る",
+  },
   {
     label: NAV_LABELS.backlog,
     href: "/backlog",
@@ -131,11 +138,12 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
     <Link
       href={item.href}
       title={item.tooltip}
-      className={`flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] ${
+      className={cn(
+        "flex items-center gap-2 border px-3 py-2 text-sm transition hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)]",
         isActive
           ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]"
-          : "border-transparent text-[var(--text-secondary)]"
-      }`}
+          : "border-transparent text-[var(--text-secondary)]",
+      )}
     >
       <item.icon size={16} />
       <span className="flex-1">{item.label}</span>
@@ -450,7 +458,7 @@ function MobileNavigation({
 }) {
   return (
     <Dialog.Root>
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-[var(--border)] bg-[var(--surface)] [padding-bottom:env(safe-area-inset-bottom)] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[var(--border)] bg-[var(--surface)] [padding-bottom:env(safe-area-inset-bottom)] lg:hidden">
         {primaryItems.map((item) => {
           const active = pathname === item.href;
           return (

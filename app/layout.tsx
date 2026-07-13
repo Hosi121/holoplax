@@ -3,9 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Holoplax | Agile OS for Life Work",
-  description:
-    "Personal agile system with velocity, backlog automation, and AI readiness for your life sprints.",
+  title: "Holoplax | 自分専用の実行AI",
+  description: "安全な仕事をAIに任せ、検証済みの成果物を受け取れる個人向けワークスペース。",
   icons: {
     icon: "/favicon.png",
   },
