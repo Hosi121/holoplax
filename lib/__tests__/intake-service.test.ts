@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     task: { create: vi.fn() },
     workspaceMember: { findUnique: vi.fn() },
     auditLog: { create: vi.fn() },
+    taskWorkflowEvent: { create: vi.fn() },
     $executeRaw: vi.fn(),
   };
   return {
@@ -20,7 +21,10 @@ vi.mock("../prisma", () => ({
     $transaction: mocks.transaction,
   },
 }));
-vi.mock("../automation", () => ({ applyAutomationForTask: mocks.applyAutomation }));
+vi.mock("../../modules/tasks/infrastructure/prisma-task-automation", () => ({
+  applyAutomationForTask: mocks.applyAutomation,
+  prismaTaskAutomationPort: { run: mocks.applyAutomation },
+}));
 
 import { resolveIntakeItem } from "../../modules/intake/index.server";
 
@@ -39,6 +43,7 @@ describe("intake application service", () => {
     mocks.tx.intakeItem.findUnique.mockResolvedValue(intakeItem);
     mocks.tx.workspaceMember.findUnique.mockResolvedValue({ workspaceId: "workspace-1" });
     mocks.tx.auditLog.create.mockResolvedValue({ id: "audit-1" });
+    mocks.tx.taskWorkflowEvent.create.mockResolvedValue({ id: "workflow-event-1" });
     mocks.applyAutomation.mockResolvedValue(undefined);
   });
 

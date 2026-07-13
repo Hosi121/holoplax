@@ -1,7 +1,8 @@
+import { convertIntakeItemToTask } from "../tasks/index.server";
 import { createIntakeCommands } from "./application/intake-commands";
 import { prismaIntakeCommandPort } from "./infrastructure/prisma-intake-command-port";
 
-const commands = createIntakeCommands(prismaIntakeCommandPort);
+const commands = createIntakeCommands(prismaIntakeCommandPort, convertIntakeItemToTask);
 
 export const listIntakeItems = commands.list;
 export const createIntakeMemo = commands.createMemo;

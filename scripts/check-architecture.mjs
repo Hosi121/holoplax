@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const toPosix = (value) => value.replaceAll("\\", "/");
@@ -18,9 +18,36 @@ const report = (file, message) => violations.push(`${toPosix(relative(root, file
 const importTargets = (source) =>
   [...source.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map((match) => match[1]);
 
+const moduleName = (path) => path.match(/^modules\/([^/]+)\//)?.[1] ?? null;
+const resolveImportPath = (file, target) => {
+  if (target.startsWith(".")) return toPosix(relative(root, resolve(dirname(file), target)));
+  if (target.startsWith("@/")) return target.slice(2);
+  return null;
+};
+
+const moduleEdges = new Map();
+
 for (const file of sourceFiles) {
   const path = toPosix(relative(root, file));
   const imports = importTargets(readFileSync(file, "utf8"));
+  const sourceModule = moduleName(path);
+  if (sourceModule && !/\.(?:test|spec)\.[jt]sx?$/.test(path)) {
+    for (const target of imports) {
+      const targetPath = resolveImportPath(file, target);
+      if (!targetPath) continue;
+      const targetModule = moduleName(targetPath);
+      if (!targetModule || targetModule === sourceModule || targetModule === "shared") continue;
+      const edges = moduleEdges.get(sourceModule) ?? new Set();
+      edges.add(targetModule);
+      moduleEdges.set(sourceModule, edges);
+      if (/^modules\/[^/]+\/(?:application|domain|infrastructure)\//.test(targetPath)) {
+        report(
+          file,
+          `cross-module dependency must use ${targetModule}/index or ${targetModule}/index.server, not ${target}`,
+        );
+      }
+    }
+  }
   if (/^modules\/[^/]+\/domain\//.test(path) && !/\.test\.ts$/.test(path)) {
     for (const target of imports) {
       if (
@@ -61,6 +88,26 @@ for (const file of sourceFiles) {
     report(file, "adapter must import a module through index.server only");
   }
 }
+
+const visitingModules = new Set();
+const visitedModules = new Set();
+const moduleStack = [];
+const visitModule = (name) => {
+  if (visitingModules.has(name)) {
+    const start = moduleStack.indexOf(name);
+    const cycle = [...moduleStack.slice(start), name];
+    violations.push(`module dependency cycle: ${cycle.join(" -> ")}`);
+    return;
+  }
+  if (visitedModules.has(name)) return;
+  visitingModules.add(name);
+  moduleStack.push(name);
+  for (const dependency of moduleEdges.get(name) ?? []) visitModule(dependency);
+  moduleStack.pop();
+  visitingModules.delete(name);
+  visitedModules.add(name);
+};
+for (const name of moduleEdges.keys()) visitModule(name);
 
 for (const file of sourceFiles) {
   const path = toPosix(relative(root, file));

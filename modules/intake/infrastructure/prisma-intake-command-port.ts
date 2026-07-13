@@ -1,10 +1,6 @@
-import { Prisma, type TaskType } from "@prisma/client";
-import { logger } from "../../../lib/logger";
+import { Prisma } from "@prisma/client";
 import prisma from "../../../lib/prisma";
-import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../../../lib/types";
-import { runTaskAutomation } from "../../automation/index.server";
 import { ApplicationError } from "../../shared/application/application-error";
-import { persistNewTask } from "../../tasks/infrastructure/prisma-task-writer";
 import type { IntakeCommandPort, IntakeDuplicate } from "../application/intake-types";
 import { deriveIntakeTitle, intakeTitleSimilarity } from "../domain/intake-text";
 
@@ -174,80 +170,7 @@ export const prismaIntakeCommandPort: IntakeCommandPort = {
       });
     }
 
-    if (input.action !== "create") throw badRequest("invalid action");
-    const task = await prisma.$transaction(async (tx) => {
-      await requireMembership(tx, actor.userId, workspaceId);
-      const item = await readAccessibleItem(tx, input.intakeId, actor.userId);
-      const guard = await tx.intakeItem.updateMany({
-        where: { id: input.intakeId, status: "PENDING" },
-        data: { status: "CONVERTED", workspaceId },
-      });
-      if (!guard.count) return null;
-
-      const metadata =
-        item.payload && typeof item.payload === "object" && !Array.isArray(item.payload)
-          ? (item.payload as Prisma.JsonObject)
-          : {};
-      const points =
-        typeof metadata.points === "number" && [1, 2, 3, 5, 8, 13, 21, 34].includes(metadata.points)
-          ? metadata.points
-          : 3;
-      const urgency =
-        metadata.urgency === "LOW" || metadata.urgency === "HIGH"
-          ? metadata.urgency
-          : SEVERITY.MEDIUM;
-      const dueDate =
-        typeof metadata.dueDate === "string" && !Number.isNaN(new Date(metadata.dueDate).getTime())
-          ? new Date(metadata.dueDate)
-          : null;
-      const type = Object.values(TASK_TYPE).includes(input.taskType as TaskType)
-        ? (input.taskType as TaskType)
-        : TASK_TYPE.PBI;
-      const created = await persistNewTask(
-        tx,
-        {
-          title: item.title,
-          description: item.body,
-          points,
-          urgency,
-          risk: SEVERITY.MEDIUM,
-          status: TASK_STATUS.BACKLOG,
-          type,
-          dueDate,
-          userId: actor.userId,
-          workspaceId,
-        },
-        { actorId: actor.userId, trigger: "API" },
-      );
-      await tx.intakeItem.update({ where: { id: input.intakeId }, data: { taskId: created.id } });
-      await tx.auditLog.create({
-        data: {
-          actorId: actor.userId,
-          action: "INTAKE_CREATE",
-          targetWorkspaceId: workspaceId,
-          metadata: { intakeId: item.id, taskId: created.id },
-        },
-      });
-      return created;
-    });
-    if (!task) throw conflict("intake item already converted or dismissed");
-
-    try {
-      await runTaskAutomation({
-        userId: actor.userId,
-        workspaceId,
-        task: {
-          id: task.id,
-          title: task.title,
-          description: task.description,
-          points: task.points,
-          status: task.status,
-        },
-      });
-    } catch (error) {
-      logger.error("INTAKE_CREATE automation failed", { taskId: task.id, workspaceId }, error);
-    }
-    return { taskId: task.id };
+    throw badRequest("invalid action");
   },
 
   captureDiscord(input) {

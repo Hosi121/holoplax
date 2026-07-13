@@ -2,9 +2,10 @@ import { sanitizeSplitSuggestion } from "../../../lib/ai-normalization";
 import type { SplitItem } from "../../../lib/ai-suggestions";
 import { generateSplitSuggestions } from "../../../lib/ai-suggestions";
 import prisma from "../../../lib/prisma";
-import { AUTOMATION_STATE, TASK_STATUS } from "../../../lib/types";
+import { AUTOMATION_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
-import { splitTaskIntoChildren } from "../../tasks/infrastructure/prisma-task-split";
+import { projectLegacyAutomationState } from "../../tasks";
+import { applyPendingTaskSplit } from "../../tasks/index.server";
 import type { ReviewTaskSplitCommandPort } from "../application/review-task-split-command";
 
 const STAGE_COOLDOWN_DAYS = 7;
@@ -70,7 +71,8 @@ export const prismaReviewTaskSplitCommandPort: ReviewTaskSplitCommandPort = {
         title: true,
         description: true,
         points: true,
-        automationState: true,
+        automationStatus: true,
+        hierarchyRole: true,
       },
     });
     if (!task) throw notFound("task not found");
@@ -81,9 +83,15 @@ export const prismaReviewTaskSplitCommandPort: ReviewTaskSplitCommandPort = {
           where: {
             id: task.id,
             workspaceId: actor.workspaceId,
-            automationState: AUTOMATION_STATE.PENDING_SPLIT,
+            automationStatus: AUTOMATION_STATUS.SPLIT_PENDING,
           },
-          data: { automationState: AUTOMATION_STATE.SPLIT_REJECTED },
+          data: {
+            automationStatus: AUTOMATION_STATUS.SPLIT_REJECTED,
+            automationState: projectLegacyAutomationState({
+              automationStatus: "SPLIT_REJECTED",
+              hierarchyRole: task.hierarchyRole,
+            }),
+          },
         });
         if (claimed.count !== 1) return false;
         await tx.auditLog.create({
@@ -99,7 +107,7 @@ export const prismaReviewTaskSplitCommandPort: ReviewTaskSplitCommandPort = {
       return { status: rejected ? "rejected" : "no-pending" };
     }
 
-    if (task.automationState !== AUTOMATION_STATE.PENDING_SPLIT) {
+    if (task.automationStatus !== AUTOMATION_STATUS.SPLIT_PENDING) {
       return { status: "no-pending", created: 0 };
     }
     const latest = await prisma.aiSuggestion.findFirst({
@@ -124,31 +132,19 @@ export const prismaReviewTaskSplitCommandPort: ReviewTaskSplitCommandPort = {
       suggestions = fallback.suggestions.map(sanitizeSplitSuggestion);
     }
 
-    const split = await prisma.$transaction(
-      async (tx) => {
-        const result = await splitTaskIntoChildren(tx, {
-          taskId: task.id,
-          workspaceId: actor.workspaceId,
-          userId: actor.userId,
-          expectedStates: [AUTOMATION_STATE.PENDING_SPLIT],
-          status: TASK_STATUS.BACKLOG,
-          suggestions,
-        });
-        if (result.applied) {
-          await tx.auditLog.create({
-            data: {
-              actorId: actor.userId,
-              action: "AUTOMATION_SPLIT_APPROVE",
-              targetWorkspaceId: actor.workspaceId,
-              metadata: { taskId: task.id, created: result.created },
-            },
-          });
-        }
-        return result;
-      },
-      { isolationLevel: "Serializable" },
-    );
+    const split = await applyPendingTaskSplit(actor, {
+      taskId: task.id,
+      suggestions,
+    });
     if (!split.applied) return { status: "no-pending", created: 0 };
+    await prisma.auditLog.create({
+      data: {
+        actorId: actor.userId,
+        action: "AUTOMATION_SPLIT_APPROVE",
+        targetWorkspaceId: actor.workspaceId,
+        metadata: { taskId: task.id, created: split.created },
+      },
+    });
     await maybeRaiseStage(actor.userId, actor.workspaceId);
     return { status: "approved", created: split.created };
   },
