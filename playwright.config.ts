@@ -22,7 +22,9 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1",
+    // Production output avoids dev-server compilation/HMR remounting forms in
+    // the middle of an interaction and also verifies the deployable artifact.
+    command: "npm run build && npm run start -- --hostname 127.0.0.1",
     url: "http://localhost:3000/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -43,7 +43,13 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   await page.getByRole("button", { name: "次へ" }).click();
   await page.getByRole("button", { name: "次へ" }).click();
   await page.getByPlaceholder("やること 1（任意）").fill("最初のE2Eタスク");
+  const onboardingCompleted = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/onboarding",
+  );
   await page.getByRole("button", { name: "利用を開始" }).click();
+  expect((await onboardingCompleted).status()).toBe(200);
 
   await expect(page).toHaveURL(/\/backlog/);
   await expect(page.getByText("最初のE2Eタスク", { exact: true })).toBeVisible();
