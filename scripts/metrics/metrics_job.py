@@ -235,19 +235,19 @@ def compute_average_wip(conn, owner_column: str, owner_id: str, days: int = 14) 
     """Time-weighted average number of started, unfinished tasks in the window."""
     if owner_column not in {"workspaceId", "userId"}:
         raise ValueError("invalid owner column")
+    event_owner_column = "workspaceId" if owner_column == "workspaceId" else "taskCreatorId"
     window_end = now_utc()
     window_start = window_end - timedelta(days=days)
     with conn.cursor() as cur:
         cur.execute(
             f"""
             WITH ordered AS (
-                SELECT e."taskId", e."toState", e."createdAt" AS start_at,
+                SELECT e."taskKey", e."toState", e."createdAt" AS start_at,
                        LEAD(e."createdAt") OVER (
-                           PARTITION BY e."taskId" ORDER BY e."createdAt", e.id
+                           PARTITION BY e."taskKey" ORDER BY e."createdAt", e.id
                        ) AS end_at
                 FROM "TaskWorkflowEvent" e
-                JOIN "Task" t ON t.id = e."taskId"
-                WHERE t."{owner_column}" = %s AND e."createdAt" < %s
+                WHERE e."{event_owner_column}" = %s AND e."createdAt" < %s
             ), intervals AS (
                 SELECT GREATEST(start_at, %s) AS active_from,
                        LEAST(COALESCE(end_at, %s), %s) AS active_until
@@ -400,17 +400,35 @@ def compute_ai_trust_state(conn, workspace_id: str) -> float | None:
 def fetch_tasks(conn, owner_column: str, owner_id: str):
     if owner_column not in {"workspaceId", "userId"}:
         raise ValueError("invalid owner column")
+    event_owner_column = "workspaceId" if owner_column == "workspaceId" else "taskCreatorId"
     with conn.cursor() as cur:
         cur.execute(
             f"""
-            SELECT t.id, t."createdAt", t."workflowState", t.points, t."dueDate",
-                   (
-                       SELECT MAX(e."createdAt")
-                       FROM "TaskWorkflowEvent" e
-                       WHERE e."taskId" = t.id AND e."toState" = 'DONE'
-                   ) AS "doneAt"
-            FROM "Task" t
-            WHERE t."{owner_column}" = %s
+            WITH scoped AS (
+                SELECT e.*
+                FROM "TaskWorkflowEvent" e
+                WHERE e."{event_owner_column}" = %s
+            ), latest AS (
+                SELECT DISTINCT ON (e."taskKey")
+                    e."taskKey", e."toState", e."taskCreatedAt",
+                    e."taskDueDate", e."taskPoints", e."createdAt"
+                FROM scoped e
+                ORDER BY e."taskKey", e."createdAt" DESC, e.id DESC
+            ), latest_done AS (
+                SELECT DISTINCT ON (e."taskKey")
+                    e."taskKey", e."taskDueDate", e."taskPoints", e."createdAt"
+                FROM scoped e
+                WHERE e."toState" = 'DONE'
+                ORDER BY e."taskKey", e."createdAt" DESC, e.id DESC
+            )
+            SELECT latest."taskKey" AS id,
+                   COALESCE(latest."taskCreatedAt", latest."createdAt") AS "createdAt",
+                   latest."toState" AS "workflowState",
+                   COALESCE(latest_done."taskPoints", latest."taskPoints", 0) AS points,
+                   latest_done."taskDueDate" AS "dueDate",
+                   latest_done."createdAt" AS "doneAt"
+            FROM latest
+            LEFT JOIN latest_done USING ("taskKey")
             """,
             (owner_id,),
         )

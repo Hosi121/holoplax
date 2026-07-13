@@ -17,6 +17,9 @@ describe("scheduled metrics job schema contract", () => {
     expect(source).toContain('FROM "TaskWorkflowEvent"');
     expect(source).toContain("\"toState\" IN ('IN_PROGRESS', 'BLOCKED')");
     expect(source).toContain('AS "doneAt"');
+    expect(source).toContain('PARTITION BY e."taskKey"');
+    expect(source).toContain('e."{event_owner_column}" = %s');
+    expect(source).not.toContain('JOIN "Task" t ON t.id = e."taskId"');
     expect(source).not.toContain('task["updatedAt"]');
   });
 });
