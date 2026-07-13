@@ -1,7 +1,6 @@
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
 import { logAudit } from "../../../../../lib/audit";
-import { applyAutomationForTask } from "../../../../../lib/automation";
 import { DiscordCreateTaskSchema } from "../../../../../lib/contracts/integrations";
 import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
@@ -9,9 +8,8 @@ import {
   validateSharedToken,
   verifyIntegrationSignature,
 } from "../../../../../lib/integrations/auth";
-import { isStoryPoint } from "../../../../../lib/points";
 import prisma from "../../../../../lib/prisma";
-import { SEVERITY, type Severity, TASK_STATUS, TASK_TYPE } from "../../../../../lib/types";
+import { createTask } from "../../../../../lib/tasks/task-service";
 
 const getEnv = (key: string) => {
   const value = process.env[key];
@@ -63,16 +61,8 @@ export async function POST(request: Request) {
         dueDate = new Date(body.dueDate);
       }
 
-      // Map urgency
-      const urgencyMap: Record<string, Severity> = {
-        LOW: SEVERITY.LOW,
-        MEDIUM: SEVERITY.MEDIUM,
-        HIGH: SEVERITY.HIGH,
-      };
-      const urgency: Severity = urgencyMap[body.urgency ?? "MEDIUM"] ?? SEVERITY.MEDIUM;
-
-      // Validate points against the canonical story-point set.
-      const points = isStoryPoint(body.points ?? 3) ? (body.points ?? 3) : 3;
+      const urgency = body.urgency ?? "MEDIUM";
+      const points = body.points ?? 3;
 
       // Resolve user and workspace
       const userEnv = getEnv("DISCORD_USER_ID") || getEnv("INTEGRATION_USER_ID");
@@ -87,6 +77,13 @@ export async function POST(request: Request) {
           "workspaceId not resolved; set DISCORD_WORKSPACE_ID or INTEGRATION_WORKSPACE_ID",
         );
       }
+      const membership = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: userEnv } },
+        select: { userId: true },
+      });
+      if (!membership) {
+        return errors.badRequest("configured integration user is not a workspace member");
+      }
 
       // Build description with metadata
       const metaParts = [
@@ -98,18 +95,18 @@ export async function POST(request: Request) {
       const fullDescription = description + meta;
 
       // 3. Create task directly in backlog
-      const task = await prisma.task.create({
-        data: {
+      const task = await createTask({
+        userId: userEnv,
+        workspaceId,
+        input: {
           title: title.slice(0, 140),
           description: fullDescription,
           points,
           urgency,
-          risk: SEVERITY.MEDIUM,
-          status: TASK_STATUS.BACKLOG,
-          type: TASK_TYPE.PBI,
-          dueDate,
-          workspace: { connect: { id: workspaceId } },
-          user: { connect: { id: userEnv } },
+          risk: "MEDIUM",
+          status: "BACKLOG",
+          type: "PBI",
+          dueDate: dueDate?.toISOString() ?? null,
         },
       });
 
@@ -120,20 +117,7 @@ export async function POST(request: Request) {
         metadata: { taskId: task.id, title: task.title, points: task.points, author, channel },
       });
 
-      // 4. Apply automation rules
-      await applyAutomationForTask({
-        userId: userEnv,
-        workspaceId,
-        task: {
-          id: task.id,
-          title: task.title,
-          description: task.description ?? "",
-          points: task.points,
-          status: task.status,
-        },
-      });
-
-      // 5. Return task info
+      // 4. Return task info (createTask already applied status events and automation)
       return ok({
         taskId: task.id,
         title: task.title,

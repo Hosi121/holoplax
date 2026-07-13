@@ -138,6 +138,24 @@ export async function resolveIntakeItem(params: { userId: string; input: Resolve
     const type = Object.values(TASK_TYPE).includes(input.taskType as TaskType)
       ? (input.taskType as TaskType)
       : TASK_TYPE.PBI;
+    const metadata =
+      intakeItem.payload &&
+      typeof intakeItem.payload === "object" &&
+      !Array.isArray(intakeItem.payload)
+        ? (intakeItem.payload as Prisma.JsonObject)
+        : {};
+    const suggestedPoints =
+      typeof metadata.points === "number" && [1, 2, 3, 5, 8, 13, 21, 34].includes(metadata.points)
+        ? metadata.points
+        : 3;
+    const suggestedUrgency =
+      metadata.urgency === "LOW" || metadata.urgency === "HIGH"
+        ? metadata.urgency
+        : SEVERITY.MEDIUM;
+    const suggestedDueDate =
+      typeof metadata.dueDate === "string" && !Number.isNaN(new Date(metadata.dueDate).getTime())
+        ? new Date(metadata.dueDate)
+        : null;
     const task = await prisma.$transaction(async (tx) => {
       const guard = await tx.intakeItem.updateMany({
         where: { id: input.intakeId, status: "PENDING" },
@@ -148,11 +166,12 @@ export async function resolveIntakeItem(params: { userId: string; input: Resolve
         data: {
           title: intakeItem.title,
           description: intakeItem.body,
-          points: 3,
-          urgency: SEVERITY.MEDIUM,
+          points: suggestedPoints,
+          urgency: suggestedUrgency,
           risk: SEVERITY.MEDIUM,
           status: TASK_STATUS.BACKLOG,
           type,
+          dueDate: suggestedDueDate,
           user: { connect: { id: userId } },
           workspace: { connect: { id: workspaceId } },
           statusEvents: {

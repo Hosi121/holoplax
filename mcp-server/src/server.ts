@@ -7,6 +7,7 @@ import express from "express";
 import { verifyAuth } from "./auth.js";
 import { getConfig, validateConfig } from "./config.js";
 import { type ExecutionContext, runWithContext } from "./context.js";
+import prisma from "./prisma.js";
 import { getToolByName, listToolDefinitions } from "./tools/index.js";
 
 // Session to auth context mapping for HTTP mode
@@ -99,8 +100,13 @@ export async function startHttpServer(): Promise<void> {
   app.use(express.json());
 
   // Health check
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok" });
+  app.get("/health", async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: "healthy", database: "reachable" });
+    } catch {
+      res.status(503).json({ status: "unhealthy", database: "unreachable" });
+    }
   });
 
   // Session management: transport and auth context

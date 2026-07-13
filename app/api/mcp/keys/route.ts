@@ -185,6 +185,7 @@ export async function DELETE(request: Request) {
       await logAudit({
         actorId: userId,
         action: "MCP_KEY_REVOKE",
+        targetWorkspaceId: key.workspaceId,
         metadata: { keyId, keyPrefix: key.keyPrefix },
       });
       return ok({ success: true });

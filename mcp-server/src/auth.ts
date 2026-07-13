@@ -88,6 +88,18 @@ async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
   if (keyRecord.user.disabledAt) {
     return { success: false, error: "User account is disabled" };
   }
+  const membership = await prisma.workspaceMember.findUnique({
+    where: {
+      workspaceId_userId: {
+        workspaceId: keyRecord.workspaceId,
+        userId: keyRecord.userId,
+      },
+    },
+    select: { userId: true },
+  });
+  if (!membership) {
+    return { success: false, error: "API key owner no longer has access to the workspace" };
+  }
 
   // Update last used timestamp (fire and forget)
   prisma.mcpApiKey

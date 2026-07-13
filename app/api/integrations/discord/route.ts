@@ -43,6 +43,11 @@ export async function POST(request: Request) {
       if (!userId) {
         return errors.badRequest("userId not resolved; set DISCORD_USER_ID or INTEGRATION_USER_ID");
       }
+      const user = await prisma.user.findFirst({
+        where: { id: userId, disabledAt: null },
+        select: { id: true },
+      });
+      if (!user) return errors.badRequest("configured integration user is invalid or disabled");
 
       // Build description with metadata
       const meta = [author && `by: ${author}`, channel && `ch: #${channel}`]
@@ -57,6 +62,14 @@ export async function POST(request: Request) {
           status: "PENDING",
           title: title.slice(0, 140),
           body: bodyText,
+          payload: {
+            dueDate: body.dueDate ?? null,
+            urgency: body.urgency ?? null,
+            points: body.points ?? null,
+            threadId: body.threadId ?? null,
+            threadUrl: body.threadUrl ?? null,
+            messageUrl: body.messageUrl ?? null,
+          },
           user: { connect: { id: userId } },
         },
       });

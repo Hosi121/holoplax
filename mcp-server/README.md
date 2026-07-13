@@ -37,7 +37,7 @@ npm run build
 **HTTPモード専用：**
 | 変数名 | 必須 | 説明 |
 |--------|------|------|
-| `NEXTAUTH_SECRET` | Yes* | holoplaxと同じJWTシークレット |
+| `NEXTAUTH_SECRET` | No | 従来のセッションJWT認証も使う場合のみ、holoplaxと同じ値 |
 
 *モードに応じて必須
 
@@ -71,8 +71,8 @@ npm start
 
 ### リモートサーバー接続（HTTPモード）
 
-HTTPモードでは、holoplaxのセッショントークン（JWT）を使って認証します。
-各ユーザーが自分のアカウントでMCPを利用できます。
+HTTPモードでは、Holoplaxの設定画面で作成したMCP接続キーを使って認証します。
+キーは作成時に一度だけ表示され、ワークスペース単位で権限が限定されます。
 
 サーバー側で MCP サーバーを HTTP モードで起動：
 
@@ -80,7 +80,6 @@ HTTPモードでは、holoplaxのセッショントークン（JWT）を使っ�
 MCP_TRANSPORT=http \
 MCP_PORT=3001 \
 DATABASE_URL=postgresql://... \
-NEXTAUTH_SECRET=<holoplaxと同じシークレット> \
 npm start
 ```
 
@@ -92,18 +91,18 @@ Claude Desktop でリモートサーバーに接続：
     "holoplax": {
       "url": "https://mcp.holoplax.example.com/mcp",
       "headers": {
-        "Authorization": "Bearer <your-session-token>"
+        "Authorization": "Bearer mcp_<設定画面で作成したキー>"
       }
     }
   }
 }
 ```
 
-**セッショントークンの取得方法：**
+**MCP接続キーの作成方法：**
 
 1. holoplaxにログイン
-2. ブラウザの開発者ツール → Application → Cookies
-3. `next-auth.session-token` の値をコピー
+2. 「設定」→「MCP接続キー」で名前を入力して作成
+3. 一度だけ表示されるキーをMCPクライアントへ設定
 
 **エンドポイント：**
 - `GET /health` - ヘルスチェック
@@ -154,7 +153,7 @@ Claude Desktop でリモートサーバーに接続：
 
 **パラメータ：**
 - `status`: タスクステータス配列 (`BACKLOG`, `SPRINT`, `DONE`)
-- `type`: タスクタイプ配列 (`EPIC`, `PBI`, `TASK`, `ROUTINE`)
+- `type`: タスクタイプ配列 (`EPIC`, `PBI`, `TASK`)
 - `urgency`: 緊急度 (`LOW`, `MEDIUM`, `HIGH`)
 - `risk`: リスク (`LOW`, `MEDIUM`, `HIGH`)
 - `tags`: タグ配列
@@ -199,7 +198,7 @@ Claude Desktop でリモートサーバーに接続：
 
 ### create_sprint
 
-新しいスプリントを開始します。既存のアクティブスプリントは自動的にクローズされます。
+新しいスプリントを開始します。アクティブなスプリントがある場合はエラーになるため、先に `close_sprint` を実行してください。
 
 **パラメータ：**
 - `name`: スプリント名（デフォルト: `Sprint-YYYY-MM-DD`）

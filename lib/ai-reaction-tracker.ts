@@ -2,6 +2,8 @@
  * AI提案の反応トラッキングユーティリティ
  */
 
+import { apiFetch } from "./api-client";
+
 export type SuggestionContext = {
   taskType?: string;
   taskPoints?: number;
@@ -77,12 +79,16 @@ export function trackSuggestionRejected(
 }
 
 function sendReaction(payload: ReactionPayload): void {
-  fetch("/api/ai/reaction", {
+  apiFetch("/api/ai/reaction", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  }).catch((error) => {
-    // 反応トラッキングの失敗はサイレントに無視
-    console.error("Failed to track suggestion reaction:", error);
-  });
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error(`reaction request failed: ${response.status}`);
+    })
+    .catch((error) => {
+      // Tracking is best-effort and must never block the user's action.
+      console.error("Failed to track suggestion reaction:", error);
+    });
 }

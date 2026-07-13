@@ -1,23 +1,27 @@
 // Minimal Slack bot using @slack/bolt that posts to the Holoplax integration endpoint.
-// Requires env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, DISCORD_INTEGRATION_TOKEN (shared), DISCORD_INTEGRATION_URL or SLACK_INTEGRATION_URL.
+// Requires Slack credentials plus a Holoplax shared integration token.
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { App } = require("@slack/bolt");
+const crypto = require("crypto");
 
 const {
   SLACK_BOT_TOKEN,
   SLACK_SIGNING_SECRET,
   SLACK_APP_TOKEN,
-  SLACK_INTEGRATION_URL,
-  DISCORD_INTEGRATION_URL,
+  SLACK_TASK_URL = "http://localhost:3000/api/integrations/discord/task",
+  SLACK_INTEGRATION_TOKEN,
   DISCORD_INTEGRATION_TOKEN,
+  INTEGRATION_SIGNING_SECRET,
+  DISCORD_SIGNING_SECRET,
 } = process.env;
 
-const integrationUrl = SLACK_INTEGRATION_URL || DISCORD_INTEGRATION_URL;
+const integrationToken = SLACK_INTEGRATION_TOKEN || DISCORD_INTEGRATION_TOKEN;
+const signingSecret = INTEGRATION_SIGNING_SECRET || DISCORD_SIGNING_SECRET;
 
-if (!SLACK_BOT_TOKEN || !SLACK_SIGNING_SECRET || !integrationUrl || !DISCORD_INTEGRATION_TOKEN) {
+if (!SLACK_BOT_TOKEN || !SLACK_SIGNING_SECRET || !integrationToken) {
   console.error(
-    "Missing env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, DISCORD_INTEGRATION_TOKEN, SLACK_INTEGRATION_URL/DISCORD_INTEGRATION_URL",
+    "Missing env: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_INTEGRATION_TOKEN (or DISCORD_INTEGRATION_TOKEN)",
   );
   process.exit(1);
 }
@@ -36,24 +40,37 @@ app.command("/holotask", async ({ ack, respond, command }) => {
   const [title, description, pointsRaw] = parts;
   const points = Number(pointsRaw);
   try {
-    const res = await fetch(integrationUrl, {
+    const payload = JSON.stringify({
+      title,
+      description,
+      points: Number.isFinite(points) && points > 0 ? points : undefined,
+      author: command.user_name,
+      channel: command.channel_name,
+    });
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${integrationToken}`,
+    };
+    if (signingSecret) {
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      headers["x-integration-timestamp"] = timestamp;
+      headers["x-integration-signature"] = `v0=${crypto
+        .createHmac("sha256", signingSecret)
+        .update(`v0:${timestamp}:${payload}`)
+        .digest("hex")}`;
+    }
+    const res = await fetch(SLACK_TASK_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${DISCORD_INTEGRATION_TOKEN}`,
-      },
-      body: JSON.stringify({
-        title,
-        description,
-        points: Number.isFinite(points) && points > 0 ? points : undefined,
-      }),
+      headers,
+      body: payload,
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error ?? `API error ${res.status}`);
     }
     const data = await res.json();
-    await respond(`タスクを作成しました: ${title} (id: ${data.taskId ?? "N/A"})`);
+    if (!data.taskId) throw new Error("API response did not include taskId");
+    await respond(`タスクを作成しました: ${title} (id: ${data.taskId})`);
   } catch (error) {
     console.error("failed to create task", error);
     await respond(`失敗しました: ${error.message}`);

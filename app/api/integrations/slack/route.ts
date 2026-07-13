@@ -1,11 +1,11 @@
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { logAudit } from "../../../../lib/audit";
-import { applyAutomationForTask } from "../../../../lib/automation";
 import { createDomainErrors } from "../../../../lib/http/errors";
 import { verifySlackSignature } from "../../../../lib/integrations/auth";
+import { isStoryPoint } from "../../../../lib/points";
 import prisma from "../../../../lib/prisma";
-import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../../../../lib/types";
+import { createTask } from "../../../../lib/tasks/task-service";
 import { resolveWorkspaceId } from "../../../../lib/workspace-context";
 
 const getEnv = (key: string) => {
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
         return ok({ response_type: "ephemeral", text: "タイトルを指定してください。" });
       }
       const pointsNum = Number(pointsRaw);
-      const points = Number.isFinite(pointsNum) && pointsNum > 0 ? pointsNum : 3;
+      const points = isStoryPoint(pointsNum) ? pointsNum : 3;
       const userEnv = getEnv("SLACK_USER_ID") || getEnv("INTEGRATION_USER_ID");
       let workspaceId = getEnv("SLACK_WORKSPACE_ID") || null;
 
@@ -85,40 +85,35 @@ export async function POST(request: Request) {
           text: "userId を解決できませんでした。SLACK_USER_ID を設定してください。",
         });
       }
+      const membership = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: userEnv } },
+        select: { userId: true },
+      });
+      if (!membership) {
+        return ok({
+          response_type: "ephemeral",
+          text: "設定されたユーザーは対象ワークスペースのメンバーではありません。",
+        });
+      }
 
-      const task = await prisma.task.create({
-        data: {
+      const task = await createTask({
+        userId: userEnv,
+        workspaceId,
+        input: {
           title,
           description: description ?? "",
           points,
-          urgency: SEVERITY.MEDIUM,
-          risk: SEVERITY.MEDIUM,
-          status: TASK_STATUS.BACKLOG,
-          type: TASK_TYPE.PBI,
-          workspace: { connect: { id: workspaceId } },
-          user: { connect: { id: userEnv } },
+          status: "BACKLOG",
+          type: "PBI",
         },
       });
 
-      if (userEnv) {
-        await logAudit({
-          actorId: userEnv,
-          action: "INTEGRATION_SLACK_TASK_CREATE",
-          targetWorkspaceId: workspaceId,
-          metadata: { taskId: task.id, title: task.title, points: task.points },
-        });
-        await applyAutomationForTask({
-          userId: userEnv,
-          workspaceId,
-          task: {
-            id: task.id,
-            title: task.title,
-            description: task.description ?? "",
-            points: task.points,
-            status: task.status,
-          },
-        });
-      }
+      await logAudit({
+        actorId: userEnv,
+        action: "INTEGRATION_SLACK_TASK_CREATE",
+        targetWorkspaceId: workspaceId,
+        metadata: { taskId: task.id, title: task.title, points: task.points },
+      });
 
       return ok({
         response_type: "in_channel",

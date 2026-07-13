@@ -63,10 +63,5 @@ export function validateConfig(): void {
     if (!config.userId) {
       throw new Error("MCP_USER_ID is required in stdio mode");
     }
-  } else {
-    // HTTP mode requires NextAuth secret for JWT verification
-    if (!config.nextAuthSecret) {
-      throw new Error("NEXTAUTH_SECRET is required in http mode for JWT verification");
-    }
   }
 }
