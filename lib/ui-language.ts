@@ -1,5 +1,5 @@
-import type { TaskStatus, TaskType } from "@prisma/client";
-import { TASK_STATUS, TASK_TYPE } from "./types";
+import type { TaskStatus, TaskType, TaskWorkflowState } from "@prisma/client";
+import { TASK_STATUS, TASK_TYPE, TASK_WORKFLOW_STATE } from "./types";
 
 /** User-facing language. Internal API/DB enum names must not leak into the UI. */
 export const NAV_LABELS = {
@@ -22,6 +22,14 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   [TASK_STATUS.BACKLOG]: "やること",
   [TASK_STATUS.SPRINT]: "スプリント",
   [TASK_STATUS.DONE]: "完了",
+};
+
+export const TASK_WORKFLOW_STATE_LABELS: Record<TaskWorkflowState, string> = {
+  [TASK_WORKFLOW_STATE.READY]: "未着手",
+  [TASK_WORKFLOW_STATE.IN_PROGRESS]: "進行中",
+  [TASK_WORKFLOW_STATE.BLOCKED]: "停止中",
+  [TASK_WORKFLOW_STATE.DONE]: "完了",
+  [TASK_WORKFLOW_STATE.CANCELED]: "中止",
 };
 
 export const PRODUCT_COPY = {

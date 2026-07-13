@@ -3,7 +3,12 @@ import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
 import { TaskCreateSchema } from "../../../lib/contracts/task";
 import { parseBody } from "../../../lib/http/validation";
-import { isSeverity, isTaskStatus, isTaskType } from "../../../lib/tasks/task-values";
+import {
+  isSeverity,
+  isTaskStatus,
+  isTaskType,
+  isTaskWorkflowState,
+} from "../../../lib/tasks/task-values";
 import { createTask, listTasks } from "../../../modules/tasks/index.server";
 
 const parseDate = (value: string | null): Date | undefined => {
@@ -36,11 +41,17 @@ export async function GET(request: Request) {
       const types = (searchParams.get("type")?.split(",") ?? [])
         .map((value) => value.trim())
         .filter(isTaskType);
+      const workflowStates = searchParams
+        .getAll("workflowState")
+        .flatMap((value) => value.split(","))
+        .map((value) => value.trim())
+        .filter(isTaskWorkflowState);
       const urgency = searchParams.get("urgency");
       const risk = searchParams.get("risk");
 
       const result = await listTasks(workspaceId, {
         statuses,
+        workflowStates,
         types,
         urgency: isSeverity(urgency) ? urgency : undefined,
         risk: isSeverity(risk) ? risk : undefined,

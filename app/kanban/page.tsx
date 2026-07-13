@@ -1,10 +1,15 @@
 "use client";
 
-import { CheckCircle2, Inbox, Zap } from "lucide-react";
+import { Ban, CheckCircle2, CirclePause, CirclePlay, Inbox } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
-import { AUTOMATION_STATE, TASK_STATUS, type TaskDTO, type TaskStatus } from "../../lib/types";
-import { NAV_LABELS, TASK_STATUS_LABELS } from "../../lib/ui-language";
+import {
+  AUTOMATION_STATUS,
+  TASK_WORKFLOW_STATE,
+  type TaskDTO,
+  type TaskWorkflowState,
+} from "../../lib/types";
+import { NAV_LABELS, TASK_WORKFLOW_STATE_LABELS } from "../../lib/ui-language";
 import { DropdownMenu } from "../components/dropdown-menu";
 import { EmptyState } from "../components/empty-state";
 import { TaskCard } from "../components/task-card";
@@ -26,15 +31,17 @@ type SprintInfo = {
 } | null;
 
 type Column = {
-  key: TaskStatus;
+  key: TaskWorkflowState;
   label: string;
   hint: string;
 };
 
 const columns: Column[] = [
-  { key: TASK_STATUS.BACKLOG, label: "やること", hint: "これから取り組む候補" },
-  { key: TASK_STATUS.SPRINT, label: "スプリント", hint: "今週やる" },
-  { key: TASK_STATUS.DONE, label: "完了", hint: "完了したもの" },
+  { key: TASK_WORKFLOW_STATE.READY, label: "未着手", hint: "まだ始めていない" },
+  { key: TASK_WORKFLOW_STATE.IN_PROGRESS, label: "進行中", hint: "いま取り組んでいる" },
+  { key: TASK_WORKFLOW_STATE.BLOCKED, label: "停止中", hint: "確認や待ちが必要" },
+  { key: TASK_WORKFLOW_STATE.DONE, label: "完了", hint: "完了したもの" },
+  { key: TASK_WORKFLOW_STATE.CANCELED, label: "中止", hint: "取り組まないと決めた" },
 ];
 
 export default function KanbanPage() {
@@ -44,17 +51,19 @@ export default function KanbanPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [sprint, setSprint] = useState<SprintInfo>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [hoverColumn, setHoverColumn] = useState<TaskStatus | null>(null);
+  const [hoverColumn, setHoverColumn] = useState<TaskWorkflowState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const isBlocked = useCallback(
-    (item: TaskDTO) => (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE),
+    (item: TaskDTO) => (item.dependencies ?? []).some((dep) => dep.workflowState !== "DONE"),
     [],
   );
   const isAiTask = useCallback(
     (item: TaskDTO) =>
-      item.automationState !== undefined && item.automationState !== AUTOMATION_STATE.NONE,
+      item.origin === "AUTOMATION" ||
+      item.automationStatus !== AUTOMATION_STATUS.NONE ||
+      item.hierarchyRole !== "STANDARD",
     [],
   );
 
@@ -113,27 +122,29 @@ export default function KanbanPage() {
   }, [fetchTasks, fetchMembers, fetchSprint]);
 
   const grouped = useMemo(() => {
-    const map: Record<TaskStatus, TaskDTO[]> = {
-      BACKLOG: [],
-      SPRINT: [],
+    const map: Record<TaskWorkflowState, TaskDTO[]> = {
+      READY: [],
+      IN_PROGRESS: [],
+      BLOCKED: [],
       DONE: [],
+      CANCELED: [],
     };
     items.forEach((item) => {
-      map[item.status]?.push(item);
+      map[item.workflowState]?.push(item);
     });
     return map;
   }, [items]);
 
-  const moveTask = async (taskId: string, status: TaskStatus) => {
+  const moveTask = async (taskId: string, workflowState: TaskWorkflowState) => {
     const target = items.find((item) => item.id === taskId);
-    if (target && (status === TASK_STATUS.SPRINT || status === TASK_STATUS.DONE)) {
+    if (target && workflowState === TASK_WORKFLOW_STATE.DONE) {
       if (isBlocked(target)) {
         toast.warning("依存タスクが未完了のため移動できません。");
         setDraggingId(null);
         setHoverColumn(null);
         return;
       }
-      if (status === TASK_STATUS.DONE && target.checklist?.some((item) => !item.done)) {
+      if (target.checklist?.some((item) => !item.done)) {
         toast.warning("チェックリストが未完了のため完了にできません。");
         setDraggingId(null);
         setHoverColumn(null);
@@ -142,22 +153,20 @@ export default function KanbanPage() {
     }
     setHoverColumn(null);
     const originalItems = [...items];
-    setItems((prev) => prev.map((item) => (item.id === taskId ? { ...item, status } : item)));
+    setItems((prev) =>
+      prev.map((item) => (item.id === taskId ? { ...item, workflowState } : item)),
+    );
     setDraggingId(null);
     const res = await apiFetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ workflowState }),
     });
     if (!res.ok) {
       setItems(originalItems);
       const errorData = await res.json().catch(() => ({}));
       const message = errorData?.error?.message ?? errorData?.message ?? "移動に失敗しました。";
-      if (message.includes("active sprint not found")) {
-        toast.error("アクティブなスプリントがありません。スプリントを開始してください。");
-      } else if (message.includes("sprint capacity exceeded")) {
-        toast.error("スプリントの容量を超えています。");
-      } else if (message.includes("dependencies must be done")) {
+      if (message.includes("dependencies must be done")) {
         toast.warning("依存タスクが未完了のため移動できません。");
       } else {
         toast.error(message);
@@ -168,8 +177,8 @@ export default function KanbanPage() {
     await fetchSprint();
   };
 
-  const handleDrop = async (status: TaskStatus) => {
-    if (draggingId) await moveTask(draggingId, status);
+  const handleDrop = async (workflowState: TaskWorkflowState) => {
+    if (draggingId) await moveTask(draggingId, workflowState);
   };
 
   return (
@@ -190,7 +199,7 @@ export default function KanbanPage() {
       {error ? <InlineError message={error} onRetry={() => void fetchTasks()} /> : null}
       {loading && !items.length ? <PageSkeleton /> : null}
 
-      <section className="min-w-0 grid gap-4 lg:grid-cols-3">
+      <section className="grid min-w-0 gap-4 overflow-x-auto lg:grid-cols-5">
         {columns.map((col) => (
           <div
             key={col.key}
@@ -206,16 +215,8 @@ export default function KanbanPage() {
           >
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">
-                  {col.key === TASK_STATUS.SPRINT && sprint
-                    ? `スプリント: ${sprint.name}`
-                    : col.label}
-                </h2>
-                <p className="text-xs text-slate-500">
-                  {col.key === TASK_STATUS.SPRINT && !sprint
-                    ? "アクティブなスプリントがありません"
-                    : col.hint}
-                </p>
+                <h2 className="text-sm font-semibold text-slate-900">{col.label}</h2>
+                <p className="text-xs text-slate-500">{col.hint}</p>
               </div>
               <span className="border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
                 {grouped[col.key].length}
@@ -248,9 +249,9 @@ export default function KanbanPage() {
                       <DropdownMenu
                         label="進み具合を変更"
                         items={columns
-                          .filter((target) => target.key !== item.status)
+                          .filter((target) => target.key !== item.workflowState)
                           .map((target) => ({
-                            label: `${TASK_STATUS_LABELS[target.key]}へ移動`,
+                            label: `${TASK_WORKFLOW_STATE_LABELS[target.key]}へ移動`,
                             onClick: () => void moveTask(item.id, target.key),
                           }))}
                       />
@@ -260,40 +261,34 @@ export default function KanbanPage() {
               ) : (
                 <EmptyState
                   icon={
-                    col.key === TASK_STATUS.BACKLOG
+                    col.key === TASK_WORKFLOW_STATE.READY
                       ? Inbox
-                      : col.key === TASK_STATUS.SPRINT
-                        ? Zap
-                        : CheckCircle2
+                      : col.key === TASK_WORKFLOW_STATE.IN_PROGRESS
+                        ? CirclePlay
+                        : col.key === TASK_WORKFLOW_STATE.BLOCKED
+                          ? CirclePause
+                          : col.key === TASK_WORKFLOW_STATE.CANCELED
+                            ? Ban
+                            : CheckCircle2
                   }
                   title={
-                    col.key === TASK_STATUS.BACKLOG
-                      ? "やることは空です"
-                      : col.key === TASK_STATUS.SPRINT
-                        ? "スプリントにタスクがありません"
-                        : "完了タスクはまだありません"
+                    col.key === TASK_WORKFLOW_STATE.READY
+                      ? "未着手の作業はありません"
+                      : `${col.label}の作業はありません`
                   }
                   description={
-                    col.key === TASK_STATUS.BACKLOG
-                      ? "やること画面からタスクを追加しましょう。"
-                      : col.key === TASK_STATUS.SPRINT
-                        ? "やることから今回進めるタスクを選びましょう。"
-                        : "タスクをここにドラッグすると完了になります。"
+                    col.key === TASK_WORKFLOW_STATE.READY
+                      ? "やること画面から作業を追加しましょう。"
+                      : `作業をここにドラッグすると「${col.label}」になります。`
                   }
                   actionLabel={
-                    col.key === TASK_STATUS.BACKLOG
+                    col.key === TASK_WORKFLOW_STATE.READY
                       ? "やることを見る"
-                      : col.key === TASK_STATUS.SPRINT
-                        ? sprint
-                          ? "やることを選ぶ"
-                          : "スプリントを開始"
-                        : "スプリントを確認"
+                      : sprint
+                        ? "スプリントを確認"
+                        : "スプリントを始める"
                   }
-                  actionHref={
-                    col.key === TASK_STATUS.BACKLOG || (col.key === TASK_STATUS.SPRINT && sprint)
-                      ? "/backlog"
-                      : "/sprint"
-                  }
+                  actionHref={col.key === TASK_WORKFLOW_STATE.READY ? "/backlog" : "/sprint"}
                 />
               )}
             </div>

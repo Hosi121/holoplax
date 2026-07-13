@@ -6,10 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { STORY_POINTS } from "../../lib/points";
 import {
-  AUTOMATION_STATE,
+  AUTOMATION_STATUS,
   SEVERITY,
   SEVERITY_LABELS,
   type Severity,
+  TASK_HIERARCHY_ROLE,
   TASK_STATUS,
   TASK_TYPE,
   type TaskDTO,
@@ -391,7 +392,7 @@ export default function BacklogPage() {
       }
 
       // visibleItems + groupedByType
-      if (item.status === targetStatus && item.automationState !== AUTOMATION_STATE.SPLIT_PARENT) {
+      if (item.status === targetStatus && item.hierarchyRole !== TASK_HIERARCHY_ROLE.SPLIT_PARENT) {
         visibleItems.push(item);
         groupedByType[type].push(item);
       }
@@ -407,7 +408,7 @@ export default function BacklogPage() {
   }, [items, view]);
 
   const isBlocked = (item: TaskDTO) =>
-    (item.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE);
+    (item.dependencies ?? []).some((dep) => dep.workflowState !== "DONE");
 
   const addItem = async () => {
     if (!form.title.trim()) return;
@@ -970,13 +971,13 @@ export default function BacklogPage() {
 
       <FocusPanel />
 
-      {items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT).length ? (
+      {items.filter((item) => item.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">AIの分割案</h2>
             <span className="text-xs text-[var(--text-muted)]">
               {
-                items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT)
+                items.filter((item) => item.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING)
                   .length
               }{" "}
               件
@@ -984,7 +985,7 @@ export default function BacklogPage() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {items
-              .filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT)
+              .filter((item) => item.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING)
               .map((item) => (
                 <div
                   key={item.id}
@@ -1127,7 +1128,7 @@ export default function BacklogPage() {
         </div>
       </section>
 
-      {items.filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT).length ? (
+      {items.filter((item) => item.hierarchyRole === TASK_HIERARCHY_ROLE.SPLIT_PARENT).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -1135,7 +1136,7 @@ export default function BacklogPage() {
             </h2>
             <span className="text-xs text-[var(--text-muted)]">
               {
-                items.filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT)
+                items.filter((item) => item.hierarchyRole === TASK_HIERARCHY_ROLE.SPLIT_PARENT)
                   .length
               }{" "}
               件
@@ -1143,7 +1144,7 @@ export default function BacklogPage() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {items
-              .filter((item) => item.automationState === AUTOMATION_STATE.SPLIT_PARENT)
+              .filter((item) => item.hierarchyRole === TASK_HIERARCHY_ROLE.SPLIT_PARENT)
               .map((item) => (
                 <div
                   key={item.id}

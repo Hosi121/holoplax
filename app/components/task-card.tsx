@@ -3,14 +3,15 @@
 import { BarChart2, Lightbulb, Pencil, Scissors, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
-  AUTOMATION_STATE,
+  AUTOMATION_STATUS,
   SEVERITY_LABELS,
   type Severity,
-  TASK_STATUS,
+  TASK_WORKFLOW_STATE,
   type TaskDTO,
   type TaskType,
+  type TaskWorkflowState,
 } from "../../lib/types";
-import { TASK_TYPE_LABELS } from "../../lib/ui-language";
+import { TASK_TYPE_LABELS, TASK_WORKFLOW_STATE_LABELS } from "../../lib/ui-language";
 import { DropdownMenu } from "./dropdown-menu";
 import { ExpandableText } from "./expandable-text";
 import { useToast } from "./toast";
@@ -97,6 +98,7 @@ export type TaskCardProps = {
   onMoveToSprint?: () => void;
   onMoveToBacklog?: () => void;
   onMarkDone?: () => void;
+  onWorkflowStateChange?: (state: TaskWorkflowState) => void;
   onToggleChecklistItem?: (checklistId: string) => void;
   // Custom actions slot
   renderActions?: () => ReactNode;
@@ -193,6 +195,7 @@ export function TaskCard({
   onMoveToSprint,
   onMoveToBacklog,
   onMarkDone,
+  onWorkflowStateChange,
   onToggleChecklistItem,
   renderActions,
   draggable,
@@ -257,6 +260,11 @@ export function TaskCard({
               {item.points} pt
             </span>
           )}
+          {!isKanban && !isCompact && (
+            <span className="border border-slate-200 bg-white px-2 py-1 text-slate-600">
+              {TASK_WORKFLOW_STATE_LABELS[item.workflowState]}
+            </span>
+          )}
           {showSeverity && !isKanban && !isCompact && (
             <>
               <span className="border border-slate-200 bg-white px-2 py-1 text-slate-700">
@@ -267,12 +275,12 @@ export function TaskCard({
               </span>
             </>
           )}
-          {item.automationState === AUTOMATION_STATE.PENDING_SPLIT && (
+          {item.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING && (
             <span className="border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
               確認待ち
             </span>
           )}
-          {item.automationState === AUTOMATION_STATE.DELEGATED && (
+          {item.automationStatus === AUTOMATION_STATUS.PREPARED && (
             <span className="border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
               AI下準備あり
             </span>
@@ -313,7 +321,7 @@ export function TaskCard({
         >
           依存:{" "}
           {item.dependencies
-            .map((dep) => (dep.status === TASK_STATUS.DONE ? dep.title : `${dep.title}*`))
+            .map((dep) => (dep.workflowState === "DONE" ? dep.title : `${dep.title}*`))
             .join(", ")}
         </p>
       )}
@@ -374,13 +382,47 @@ export function TaskCard({
                 </button>
               )}
 
-              {variant === "sprint" && onMarkDone && (
+              {variant === "sprint" &&
+                onWorkflowStateChange &&
+                item.workflowState === TASK_WORKFLOW_STATE.READY && (
+                  <button
+                    className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    onClick={() => onWorkflowStateChange(TASK_WORKFLOW_STATE.IN_PROGRESS)}
+                  >
+                    着手
+                  </button>
+                )}
+
+              {variant === "sprint" &&
+                onWorkflowStateChange &&
+                item.workflowState === TASK_WORKFLOW_STATE.BLOCKED && (
+                  <button
+                    className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
+                    onClick={() => onWorkflowStateChange(TASK_WORKFLOW_STATE.IN_PROGRESS)}
+                  >
+                    再開
+                  </button>
+                )}
+
+              {variant === "sprint" && onMarkDone && item.workflowState !== "DONE" && (
                 <button
                   className="border border-slate-200 bg-white px-3 py-1 text-slate-700 transition hover:border-[#2323eb]/50 hover:text-[#2323eb]"
                   onClick={onMarkDone}
                 >
                   完了
                 </button>
+              )}
+
+              {variant === "sprint" && onWorkflowStateChange && (
+                <DropdownMenu
+                  label="進み具合"
+                  items={Object.values(TASK_WORKFLOW_STATE)
+                    .filter((state) => state !== item.workflowState)
+                    .map((state) => ({
+                      label: TASK_WORKFLOW_STATE_LABELS[state],
+                      onClick: () => onWorkflowStateChange(state),
+                    }))}
+                />
               )}
 
               {/* AI Suggestions Dropdown */}
@@ -544,7 +586,7 @@ export function TaskCard({
             >
               依存:{" "}
               {item.dependencies
-                .map((dep) => (dep.status === TASK_STATUS.DONE ? dep.title : `${dep.title}*`))
+                .map((dep) => (dep.workflowState === "DONE" ? dep.title : `${dep.title}*`))
                 .join(", ")}
             </span>
           )}
