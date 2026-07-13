@@ -40,6 +40,7 @@ describe("rate-limiter", () => {
     it("should return ai config for /api/ai endpoints", () => {
       expect(getRateLimitConfig("/api/ai/suggest")).toBe(RATE_LIMIT_CONFIGS.ai);
       expect(getRateLimitConfig("/api/ai/score")).toBe(RATE_LIMIT_CONFIGS.ai);
+      expect(getRateLimitConfig("/api/delegations")).toBe(RATE_LIMIT_CONFIGS.ai);
     });
 
     it("should return admin config for /api/admin endpoints", () => {

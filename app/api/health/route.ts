@@ -15,6 +15,15 @@ type HealthStatus = {
     oldestPendingAt: string | null;
     oldestRunningAt: string | null;
   };
+  delegation: {
+    pending: number;
+    running: number;
+    failed: number;
+    stalePending: number;
+    staleRunning: number;
+    oldestPendingAt: string | null;
+    oldestRunningAt: string | null;
+  };
   timestamp: string;
   version: string;
 };
@@ -29,6 +38,11 @@ export async function GET() {
       ...snapshot.automation,
       oldestPendingAt: snapshot.automation.oldestPendingAt?.toISOString() ?? null,
       oldestRunningAt: snapshot.automation.oldestRunningAt?.toISOString() ?? null,
+    },
+    delegation: {
+      ...snapshot.delegation,
+      oldestPendingAt: snapshot.delegation.oldestPendingAt?.toISOString() ?? null,
+      oldestRunningAt: snapshot.delegation.oldestRunningAt?.toISOString() ?? null,
     },
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version ?? "unknown",

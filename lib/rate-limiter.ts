@@ -164,7 +164,7 @@ export function getRateLimitConfig(pathname: string): RateLimitConfig {
   }
 
   // AI endpoints
-  if (pathname.startsWith("/api/ai")) {
+  if (pathname.startsWith("/api/ai") || pathname.startsWith("/api/delegations")) {
     return RATE_LIMIT_CONFIGS.ai;
   }
 

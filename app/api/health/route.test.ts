@@ -24,6 +24,15 @@ describe("GET /api/health", () => {
         oldestPendingAt: new Date("2026-07-13T00:00:00Z"),
         oldestRunningAt: null,
       },
+      delegation: {
+        pending: 0,
+        running: 0,
+        failed: 0,
+        stalePending: 0,
+        staleRunning: 0,
+        oldestPendingAt: null,
+        oldestRunningAt: null,
+      },
     });
 
     const response = await GET();

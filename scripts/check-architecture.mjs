@@ -207,6 +207,7 @@ const protectedAdapters = [
   "app/api/integrations/discord/",
   "app/api/mcp/",
   "app/api/account/",
+  "app/api/delegations/",
   "app/api/auth/",
   "app/api/ai/",
   "app/api/memory/",

@@ -20,7 +20,12 @@ export async function registerNodeInstrumentation() {
   if (process.env.NODE_ENV === "test" || process.env.NEXT_PHASE === "phase-production-build") {
     return;
   }
-  const { startDurableTaskAutomationWorker } = await import("./modules/tasks/index.server");
+  const [{ startDurableTaskAutomationWorker }, { startDurableDelegationWorker }] =
+    await Promise.all([
+      import("./modules/tasks/index.server"),
+      import("./modules/delegation/index.server"),
+    ]);
   startDurableTaskAutomationWorker();
+  startDurableDelegationWorker();
   logger.info("Server instrumentation initialized");
 }

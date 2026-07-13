@@ -121,6 +121,34 @@ enum TaskAutomationJobStatus {
   CANCELED
 }
 
+enum DelegationMode {
+  PREPARE
+  SAFE_AUTO
+}
+
+enum DelegationKind {
+  RESEARCH
+  WRITING
+  CODE
+  GENERAL
+}
+
+enum DelegationRisk {
+  LOW
+  REVIEW
+  RESTRICTED
+}
+
+enum DelegationJobStatus {
+  PENDING
+  RUNNING
+  NEEDS_APPROVAL
+  NEEDS_INPUT
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 enum RoutineCadence {
   DAILY
   WEEKLY
@@ -250,6 +278,7 @@ model User {
   taskWorkflowEvents       TaskWorkflowEvent[]      @relation("WorkflowEventActor")
   taskDependencyEvents     TaskDependencyEvent[]    @relation("DependencyEventActor")
   taskAutomationJobs       TaskAutomationJob[]      @relation("TaskAutomationJobRequester")
+  delegationJobs           DelegationJob[]
   memoryClaims             MemoryClaim[]
   memoryMetrics            MemoryMetric[]
   memoryQuestions          MemoryQuestion[]
@@ -364,6 +393,7 @@ model Workspace {
   taskComments             TaskComment[]
   routineSeries            RoutineSeries[]
   taskAutomationJobs       TaskAutomationJob[]
+  delegationJobs           DelegationJob[]
   mcpApiKeys               McpApiKey[]
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
@@ -829,6 +859,36 @@ model TaskAutomationJob {
   @@index([status, availableAt, createdAt])
   @@index([taskKey, createdAt])
   @@index([workspaceId, status])
+}
+
+model DelegationJob {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId    String?
+  workspace      Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  request        String              @db.Text
+  mode           DelegationMode      @default(SAFE_AUTO)
+  kind           DelegationKind
+  risk           DelegationRisk
+  status         DelegationJobStatus @default(PENDING)
+  approvalReason String?
+  plan           Json
+  result         String?             @db.Text
+  verification   Json?
+  attempts       Int                 @default(0)
+  availableAt    DateTime            @default(now())
+  lockedAt       DateTime?
+  lockedBy       String?
+  lastError      String?             @db.Text
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@index([status, availableAt, createdAt])
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 model MemoryDefinition {

@@ -1,15 +1,18 @@
+export type QueueHealthSnapshot = {
+  pending: number;
+  running: number;
+  failed: number;
+  stalePending: number;
+  staleRunning: number;
+  oldestPendingAt: Date | null;
+  oldestRunningAt: Date | null;
+};
+
 export type SystemHealthSnapshot = {
   status: "healthy" | "degraded" | "unhealthy";
   databaseReachable: boolean;
-  automation: {
-    pending: number;
-    running: number;
-    failed: number;
-    stalePending: number;
-    staleRunning: number;
-    oldestPendingAt: Date | null;
-    oldestRunningAt: Date | null;
-  };
+  automation: QueueHealthSnapshot;
+  delegation: QueueHealthSnapshot;
 };
 
 export type AutomationHealthThresholds = {
@@ -53,10 +56,9 @@ export const createHealthQuery =
   ) =>
   async (): Promise<SystemHealthSnapshot> => {
     const snapshot = await port.load(thresholds);
-    const degraded =
-      snapshot.automation.failed > 0 ||
-      snapshot.automation.stalePending > 0 ||
-      snapshot.automation.staleRunning > 0;
+    const degraded = [snapshot.automation, snapshot.delegation].some(
+      (queue) => queue.failed > 0 || queue.stalePending > 0 || queue.staleRunning > 0,
+    );
     return {
       ...snapshot,
       status: snapshot.databaseReachable ? (degraded ? "degraded" : "healthy") : "unhealthy",

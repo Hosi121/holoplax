@@ -16,6 +16,15 @@ const snapshot = (overrides: Partial<Awaited<ReturnType<HealthQueryPort["load"]>
     oldestPendingAt: null,
     oldestRunningAt: null,
   },
+  delegation: {
+    pending: 0,
+    running: 0,
+    failed: 0,
+    stalePending: 0,
+    staleRunning: 0,
+    oldestPendingAt: null,
+    oldestRunningAt: null,
+  },
   ...overrides,
 });
 
@@ -46,5 +55,21 @@ describe("system health query", () => {
         AUTOMATION_RUNNING_STALE_MS: "invalid",
       }),
     ).toEqual({ pendingStaleMs: 1_500, runningStaleMs: 300_000 });
+  });
+
+  it("marks stalled personal delegation as degraded", async () => {
+    const port: HealthQueryPort = {
+      load: vi.fn().mockResolvedValue(
+        snapshot({
+          delegation: {
+            ...snapshot().delegation,
+            running: 1,
+            staleRunning: 1,
+          },
+        }),
+      ),
+    };
+
+    await expect(createHealthQuery(port)()).resolves.toMatchObject({ status: "degraded" });
   });
 });
