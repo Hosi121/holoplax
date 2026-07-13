@@ -8,6 +8,18 @@ const sprintSelect = {
   startedAt: true,
   plannedEndAt: true,
   endedAt: true,
+  items: {
+    orderBy: { committedAt: "asc" },
+    select: {
+      taskKey: true,
+      taskTitle: true,
+      taskType: true,
+      committedPoints: true,
+      outcome: true,
+      completedAt: true,
+      removedAt: true,
+    },
+  },
 } as const;
 
 export const prismaReviewQueryPort: ReviewQueryPort = {
@@ -39,14 +51,17 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
           id: true,
           title: true,
           status: true,
+          workflowState: true,
           type: true,
           points: true,
           sprintId: true,
           urgency: true,
-          automationState: true,
+          automationStatus: true,
+          hierarchyRole: true,
+          origin: true,
           createdAt: true,
-          statusEvents: {
-            where: { toStatus: "DONE" },
+          workflowEvents: {
+            where: { toState: "DONE" },
             orderBy: { createdAt: "desc" },
             take: 1,
             select: { createdAt: true },
@@ -60,7 +75,10 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
         select: { id: true, points: true },
       }),
       prisma.taskDependency.count({
-        where: { task: { workspaceId }, dependsOn: { status: { not: "DONE" } } },
+        where: {
+          task: { workspaceId },
+          dependsOn: { workflowState: { notIn: ["DONE", "CANCELED"] } },
+        },
       }),
       prisma.taskStatusEvent.findMany({
         where: { workspaceId, createdAt: { gte: activitySince } },

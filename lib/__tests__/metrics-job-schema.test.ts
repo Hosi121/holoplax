@@ -13,8 +13,9 @@ describe("scheduled metrics job schema contract", () => {
     expect(source).not.toContain('"typeId"');
   });
 
-  it("derives completion from status events rather than Task.updatedAt", () => {
-    expect(source).toContain('FROM "TaskStatusEvent"');
+  it("derives workflow metrics from workflow events rather than planning placement", () => {
+    expect(source).toContain('FROM "TaskWorkflowEvent"');
+    expect(source).toContain("\"toState\" IN ('IN_PROGRESS', 'BLOCKED')");
     expect(source).toContain('AS "doneAt"');
     expect(source).not.toContain('task["updatedAt"]');
   });

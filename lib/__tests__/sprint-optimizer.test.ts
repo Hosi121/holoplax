@@ -10,11 +10,17 @@ const task = (id: string, points: TaskDTO["points"], dependencyIds: string[] = [
   urgency: "MEDIUM",
   risk: "MEDIUM",
   status: "BACKLOG",
+  workflowState: "READY",
+  planningState: "BACKLOG",
+  automationStatus: "NONE",
+  hierarchyRole: "STANDARD",
+  origin: "MANUAL",
   type: "PBI",
   dependencies: dependencyIds.map((dependencyId) => ({
     id: dependencyId,
     title: dependencyId,
     status: "BACKLOG",
+    workflowState: "READY",
   })),
 });
 
@@ -53,5 +59,14 @@ describe("optimizeSprint", () => {
     expect(result.excludedTasks.find((item) => item.task.id === "root")?.reason).toContain(
       "キャパ超過",
     );
+  });
+
+  it("does not recommend containers that cannot be committed", () => {
+    const epic = { ...task("epic", 5), type: "EPIC" as const };
+    const parent = { ...task("parent", 3), childCount: 2 };
+    const leaf = task("leaf", 2);
+    const result = optimizeSprint([epic, parent, leaf], 10);
+
+    expect(result.selectedTasks.map(({ id }) => id)).toEqual(["leaf"]);
   });
 });

@@ -67,8 +67,12 @@ function collectDependencyBundle(
     if (selectedIds.has(task.id) || visited.has(task.id)) return null;
     if (visiting.has(task.id)) return "依存関係が循環しています";
     visiting.add(task.id);
+    if (task.type === "EPIC" || (task.childCount ?? 0) > 0) {
+      visiting.delete(task.id);
+      return `「${task.title}」は子をまとめる項目のため、直接スプリントには追加できません`;
+    }
     for (const dependency of task.dependencies ?? []) {
-      if (dependency.status === TASK_STATUS.DONE || selectedIds.has(dependency.id)) continue;
+      if (dependency.workflowState === "DONE" || selectedIds.has(dependency.id)) continue;
       const dependencyTask = taskMap.get(dependency.id);
       if (!dependencyTask || dependencyTask.status !== TASK_STATUS.BACKLOG) {
         return "未完了の依存タスクがバックログにありません";
@@ -91,7 +95,10 @@ function collectDependencyBundle(
  */
 export function optimizeSprint(backlogTasks: TaskDTO[], capacity: number): OptimizationResult {
   // バックログタスクのみをフィルタ
-  const candidates = backlogTasks.filter((t) => t.status === TASK_STATUS.BACKLOG);
+  const candidates = backlogTasks.filter(
+    (task) =>
+      task.status === TASK_STATUS.BACKLOG && task.type !== "EPIC" && (task.childCount ?? 0) === 0,
+  );
 
   if (candidates.length === 0) {
     return {

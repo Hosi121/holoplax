@@ -13,12 +13,31 @@ const sprintSelect = {
   endedAt: true,
 } as const;
 
+const sprintItemsSelect = {
+  committedPoints: true,
+  outcome: true,
+  removedAt: true,
+} as const;
+
 const error = (kind: "bad_request" | "not_found" | "conflict", message: string) =>
   new ApplicationError(`SPRINT_${kind.toUpperCase()}`, message, kind);
 
-const summarize = (tasks: Array<{ status: string; points: number }>) => ({
-  committedPoints: tasks.reduce((sum, task) => sum + task.points, 0),
-  completedPoints: tasks.reduce((sum, task) => sum + (task.status === "DONE" ? task.points : 0), 0),
+const summarize = (
+  items: Array<{ outcome: string; committedPoints: number; removedAt: Date | null }>,
+) => ({
+  committedPoints: items.reduce((sum, item) => sum + item.committedPoints, 0),
+  activePoints: items.reduce(
+    (sum, item) =>
+      sum +
+      (item.removedAt === null && (item.outcome === "COMMITTED" || item.outcome === "COMPLETED")
+        ? item.committedPoints
+        : 0),
+    0,
+  ),
+  completedPoints: items.reduce(
+    (sum, item) => sum + (item.outcome === "COMPLETED" ? item.committedPoints : 0),
+    0,
+  ),
 });
 
 export const prismaSprintOperationsPort: SprintOperationsPort = {
@@ -31,20 +50,20 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
       where: { workspaceId, ...(options.status ? { status: options.status } : {}) },
       orderBy: { startedAt: "desc" },
       ...(take ? { take } : {}),
-      select: { ...sprintSelect, tasks: { select: { status: true, points: true } } },
+      select: { ...sprintSelect, items: { select: sprintItemsSelect } },
     });
-    return sprints.map(({ tasks, ...sprint }) => ({ ...sprint, ...summarize(tasks) }));
+    return sprints.map(({ items, ...sprint }) => ({ ...sprint, ...summarize(items) }));
   },
 
   async current(workspaceId) {
     const sprint = await prisma.sprint.findFirst({
       where: { workspaceId, status: "ACTIVE" },
       orderBy: { startedAt: "desc" },
-      select: { ...sprintSelect, tasks: { select: { status: true, points: true } } },
+      select: { ...sprintSelect, items: { select: sprintItemsSelect } },
     });
     if (!sprint) return null;
-    const { tasks, ...current } = sprint;
-    return { ...current, ...summarize(tasks) };
+    const { items, ...current } = sprint;
+    return { ...current, ...summarize(items) };
   },
 
   async create(actor, input = {}) {
@@ -56,10 +75,18 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
             select: { id: true },
           });
           if (active) throw error("conflict", "close the active sprint before starting a new one");
+          const legacySprintTasks = await tx.task.findMany({
+            where: { workspaceId: actor.workspaceId, status: "SPRINT" },
+            select: { id: true, title: true, type: true, points: true },
+          });
+          const capacityPoints = input.capacityPoints ?? 24;
+          if (legacySprintTasks.reduce((sum, task) => sum + task.points, 0) > capacityPoints) {
+            throw error("bad_request", "tasks selected for the sprint exceed its capacity");
+          }
           const sprint = await tx.sprint.create({
             data: {
               name: input.name?.trim() || `Sprint-${new Date().toISOString().slice(0, 10)}`,
-              capacityPoints: input.capacityPoints ?? 24,
+              capacityPoints,
               userId: actor.userId,
               workspaceId: actor.workspaceId,
               plannedEndAt: input.plannedEndAt ? new Date(input.plannedEndAt) : null,
@@ -70,6 +97,19 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
             where: { workspaceId: actor.workspaceId, status: "SPRINT" },
             data: { sprintId: sprint.id },
           });
+          if (legacySprintTasks.length) {
+            await tx.sprintItem.createMany({
+              data: legacySprintTasks.map((task) => ({
+                sprintId: sprint.id,
+                taskId: task.id,
+                taskKey: task.id,
+                taskTitle: task.title,
+                taskType: task.type,
+                committedPoints: task.points,
+              })),
+              skipDuplicates: true,
+            });
+          }
           await tx.auditLog.create({
             data: {
               actorId: actor.userId,
@@ -99,20 +139,21 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
           select: { id: true },
         });
         if (!active) throw error("not_found", "active sprint not found");
+        const closedAt = new Date();
         const claimed = await tx.sprint.updateMany({
           where: { id: active.id, workspaceId: actor.workspaceId, status: "ACTIVE" },
-          data: { status: "CLOSED", endedAt: new Date() },
+          data: { status: "CLOSED", endedAt: closedAt },
         });
         if (!claimed.count) throw error("conflict", "active sprint was already closed");
         const sprint = await tx.sprint.findUniqueOrThrow({
           where: { id: active.id },
           select: sprintSelect,
         });
-        const aggregate = await tx.task.aggregate({
-          where: { sprintId: active.id, status: "DONE" },
-          _sum: { points: true },
+        const aggregate = await tx.sprintItem.aggregate({
+          where: { sprintId: active.id, outcome: "COMPLETED" },
+          _sum: { committedPoints: true },
         });
-        const completedPoints = aggregate._sum.points ?? 0;
+        const completedPoints = aggregate._sum.committedPoints ?? 0;
         const range = `${Math.max(0, completedPoints - 2)}-${completedPoints + 2}`;
         await tx.velocityEntry.create({
           data: {
@@ -125,12 +166,16 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
           },
         });
         const sprintTasks = await tx.task.findMany({
-          where: { workspaceId: actor.workspaceId, status: "SPRINT" },
+          where: { workspaceId: actor.workspaceId, sprintId: active.id, status: "SPRINT" },
           select: { id: true },
         });
         await tx.task.updateMany({
-          where: { workspaceId: actor.workspaceId, status: "SPRINT" },
+          where: { workspaceId: actor.workspaceId, sprintId: active.id, status: "SPRINT" },
           data: { status: "BACKLOG", sprintId: null },
+        });
+        await tx.sprintItem.updateMany({
+          where: { sprintId: active.id, outcome: "COMMITTED", removedAt: null },
+          data: { outcome: "CARRYOVER", removedAt: closedAt },
         });
         if (sprintTasks.length) {
           await tx.taskStatusEvent.createMany({
@@ -170,34 +215,55 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
     if (input.name !== undefined && !input.name.trim()) {
       throw error("bad_request", "name is required");
     }
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.sprint.updateMany({
-        where: { id: sprintId, workspaceId: actor.workspaceId },
-        data: {
-          ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-          ...(input.capacityPoints !== undefined ? { capacityPoints: input.capacityPoints } : {}),
-          ...(input.startedAt !== undefined
-            ? { startedAt: input.startedAt ? new Date(input.startedAt) : undefined }
-            : {}),
-          ...(input.plannedEndAt !== undefined
-            ? { plannedEndAt: input.plannedEndAt ? new Date(input.plannedEndAt) : null }
-            : {}),
-        },
-      });
-      if (!updated.count) throw error("not_found", "sprint not found");
-      const sprint = await tx.sprint.findUniqueOrThrow({
-        where: { id: sprintId },
-        select: sprintSelect,
-      });
-      await tx.auditLog.create({
-        data: {
-          actorId: actor.userId,
-          action: "SPRINT_UPDATE",
-          targetWorkspaceId: actor.workspaceId,
-          metadata: { sprintId },
-        },
-      });
-      return sprint;
-    });
+    return prisma.$transaction(
+      async (tx) => {
+        const current = await tx.sprint.findFirst({
+          where: { id: sprintId, workspaceId: actor.workspaceId },
+          select: { id: true, status: true },
+        });
+        if (!current) throw error("not_found", "sprint not found");
+        if (current.status === "ACTIVE" && input.capacityPoints !== undefined) {
+          const committed = await tx.sprintItem.aggregate({
+            where: {
+              sprintId,
+              removedAt: null,
+              outcome: { in: ["COMMITTED", "COMPLETED"] },
+            },
+            _sum: { committedPoints: true },
+          });
+          if ((committed._sum.committedPoints ?? 0) > input.capacityPoints) {
+            throw error("bad_request", "capacity cannot be lower than committed points");
+          }
+        }
+        const updated = await tx.sprint.updateMany({
+          where: { id: sprintId, workspaceId: actor.workspaceId },
+          data: {
+            ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+            ...(input.capacityPoints !== undefined ? { capacityPoints: input.capacityPoints } : {}),
+            ...(input.startedAt !== undefined
+              ? { startedAt: input.startedAt ? new Date(input.startedAt) : undefined }
+              : {}),
+            ...(input.plannedEndAt !== undefined
+              ? { plannedEndAt: input.plannedEndAt ? new Date(input.plannedEndAt) : null }
+              : {}),
+          },
+        });
+        if (!updated.count) throw error("not_found", "sprint not found");
+        const sprint = await tx.sprint.findUniqueOrThrow({
+          where: { id: sprintId },
+          select: sprintSelect,
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: actor.userId,
+            action: "SPRINT_UPDATE",
+            targetWorkspaceId: actor.workspaceId,
+            metadata: { sprintId },
+          },
+        });
+        return sprint;
+      },
+      { isolationLevel: "Serializable" },
+    );
   },
 };

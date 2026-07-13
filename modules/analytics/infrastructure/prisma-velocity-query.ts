@@ -18,9 +18,9 @@ export const prismaVelocityQueryPort: VelocityQueryPort = {
     ]);
     const closedSprintIds = sprints.map(({ id }) => id);
     const pbiTasks = closedSprintIds.length
-      ? await prisma.task.findMany({
-          where: { workspaceId, sprintId: { in: closedSprintIds }, type: "PBI" },
-          select: { sprintId: true, status: true, points: true },
+      ? await prisma.sprintItem.findMany({
+          where: { sprintId: { in: closedSprintIds }, taskType: "PBI" },
+          select: { sprintId: true, outcome: true, committedPoints: true },
         })
       : [];
     return { velocity, closedSprintIds, pbiTasks };

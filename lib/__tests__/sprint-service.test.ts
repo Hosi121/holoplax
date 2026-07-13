@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => {
     },
     task: {
       updateMany: vi.fn(),
-      aggregate: vi.fn(),
       findMany: vi.fn(),
     },
+    sprintItem: { aggregate: vi.fn(), updateMany: vi.fn(), createMany: vi.fn() },
     velocityEntry: { create: vi.fn() },
     taskStatusEvent: { createMany: vi.fn() },
     auditLog: { create: vi.fn(), createMany: vi.fn() },
@@ -56,15 +56,15 @@ describe("sprint application service", () => {
     mocks.sprintFindMany.mockResolvedValue([
       {
         ...closedSprint,
-        tasks: [
-          { status: "DONE", points: 5 },
-          { status: "BACKLOG", points: 3 },
+        items: [
+          { outcome: "COMPLETED", committedPoints: 5, removedAt: null },
+          { outcome: "CARRYOVER", committedPoints: 3, removedAt: new Date() },
         ],
       },
     ]);
 
     await expect(listSprints("workspace-1")).resolves.toEqual([
-      expect.objectContaining({ committedPoints: 8, completedPoints: 5 }),
+      expect.objectContaining({ committedPoints: 8, activePoints: 5, completedPoints: 5 }),
     ]);
     expect(mocks.sprintFindMany).toHaveBeenCalledTimes(1);
   });
@@ -73,7 +73,8 @@ describe("sprint application service", () => {
     mocks.tx.sprint.findFirst.mockResolvedValue({ id: "sprint-1" });
     mocks.tx.sprint.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.sprint.findUniqueOrThrow.mockResolvedValue(closedSprint);
-    mocks.tx.task.aggregate.mockResolvedValue({ _sum: { points: 8 } });
+    mocks.tx.sprintItem.aggregate.mockResolvedValue({ _sum: { committedPoints: 8 } });
+    mocks.tx.sprintItem.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.task.findMany.mockResolvedValue([{ id: "task-1" }]);
     mocks.tx.task.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.velocityEntry.create.mockResolvedValue({ id: "velocity-1" });

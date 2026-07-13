@@ -11,13 +11,15 @@ const makeClient = (opts: {
   committed?: number;
 }) => {
   const sprintFindFirst = vi.fn().mockResolvedValue(opts.activeSprint ?? null);
-  const taskAggregate = vi.fn().mockResolvedValue({ _sum: { points: opts.committed ?? 0 } });
+  const sprintItemAggregate = vi
+    .fn()
+    .mockResolvedValue({ _sum: { committedPoints: opts.committed ?? 0 } });
   // Structural stand-in for the Prisma transaction client the helpers touch.
   const client = {
     sprint: { findFirst: sprintFindFirst },
-    task: { aggregate: taskAggregate },
+    sprintItem: { aggregate: sprintItemAggregate },
   } as unknown as Parameters<typeof checkSprintCapacity>[0];
-  return { client, sprintFindFirst, taskAggregate };
+  return { client, sprintFindFirst, sprintItemAggregate };
 };
 
 describe("findActiveSprint", () => {
@@ -42,27 +44,36 @@ describe("sumSprintPoints", () => {
   });
 
   it("excludes the given task ids from the aggregate", async () => {
-    const { client, taskAggregate } = makeClient({ committed: 8 });
+    const { client, sprintItemAggregate } = makeClient({ committed: 8 });
     expect(await sumSprintPoints(client, "ws1", ["a", "b"])).toBe(8);
-    expect(taskAggregate).toHaveBeenCalledWith({
-      where: { workspaceId: "ws1", status: "SPRINT", id: { notIn: ["a", "b"] } },
-      _sum: { points: true },
+    expect(sprintItemAggregate).toHaveBeenCalledWith({
+      where: {
+        sprintId: "ws1",
+        removedAt: null,
+        outcome: { in: ["COMMITTED", "COMPLETED"] },
+        taskKey: { notIn: ["a", "b"] },
+      },
+      _sum: { committedPoints: true },
     });
   });
 
   it("omits the id filter when the exclude list is empty", async () => {
-    const { client, taskAggregate } = makeClient({ committed: 3 });
+    const { client, sprintItemAggregate } = makeClient({ committed: 3 });
     await sumSprintPoints(client, "ws1", []);
-    expect(taskAggregate).toHaveBeenCalledWith({
-      where: { workspaceId: "ws1", status: "SPRINT" },
-      _sum: { points: true },
+    expect(sprintItemAggregate).toHaveBeenCalledWith({
+      where: {
+        sprintId: "ws1",
+        removedAt: null,
+        outcome: { in: ["COMMITTED", "COMPLETED"] },
+      },
+      _sum: { committedPoints: true },
     });
   });
 });
 
 describe("checkSprintCapacity", () => {
   it("is a no-op when there is no active sprint", async () => {
-    const { client, taskAggregate } = makeClient({ activeSprint: null });
+    const { client, sprintItemAggregate } = makeClient({ activeSprint: null });
     const result = await checkSprintCapacity(client, { workspaceId: "ws1", additionalPoints: 99 });
     expect(result).toEqual({
       activeSprint: null,
@@ -71,7 +82,7 @@ describe("checkSprintCapacity", () => {
       exceeded: false,
     });
     // No need to sum points when there is no sprint to fill.
-    expect(taskAggregate).not.toHaveBeenCalled();
+    expect(sprintItemAggregate).not.toHaveBeenCalled();
   });
 
   it("does not flag a fit that exactly hits capacity", async () => {

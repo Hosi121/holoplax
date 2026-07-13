@@ -211,7 +211,9 @@ def compute_metrics(tasks: list[dict], window_days: int):
     done_tasks = [
         task
         for task in tasks
-        if task["status"] == "DONE" and task["doneAt"] is not None and task["doneAt"] >= cutoff
+        if task["workflowState"] == "DONE"
+        and task["doneAt"] is not None
+        and task["doneAt"] >= cutoff
     ]
     throughput = len(done_tasks)
     lead_times = [
@@ -230,7 +232,7 @@ def compute_metrics(tasks: list[dict], window_days: int):
 
 
 def compute_average_wip(conn, owner_column: str, owner_id: str, days: int = 14) -> float:
-    """Time-weighted average number of tasks in SPRINT during the window."""
+    """Time-weighted average number of started, unfinished tasks in the window."""
     if owner_column not in {"workspaceId", "userId"}:
         raise ValueError("invalid owner column")
     window_end = now_utc()
@@ -239,18 +241,18 @@ def compute_average_wip(conn, owner_column: str, owner_id: str, days: int = 14) 
         cur.execute(
             f"""
             WITH ordered AS (
-                SELECT e."taskId", e."toStatus", e."createdAt" AS start_at,
+                SELECT e."taskId", e."toState", e."createdAt" AS start_at,
                        LEAD(e."createdAt") OVER (
                            PARTITION BY e."taskId" ORDER BY e."createdAt", e.id
                        ) AS end_at
-                FROM "TaskStatusEvent" e
+                FROM "TaskWorkflowEvent" e
                 JOIN "Task" t ON t.id = e."taskId"
                 WHERE t."{owner_column}" = %s AND e."createdAt" < %s
             ), intervals AS (
                 SELECT GREATEST(start_at, %s) AS active_from,
                        LEAST(COALESCE(end_at, %s), %s) AS active_until
                 FROM ordered
-                WHERE "toStatus" = 'SPRINT'
+                WHERE "toState" IN ('IN_PROGRESS', 'BLOCKED')
                   AND COALESCE(end_at, %s) > %s
             )
             SELECT COALESCE(
@@ -401,11 +403,11 @@ def fetch_tasks(conn, owner_column: str, owner_id: str):
     with conn.cursor() as cur:
         cur.execute(
             f"""
-            SELECT t.id, t."createdAt", t.status, t.points, t."dueDate",
+            SELECT t.id, t."createdAt", t."workflowState", t.points, t."dueDate",
                    (
                        SELECT MAX(e."createdAt")
-                       FROM "TaskStatusEvent" e
-                       WHERE e."taskId" = t.id AND e."toStatus" = 'DONE'
+                       FROM "TaskWorkflowEvent" e
+                       WHERE e."taskId" = t.id AND e."toState" = 'DONE'
                    ) AS "doneAt"
             FROM "Task" t
             WHERE t."{owner_column}" = %s

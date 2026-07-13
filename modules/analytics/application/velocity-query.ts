@@ -6,9 +6,9 @@ export type VelocityEntry = {
 };
 
 type SprintTask = {
-  sprintId: string | null;
-  status: "BACKLOG" | "SPRINT" | "DONE";
-  points: number;
+  sprintId: string;
+  outcome: "COMMITTED" | "COMPLETED" | "REMOVED" | "CARRYOVER";
+  committedPoints: number;
 };
 
 export interface VelocityQueryPort {
@@ -31,7 +31,7 @@ export const createVelocityQuery = (port: VelocityQueryPort) => async (workspace
   const latestPbiTasks = latestSprintId
     ? pbiTasks.filter(({ sprintId }) => sprintId === latestSprintId)
     : [];
-  const pbiDone = latestPbiTasks.filter(({ status }) => status === "DONE");
+  const pbiDone = latestPbiTasks.filter(({ outcome }) => outcome === "COMPLETED");
 
   return {
     velocity,
@@ -46,7 +46,7 @@ export const createVelocityQuery = (port: VelocityQueryPort) => async (workspace
     pbi: {
       sprintId: latestSprintId,
       doneCount: pbiDone.length,
-      donePoints: pbiDone.reduce((sum, task) => sum + task.points, 0),
+      donePoints: pbiDone.reduce((sum, task) => sum + task.committedPoints, 0),
       totalCount: latestPbiTasks.length,
       completionRate: latestPbiTasks.length ? pbiDone.length / latestPbiTasks.length : 0,
     },

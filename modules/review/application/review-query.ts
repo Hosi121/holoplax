@@ -20,19 +20,33 @@ export type ReviewSprint = {
   startedAt: Date;
   plannedEndAt: Date | null;
   endedAt: Date | null;
+  items: ReviewSprintItem[];
+};
+
+export type ReviewSprintItem = {
+  taskKey: string;
+  taskTitle: string;
+  taskType: "EPIC" | "PBI" | "TASK";
+  committedPoints: number;
+  outcome: "COMMITTED" | "COMPLETED" | "REMOVED" | "CARRYOVER";
+  completedAt: Date | null;
+  removedAt: Date | null;
 };
 
 export type ReviewTask = {
   id: string;
   title: string;
   status: "BACKLOG" | "SPRINT" | "DONE";
+  workflowState: "READY" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELED";
   type: "EPIC" | "PBI" | "TASK";
   points: number;
   sprintId: string | null;
   urgency: "LOW" | "MEDIUM" | "HIGH";
-  automationState: string;
+  automationStatus: "NONE" | "PREPARED" | "SPLIT_PENDING" | "SPLIT_REJECTED";
+  hierarchyRole: "STANDARD" | "SPLIT_PARENT" | "SPLIT_CHILD";
+  origin: "MANUAL" | "INTAKE" | "AUTOMATION" | "ROUTINE" | "ONBOARDING";
   createdAt: Date;
-  statusEvents: Array<{ createdAt: Date }>;
+  workflowEvents: Array<{ createdAt: Date }>;
 };
 
 export interface ReviewQueryPort {
