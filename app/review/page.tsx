@@ -22,25 +22,47 @@ import { HelpTooltip } from "../components/help-tooltip";
 import { InboxWidget } from "../components/inbox-widget";
 import { QuickStartCard } from "../components/quick-start-card";
 
-const splitThreshold = 8;
-
 const formatPercent = (value: number) => `${Math.round(value)}%`;
 const formatDays = (value: number) => `${value.toFixed(1)} 日`;
 export default async function ReviewPage() {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id ?? null;
   const workspaceId = userId ? await resolveWorkspaceId(userId) : null;
+  // React's render-purity rule rejects Date.now() here; an explicit Date keeps
+  // the server-render snapshot stable for this invocation.
+  // biome-ignore lint/complexity/useDateNow: see purity rationale above
+  const activitySince = new Date(new Date().getTime() - MS_PER_DAY);
 
-  const [sprint, tasks, velocityEntries, openDependencies] = workspaceId
+  const [
+    activeSprint,
+    latestClosedSprint,
+    tasks,
+    velocityEntries,
+    openDependencies,
+    activity,
+    automation,
+  ] = workspaceId
     ? await Promise.all([
         prisma.sprint.findFirst({
           where: { workspaceId, status: "ACTIVE" },
           orderBy: { startedAt: "desc" },
         }),
+        prisma.sprint.findFirst({
+          where: { workspaceId, status: "CLOSED" },
+          orderBy: { endedAt: "desc" },
+        }),
         prisma.task.findMany({
           where: { workspaceId },
           orderBy: { createdAt: "desc" },
           take: 1000,
+          include: {
+            statusEvents: {
+              where: { toStatus: "DONE" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { createdAt: true },
+            },
+          },
         }),
         prisma.velocityEntry.findMany({
           where: { workspaceId },
@@ -53,22 +75,34 @@ export default async function ReviewPage() {
             dependsOn: { status: { not: "DONE" } },
           },
         }),
+        prisma.taskStatusEvent.findMany({
+          where: {
+            workspaceId,
+            createdAt: { gte: activitySince },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+          include: { task: { select: { title: true } } },
+        }),
+        prisma.userAutomationSetting.findUnique({
+          where: { userId_workspaceId: { userId: userId!, workspaceId } },
+          select: { high: true },
+        }),
       ])
-    : [null, [], [], 0];
+    : [null, null, [], [], 0, [], null];
+  const sprint = activeSprint ?? latestClosedSprint;
+  const doneAt = (task: (typeof tasks)[number]) => task.statusEvents[0]?.createdAt ?? null;
 
   // Single pass to collect all sprint-related metrics
   const sprintMetrics = (() => {
     const sprintDone: typeof tasks = [];
     const sprintPbis: typeof tasks = [];
     const sprintPbiDone: typeof tasks = [];
-    let committedPoints = 0;
     let totalSprintPoints = 0;
     let donePoints = 0;
 
     for (const task of tasks) {
-      const isSprintTask = sprint
-        ? task.sprintId === sprint.id || task.status === "SPRINT"
-        : task.status === "SPRINT";
+      const isSprintTask = sprint ? task.sprintId === sprint.id : task.status === "SPRINT";
 
       if (!isSprintTask) continue;
 
@@ -77,8 +111,6 @@ export default async function ReviewPage() {
       if (task.status === "DONE") {
         sprintDone.push(task);
         donePoints += task.points;
-      } else {
-        committedPoints += task.points;
       }
 
       if (task.type === "PBI") {
@@ -98,7 +130,6 @@ export default async function ReviewPage() {
       sprintDone,
       sprintPbis,
       sprintPbiDone,
-      committedPoints,
       totalSprintPoints,
       pbiCompletionRate,
       completionRate,
@@ -109,20 +140,21 @@ export default async function ReviewPage() {
     sprintDone,
     sprintPbis,
     sprintPbiDone,
-    committedPoints,
     totalSprintPoints,
     pbiCompletionRate,
     completionRate,
   } = sprintMetrics;
 
-  const doneTasks = tasks.filter((task) => task.status === "DONE");
-  const leadTimeSample = doneTasks.slice(0, 5);
+  const leadTimeSample = tasks
+    .filter((task) => doneAt(task) !== null)
+    .sort((a, b) => (doneAt(b)?.getTime() ?? 0) - (doneAt(a)?.getTime() ?? 0))
+    .slice(0, 5);
   const leadTimeDays =
     leadTimeSample.length > 0
       ? leadTimeSample.reduce((sum, task) => {
           const created = task.createdAt ? new Date(task.createdAt).getTime() : 0;
-          const updated = task.updatedAt ? new Date(task.updatedAt).getTime() : created;
-          return sum + Math.max(0, updated - created);
+          const completed = doneAt(task)?.getTime() ?? created;
+          return sum + Math.max(0, completed - created);
         }, 0) /
         leadTimeSample.length /
         (1000 * 60 * 60 * 24)
@@ -138,13 +170,21 @@ export default async function ReviewPage() {
   const hasBurndown = totalSprintPoints > 0;
   const burndownSeries = (() => {
     if (!hasBurndown || !sprint?.startedAt) return [];
-    const days = 7;
     const start = new Date(sprint.startedAt);
+    const plannedEnd = sprint.plannedEndAt
+      ? new Date(sprint.plannedEndAt)
+      : sprint.endedAt
+        ? new Date(sprint.endedAt)
+        : new Date(start.getTime() + 7 * MS_PER_DAY);
+    const days = Math.max(
+      2,
+      Math.min(31, Math.ceil((plannedEnd.getTime() - start.getTime()) / MS_PER_DAY) + 1),
+    );
     const dailyDone = Array.from({ length: days }, () => 0);
     sprintDone.forEach((task) => {
-      const doneAt = task.updatedAt ? new Date(task.updatedAt) : null;
-      if (!doneAt) return;
-      const diff = Math.floor((doneAt.getTime() - start.getTime()) / MS_PER_DAY);
+      const completedAt = doneAt(task);
+      if (!completedAt) return;
+      const diff = Math.floor((completedAt.getTime() - start.getTime()) / MS_PER_DAY);
       if (diff >= 0 && diff < days) {
         dailyDone[diff] += task.points;
       }
@@ -176,24 +216,35 @@ export default async function ReviewPage() {
     },
   ];
 
-  const recentActivity = tasks.length
-    ? tasks.slice(0, 4).map((task) => {
-        if (task.status === "DONE") return { id: task.id, label: `完了: ${task.title}` };
-        if (task.status === "SPRINT") {
-          return { id: task.id, label: `スプリントに「${task.title}」を追加` };
-        }
-        return { id: task.id, label: `やること追加: ${task.title}` };
-      })
-    : [];
+  const recentActivity = activity.map((event) => ({
+    id: event.id,
+    label:
+      event.toStatus === "DONE"
+        ? `完了: ${event.task.title}`
+        : event.toStatus === "SPRINT"
+          ? `スプリントに「${event.task.title}」を追加`
+          : event.fromStatus === null
+            ? `やること追加: ${event.task.title}`
+            : `バックログへ移動: ${event.task.title}`,
+  }));
 
   const now = new Date();
   const prevVelocity = velocityValues.at(-2) ?? velocityValues.at(-1) ?? 0;
-  const reviewDate = sprint?.startedAt ? new Date(sprint.startedAt) : null;
-  if (reviewDate) {
-    reviewDate.setDate(reviewDate.getDate() + 7);
-  }
+  const reviewDate = sprint?.plannedEndAt
+    ? new Date(sprint.plannedEndAt)
+    : sprint?.endedAt
+      ? new Date(sprint.endedAt)
+      : sprint?.startedAt
+        ? new Date(new Date(sprint.startedAt).getTime() + 7 * MS_PER_DAY)
+        : null;
   const reviewLabel = reviewDate
-    ? `${reviewDate.toLocaleDateString("ja-JP", { weekday: "short" })} 18:00`
+    ? reviewDate.toLocaleString("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
     : "未設定";
   const reviewEta =
     reviewDate && reviewDate.getTime() > now.getTime()
@@ -209,12 +260,12 @@ export default async function ReviewPage() {
   }[] = [
     {
       label: "計画ポイント",
-      value: `${committedPoints} pt`,
-      delta: `${committedPoints - (prevVelocity ?? 0) >= 0 ? "+" : ""}${
-        committedPoints - (prevVelocity ?? 0)
+      value: `${totalSprintPoints} pt`,
+      delta: `${totalSprintPoints - (prevVelocity ?? 0) >= 0 ? "+" : ""}${
+        totalSprintPoints - (prevVelocity ?? 0)
       }`,
       icon: ListTodo,
-      arrowDir: committedPoints - (prevVelocity ?? 0) >= 0 ? "positive" : "negative",
+      arrowDir: totalSprintPoints - (prevVelocity ?? 0) >= 0 ? "positive" : "negative",
     },
     {
       label: "完了率",
@@ -247,7 +298,8 @@ export default async function ReviewPage() {
   ];
 
   const velocityMax = velocityValues.length ? Math.max(...velocityValues) : 0;
-  const burndownMax = burndownSeries.length ? Math.max(...burndownSeries) : 0;
+  const burndownMax = burndownSeries.length ? Math.max(...burndownSeries, 1) : 1;
+  const splitThreshold = Math.max(1, Math.ceil((automation?.high ?? 70) / 9));
 
   return (
     <main className="max-w-6xl flex-1 space-y-6 px-4 py-10 lg:ml-60 lg:px-6 lg:py-14">
@@ -358,7 +410,7 @@ export default async function ReviewPage() {
         <div className="border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-900">残りポイント</h2>
-            <span className="text-xs text-slate-500">7日間</span>
+            <span className="text-xs text-slate-500">{burndownSeries.length}日間</span>
           </div>
           {burndownSeries.length ? (
             <>

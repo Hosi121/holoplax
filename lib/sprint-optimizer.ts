@@ -52,60 +52,38 @@ function calculateTaskValue(task: TaskDTO): number {
   return urgencyW * riskW * task.points;
 }
 
-/**
- * 依存関係を考慮したトポロジカルソート
- * 依存先が先に来るようにソート
- */
-function topologicalSort(tasks: TaskDTO[]): TaskDTO[] {
-  const taskMap = new Map<string, TaskDTO>();
-  for (const task of tasks) {
-    taskMap.set(task.id, task);
-  }
+type DependencyBundle = { tasks: TaskDTO[]; error: string | null };
 
+function collectDependencyBundle(
+  root: TaskDTO,
+  taskMap: ReadonlyMap<string, TaskDTO>,
+  selectedIds: ReadonlySet<string>,
+): DependencyBundle {
+  const ordered: TaskDTO[] = [];
+  const visiting = new Set<string>();
   const visited = new Set<string>();
-  const result: TaskDTO[] = [];
 
-  function visit(task: TaskDTO) {
-    if (visited.has(task.id)) return;
-    visited.add(task.id);
-
-    // 依存先を先に処理
-    for (const dep of task.dependencies ?? []) {
-      const depTask = taskMap.get(dep.id);
-      if (depTask) {
-        visit(depTask);
+  const visit = (task: TaskDTO): string | null => {
+    if (selectedIds.has(task.id) || visited.has(task.id)) return null;
+    if (visiting.has(task.id)) return "依存関係が循環しています";
+    visiting.add(task.id);
+    for (const dependency of task.dependencies ?? []) {
+      if (dependency.status === TASK_STATUS.DONE || selectedIds.has(dependency.id)) continue;
+      const dependencyTask = taskMap.get(dependency.id);
+      if (!dependencyTask || dependencyTask.status !== TASK_STATUS.BACKLOG) {
+        return "未完了の依存タスクがバックログにありません";
       }
+      const error = visit(dependencyTask);
+      if (error) return error;
     }
+    visiting.delete(task.id);
+    visited.add(task.id);
+    ordered.push(task);
+    return null;
+  };
 
-    result.push(task);
-  }
-
-  for (const task of tasks) {
-    visit(task);
-  }
-
-  return result;
-}
-
-/**
- * 依存関係が満たされているかチェック
- */
-function areDependenciesSatisfied(
-  task: TaskDTO,
-  selectedIds: Set<string>,
-  allTasks: Map<string, TaskDTO>,
-): boolean {
-  for (const dep of task.dependencies ?? []) {
-    // 依存先が完了済みならOK
-    if (dep.status === TASK_STATUS.DONE) continue;
-
-    // 依存先がバックログにあり、選択されていない場合はNG
-    const depTask = allTasks.get(dep.id);
-    if (depTask && depTask.status === TASK_STATUS.BACKLOG && !selectedIds.has(dep.id)) {
-      return false;
-    }
-  }
-  return true;
+  const error = visit(root);
+  return { tasks: error ? [] : ordered, error };
 }
 
 /**
@@ -129,11 +107,9 @@ export function optimizeSprint(backlogTasks: TaskDTO[], capacity: number): Optim
     taskMap.set(task.id, task);
   }
 
-  // トポロジカルソートして依存順に並べる
-  const sorted = topologicalSort(candidates);
-
-  // スコアでソート（高い順）、同スコアならurgencyが高い順
-  sorted.sort((a, b) => {
+  // Rank roots by value density. Each root is later evaluated together with
+  // its complete transitive dependency closure.
+  const ranked = [...candidates].sort((a, b) => {
     const scoreA = calculateTaskScore(a);
     const scoreB = calculateTaskScore(b);
     if (Math.abs(scoreA - scoreB) > 0.001) {
@@ -149,64 +125,29 @@ export function optimizeSprint(backlogTasks: TaskDTO[], capacity: number): Optim
   let totalPoints = 0;
   let totalScore = 0;
 
-  // 貪欲法で選択
-  for (const task of sorted) {
-    // キャパチェック
-    if (totalPoints + task.points > capacity) {
-      excludedTasks.push({ task, reason: "キャパ超過" });
+  for (const task of ranked) {
+    if (selectedIds.has(task.id)) continue;
+    const bundle = collectDependencyBundle(task, taskMap, selectedIds);
+    if (bundle.error) {
+      excludedTasks.push({ task, reason: bundle.error });
       continue;
     }
-
-    // 依存関係チェック
-    if (!areDependenciesSatisfied(task, selectedIds, taskMap)) {
-      // 依存先も追加を試みる
-      const missingDeps: TaskDTO[] = [];
-      let canAddWithDeps = true;
-      let additionalPoints = 0;
-
-      for (const dep of task.dependencies ?? []) {
-        if (dep.status === TASK_STATUS.DONE) continue;
-        if (selectedIds.has(dep.id)) continue;
-
-        const depTask = taskMap.get(dep.id);
-        if (depTask) {
-          missingDeps.push(depTask);
-          additionalPoints += depTask.points;
-        } else {
-          // 依存先がバックログにない（別のステータス）
-          canAddWithDeps = false;
-          break;
-        }
-      }
-
-      if (!canAddWithDeps || totalPoints + task.points + additionalPoints > capacity) {
-        excludedTasks.push({ task, reason: "依存タスクが未選択" });
-        continue;
-      }
-
-      // 依存先も一緒に追加
-      for (const dep of missingDeps) {
-        if (!selectedIds.has(dep.id)) {
-          selectedTasks.push(dep);
-          selectedIds.add(dep.id);
-          totalPoints += dep.points;
-          totalScore += calculateTaskValue(dep);
-        }
-      }
+    const bundlePoints = bundle.tasks.reduce((sum, item) => sum + item.points, 0);
+    if (totalPoints + bundlePoints > Math.max(0, capacity)) {
+      excludedTasks.push({ task, reason: "依存タスクを含めるとキャパ超過" });
+      continue;
     }
-
-    // タスクを選択
-    selectedTasks.push(task);
-    selectedIds.add(task.id);
-    totalPoints += task.points;
-    totalScore += calculateTaskValue(task);
+    for (const item of bundle.tasks) {
+      if (selectedIds.has(item.id)) continue;
+      selectedTasks.push(item);
+      selectedIds.add(item.id);
+      totalPoints += item.points;
+      totalScore += calculateTaskValue(item);
+    }
   }
 
-  // 選択されたタスクを依存順に並べ直す
-  const finalOrder = topologicalSort(selectedTasks);
-
   return {
-    selectedTasks: finalOrder,
+    selectedTasks,
     excludedTasks,
     totalPoints,
     totalScore,

@@ -1,9 +1,9 @@
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import prisma from "../../../lib/prisma";
-
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
+import { selectDailyFocus } from "../../../lib/daily-focus";
+import { listTasks } from "../../../lib/tasks/task-query";
+import { TASK_STATUS } from "../../../lib/types";
 
 export async function GET() {
   return withApiHandler(
@@ -21,48 +21,21 @@ export async function GET() {
         return ok({ items: [], computedAt: null });
       }
 
-      // Load candidate tasks. We cap at 200 rows to prevent full-table scans
-      // on large workspaces. Tasks are ordered by points (desc) so that
-      // high-value items are never missed when the cap is hit; due-date urgency
-      // is then re-ranked in memory using the composite priority score.
-      const tasks = await prisma.task.findMany({
-        where: { workspaceId, status: { not: "DONE" } },
-        orderBy: [{ points: "desc" }, { dueDate: "asc" }],
-        take: 200,
-        select: {
-          id: true,
-          title: true,
-          points: true,
-          dueDate: true,
-        },
+      const { tasks } = await listTasks(workspaceId, {
+        statuses: [TASK_STATUS.SPRINT],
+        limit: 200,
       });
-      const now = new Date();
-      const scored = tasks
-        .map((task) => {
-          const baseScore = task.points * 9;
-          const dueDate = task.dueDate ? new Date(task.dueDate) : null;
-          const dueScore = (() => {
-            if (!dueDate) return 0;
-            const daysLeft = (dueDate.getTime() - now.getTime()) / MS_PER_DAY;
-            const clamped = Math.min(14, Math.max(0, daysLeft));
-            return Math.max(0, Math.min(100, 100 * (1 - clamped / 14)));
-          })();
-          const priority = baseScore * 0.7 + dueScore * 0.3;
-          const reason = dueScore >= 50 ? "期限が近い" : "優先度が高い";
-          return {
-            taskId: task.id,
-            title: task.title,
-            dueDate: dueDate ? dueDate.toISOString() : null,
-            priorityScore: priority,
-            dueScore,
-            reason,
-          };
-        })
-        .sort((a, b) => b.priorityScore - a.priorityScore)
-        .slice(0, 3);
+      const focus = selectDailyFocus(tasks, { maxTasks: 3, maxPoints: 8 });
+      const items = focus.focusTasks.map(({ task, score, reasons }) => ({
+        taskId: task.id,
+        title: task.title,
+        dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null,
+        priorityScore: score,
+        reason: reasons[0] ?? "着手しやすい",
+      }));
 
       return ok({
-        items: scored,
+        items,
         computedAt: new Date().toISOString(),
       });
     },
