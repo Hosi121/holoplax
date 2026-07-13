@@ -1,15 +1,9 @@
-import type { UserRole } from "@prisma/client";
-import { hash } from "bcryptjs";
 import { requireAdmin } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
-import { logAudit } from "../../../../lib/audit";
 import { AdminUserCreateSchema } from "../../../../lib/contracts/admin";
-import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import prisma from "../../../../lib/prisma";
-
-const errors = createDomainErrors("ADMIN");
+import { createAdminUser, listAdminUsers } from "../../../../modules/admin/index.server";
 
 export async function GET(request: Request) {
   return withApiHandler(
@@ -30,32 +24,7 @@ export async function GET(request: Request) {
       const rawLimit = Number.parseInt(searchParams.get("limit") ?? "100", 10);
       const limit = Number.isNaN(rawLimit) || rawLimit <= 0 ? 100 : Math.min(rawLimit, 500);
 
-      const users = await prisma.user.findMany({
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: limit + 1, // fetch one extra to know if there's a next page
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          disabledAt: true,
-          createdAt: true,
-          memberships: {
-            select: {
-              role: true,
-              workspace: {
-                select: { id: true, name: true },
-              },
-            },
-          },
-        },
-      });
-
-      const hasMore = users.length > limit;
-      const page = hasMore ? users.slice(0, limit) : users;
-      const nextCursor = hasMore ? page[page.length - 1].id : null;
-      return ok({ users: page, nextCursor });
+      return ok(await listAdminUsers({ cursor, limit }));
     },
   );
 }
@@ -76,47 +45,7 @@ export async function POST(request: Request) {
       const body = await parseBody(request, AdminUserCreateSchema, {
         code: "ADMIN_VALIDATION",
       });
-      const email = body.email;
-      const password = body.password;
-      const name = String(body.name ?? "").trim();
-      const nextRole = body.role ? String(body.role).toUpperCase() : "USER";
-
-      if (!["ADMIN", "USER"].includes(nextRole)) {
-        return errors.badRequest("invalid role");
-      }
-
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) {
-        return errors.conflict("email already registered");
-      }
-
-      const hashed = await hash(password, 10);
-      const created = await prisma.user.create({
-        data: {
-          email,
-          name: name || null,
-          role: nextRole as UserRole,
-          emailVerified: new Date(),
-          password: { create: { hash: hashed } },
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          disabledAt: true,
-          createdAt: true,
-        },
-      });
-
-      await logAudit({
-        actorId: userId,
-        action: "ADMIN_USER_CREATE",
-        targetUserId: created.id,
-        metadata: { role: created.role },
-      });
-
-      return ok({ user: created });
+      return ok({ user: await createAdminUser(userId, body) });
     },
   );
 }
