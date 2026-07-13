@@ -35,23 +35,30 @@ flowchart LR
   Review --> Backlog
 ```
 
-### Task Lifecycle + Status Events
+### Work lifecycle and sprint planning
 ```mermaid
 flowchart LR
   User[User] --> App[App/API]
-  App --> Task[WorkItem/Task]
-  App --> StatusEvent[TaskStatusEvent]
-  Task --> StatusEvent
-  StatusEvent --> Audit[AuditLog]
+  App --> Task[WorkItem / Task]
+  App --> Workflow[TaskWorkflowEvent]
+  Task --> Workflow
+  Task --> Item[SprintItem snapshot]
+  Item --> Sprint[Sprint]
+  Workflow --> Audit[AuditLog]
   Task --> Dep[TaskDependency]
-  Task --> Sprint[Sprint]
+  Task --> Series[RoutineSeries]
+  Series --> Rule[Active RoutineRule]
 ```
+
+`Task.status` and `Task.sprintId` are compatibility projections. Execution
+state comes from `workflowState`; capacity and historical reporting come from
+`SprintItem`. See [work-item-domain.md](./work-item-domain.md).
 
 ### Daily Metrics -> Memory Update
 ```mermaid
 flowchart LR
   Cron[EC2 cron] --> Job[Metrics Job (uv + python)]
-  Job --> Read[Query Task + TaskStatusEvent]
+  Job --> Read[Query Task + TaskWorkflowEvent]
   Read --> Metric[MemoryMetric (window)]
   Metric --> Claim[MemoryClaim (EMA)]
 ```
@@ -76,3 +83,13 @@ flowchart LR
   Metrics[MemoryMetric] --> Score
   Score --> Focus[FocusQueue (Top 3)]
 ```
+
+## Module boundaries
+
+- `app` and integration adapters import a module through `index.server`.
+- Cross-module dependencies use only `index.ts` or `index.server.ts`; domain,
+  application, and infrastructure directories are private to their module.
+- Domain and application layers do not import Prisma, Next.js, or
+  infrastructure code.
+- The architecture check rejects cross-module internal imports and module
+  dependency cycles.

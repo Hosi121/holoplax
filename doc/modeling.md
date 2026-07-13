@@ -12,7 +12,8 @@
 ## 1) 指標更新（MVP）
 ### 日次バッチ
 入力:
-- Task/WorkItem、TaskStatusEvent（ステータス遷移）
+- Task/WorkItem、TaskWorkflowEvent（作業状態の遷移）
+- SprintItem（コミット時ポイントのスナップショット）
 - ApprovalDecision/AutomationExecution（AI協働ログ）
 
 出力:
@@ -79,4 +80,4 @@ var_t = alpha * (y_t - y_hat_t)^2 + (1 - alpha) * var_{t-1}
 - 日次バッチ: uv + python + SQL 集計
 - 実行基盤: EC2 cron（user-data でセットアップ）
 - まずは EMA 更新のみで十分（学習/推論の重さを避ける）
-- イベント駆動は後で追加（TaskStatusEventをトリガに軽量更新）
+- イベント駆動は後で追加（TaskWorkflowEventをトリガに軽量更新）
