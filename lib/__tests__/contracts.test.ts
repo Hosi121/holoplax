@@ -199,7 +199,7 @@ describe("AvatarUploadSchema", () => {
   });
 
   it("requires size field", () => {
-    const { size: _size, ...withoutSize } = validBase;
+    const withoutSize = { filename: validBase.filename, contentType: validBase.contentType };
     expect(AvatarUploadSchema.safeParse(withoutSize).success).toBe(false);
   });
 });
@@ -307,10 +307,9 @@ describe("WorkspaceInviteCreateSchema — role input", () => {
     expect(result.data?.role).toBe("admin");
   });
 
-  it("normalises uppercase role to lowercase (OWNER → owner)", () => {
+  it("rejects owner because ownership requires an explicit transfer", () => {
     const result = WorkspaceInviteCreateSchema.safeParse({ ...base, role: "OWNER" });
-    expect(result.success).toBe(true);
-    expect(result.data?.role).toBe("owner");
+    expect(result.success).toBe(false);
   });
 
   it("normalises mixed-case role (Admin → admin)", () => {
@@ -354,11 +353,12 @@ describe("WorkspaceMemberAddSchema — role input", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts all valid roles", () => {
-    for (const role of ["owner", "admin", "member"]) {
+  it("accepts assignable roles but not owner", () => {
+    for (const role of ["admin", "member"]) {
       const r = WorkspaceMemberAddSchema.safeParse({ ...base, role });
       expect(r.success, `should accept role "${role}"`).toBe(true);
     }
+    expect(WorkspaceMemberAddSchema.safeParse({ ...base, role: "owner" }).success).toBe(false);
   });
 
   it("rejects unknown role values", () => {
@@ -1050,9 +1050,9 @@ describe("TaskChecklistSchema", () => {
 // ---------------------------------------------------------------------------
 
 describe("AutomationUpdateSchema", () => {
-  it("accepts valid low < high within 0–200", () => {
+  it("accepts valid low < high within the normalized 0–100 score", () => {
     expect(AutomationUpdateSchema.safeParse({ low: 35, high: 70 }).success).toBe(true);
-    expect(AutomationUpdateSchema.safeParse({ low: 0, high: 200 }).success).toBe(true);
+    expect(AutomationUpdateSchema.safeParse({ low: 0, high: 100 }).success).toBe(true);
     expect(AutomationUpdateSchema.safeParse({ low: 0, high: 1 }).success).toBe(true);
   });
 
@@ -1066,9 +1066,9 @@ describe("AutomationUpdateSchema", () => {
     expect(AutomationUpdateSchema.safeParse({ low: 35, high: -1 }).success).toBe(false);
   });
 
-  it("rejects values exceeding 200", () => {
-    expect(AutomationUpdateSchema.safeParse({ low: 35, high: 201 }).success).toBe(false);
-    expect(AutomationUpdateSchema.safeParse({ low: 201, high: 300 }).success).toBe(false);
+  it("rejects values exceeding 100", () => {
+    expect(AutomationUpdateSchema.safeParse({ low: 35, high: 101 }).success).toBe(false);
+    expect(AutomationUpdateSchema.safeParse({ low: 101, high: 200 }).success).toBe(false);
   });
 
   it("requires both low and high", () => {

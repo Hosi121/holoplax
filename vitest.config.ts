@@ -9,7 +9,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules", "mcp-server/node_modules", ".next", "dist"],
+    exclude: ["node_modules", "mcp-server/node_modules", ".next", "dist", "e2e"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
