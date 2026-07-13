@@ -1,14 +1,9 @@
-import { compare, hash } from "bcryptjs";
 import { requireAuth } from "../../../../lib/api-auth";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
-import { logAudit } from "../../../../lib/audit";
 import { AccountPasswordChangeSchema } from "../../../../lib/contracts/auth";
-import { createDomainErrors } from "../../../../lib/http/errors";
 import { parseBody } from "../../../../lib/http/validation";
-import prisma from "../../../../lib/prisma";
-
-const errors = createDomainErrors("ACCOUNT");
+import { changeAccountPassword } from "../../../../modules/identity/index.server";
 
 /**
  * PATCH /api/account/password
@@ -42,46 +37,7 @@ export async function PATCH(request: Request) {
         code: "ACCOUNT_VALIDATION",
       });
 
-      // Look up the stored password hash. OAuth-only accounts have no record.
-      const userPassword = await prisma.userPassword.findUnique({
-        where: { userId },
-        select: { hash: true },
-      });
-
-      if (!userPassword) {
-        return errors.badRequest(
-          "this account has no password — sign in with your OAuth provider instead",
-        );
-      }
-
-      // Verify current password before accepting the new one.
-      const valid = await compare(body.currentPassword, userPassword.hash);
-      if (!valid) {
-        return errors.badRequest("current password is incorrect");
-      }
-
-      // Persist the new hash. bcrypt work factor 12 — slightly higher than the
-      // registration default of 10 to make offline cracking more expensive.
-      const newHash = await hash(body.newPassword, 12);
-      await prisma.$transaction([
-        prisma.userPassword.update({
-          where: { userId },
-          data: { hash: newHash },
-        }),
-        // Invalidate sessions issued before this change.
-        prisma.user.update({
-          where: { id: userId },
-          data: { passwordChangedAt: new Date() },
-        }),
-      ]);
-
-      // Audit trail — password changes are security-sensitive events.
-      await logAudit({
-        actorId: userId,
-        action: "ACCOUNT_PASSWORD_CHANGE",
-        targetUserId: userId,
-      });
-
+      await changeAccountPassword(userId, body.currentPassword, body.newPassword);
       return ok({ ok: true });
     },
   );
