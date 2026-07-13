@@ -10,9 +10,9 @@ import {
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
 import { AUTOMATION_STATE, SEVERITY } from "@/lib/types";
 import { resolveWorkspaceId } from "@/lib/workspace-context";
+import { getReviewSnapshot } from "@/modules/review/index.server";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -33,7 +33,19 @@ export default async function ReviewPage() {
   // biome-ignore lint/complexity/useDateNow: see purity rationale above
   const activitySince = new Date(new Date().getTime() - MS_PER_DAY);
 
-  const [
+  const snapshot =
+    userId && workspaceId
+      ? await getReviewSnapshot(userId, workspaceId, activitySince)
+      : {
+          activeSprint: null,
+          latestClosedSprint: null,
+          tasks: [],
+          velocityEntries: [],
+          openDependencies: 0,
+          activity: [],
+          automation: null,
+        };
+  const {
     activeSprint,
     latestClosedSprint,
     tasks,
@@ -41,55 +53,7 @@ export default async function ReviewPage() {
     openDependencies,
     activity,
     automation,
-  ] = workspaceId
-    ? await Promise.all([
-        prisma.sprint.findFirst({
-          where: { workspaceId, status: "ACTIVE" },
-          orderBy: { startedAt: "desc" },
-        }),
-        prisma.sprint.findFirst({
-          where: { workspaceId, status: "CLOSED" },
-          orderBy: { endedAt: "desc" },
-        }),
-        prisma.task.findMany({
-          where: { workspaceId },
-          orderBy: { createdAt: "desc" },
-          take: 1000,
-          include: {
-            statusEvents: {
-              where: { toStatus: "DONE" },
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              select: { createdAt: true },
-            },
-          },
-        }),
-        prisma.velocityEntry.findMany({
-          where: { workspaceId },
-          orderBy: { createdAt: "desc" },
-          take: 7,
-        }),
-        prisma.taskDependency.count({
-          where: {
-            task: { workspaceId },
-            dependsOn: { status: { not: "DONE" } },
-          },
-        }),
-        prisma.taskStatusEvent.findMany({
-          where: {
-            workspaceId,
-            createdAt: { gte: activitySince },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 8,
-          include: { task: { select: { title: true } } },
-        }),
-        prisma.userAutomationSetting.findUnique({
-          where: { userId_workspaceId: { userId: userId!, workspaceId } },
-          select: { high: true },
-        }),
-      ])
-    : [null, null, [], [], 0, [], null];
+  } = snapshot;
   const sprint = activeSprint ?? latestClosedSprint;
   const doneAt = (task: (typeof tasks)[number]) => task.statusEvents[0]?.createdAt ?? null;
 
