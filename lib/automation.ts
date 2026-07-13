@@ -1,73 +1,24 @@
-import { requestAiChat } from "./ai-provider";
+import { generateAndSaveAiPrep } from "./ai-prep";
 import { generateSplitSuggestions } from "./ai-suggestions";
-import type { AiUsageContext } from "./ai-usage";
 import { hasNoDelegateTag } from "./automation-constants";
 import prisma from "./prisma";
 import { AUTOMATION_STATE, SEVERITY, TASK_STATUS, TASK_TYPE } from "./types";
 
 const scoreFromPoints = (points: number) => Math.min(100, Math.max(0, Math.round(points * 9)));
-const STAGE_STEP = 5;
+const MAX_AUTOMATION_STAGE = 3;
 
 // 高スコアはデフォルトで承認必須にする。明示的に false を指定した場合のみ自動分解を許可。
 const requireApproval = process.env.AUTOMATION_REQUIRE_APPROVAL !== "false";
 const nonDelegatablePattern =
   /英単語|単語帳|単語|漢字|暗記|覚える|勉強|学習|復習|練習|自習|宿題|課題|レポート|作文|音読|発音/;
 
-const extractJson = (text: string) => {
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    return text.slice(first, last + 1);
-  }
-  return text;
-};
-
-const llmDelegationDecision = async (
-  task: {
-    title: string;
-    description: string;
-  },
-  context?: AiUsageContext,
-) => {
-  try {
-    const result = await requestAiChat({
-      system:
-        "あなたはタスクのAI委任判定アシスタントです。個人の学習/暗記/練習など本人がやるべき作業は委任不可。JSONのみで返してください。",
-      user: `次のタスクをAI委任キューに入れるべきか判定し、JSONで返してください: { "delegatable": boolean, "reason": string }。\nタイトル: ${task.title}\n説明: ${task.description}`,
-      maxTokens: 80,
-      context,
-    });
-    if (!result?.content) return null;
-    const parsed = JSON.parse(extractJson(result.content));
-    if (typeof parsed?.delegatable === "boolean") {
-      return { delegatable: parsed.delegatable, reason: parsed.reason };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const shouldDelegate = async (
-  task: {
-    id: string;
-    title: string;
-    description: string;
-    tags?: string[] | null;
-  },
-  context?: { userId: string; workspaceId: string },
-) => {
+const shouldDelegate = (task: {
+  id: string;
+  title: string;
+  description: string;
+  tags?: string[] | null;
+}) => {
   if (hasNoDelegateTag(task.tags)) return false;
-  const aiDecision = await llmDelegationDecision(task, {
-    action: "AI_DELEGATE",
-    userId: context?.userId ?? null,
-    workspaceId: context?.workspaceId ?? null,
-    taskId: task.id,
-    source: "automation",
-  });
-  if (aiDecision && typeof aiDecision.delegatable === "boolean") {
-    return aiDecision.delegatable;
-  }
   const text = `${task.title ?? ""}\n${task.description ?? ""}`;
   return !nonDelegatablePattern.test(text);
 };
@@ -112,39 +63,59 @@ export async function applyAutomationForTask(params: {
   });
 
   const stage = thresholds.stage ?? 0;
-  const low = thresholds.low + stage * STAGE_STEP;
-  const high = thresholds.high + stage * STAGE_STEP;
+  const low = thresholds.low;
+  const high = thresholds.high;
   const score = scoreFromPoints(current.points);
 
   // Low score: delegate to AI
   if (score < low) {
-    if (!(await shouldDelegate(current, { userId, workspaceId }))) {
+    if (!shouldDelegate(current)) {
       return;
     }
-    // Flip state and record the suggestion atomically — otherwise a failure
-    // after the task.update leaves the task DELEGATED with no suggestion, a
-    // state the engine never revisits (it only acts when state === NONE).
-    await prisma.$transaction(async (tx) => {
-      await tx.task.update({
-        where: { id: current.id },
-        data: {
-          automationState: AUTOMATION_STATE.DELEGATED,
-        },
+    const claimed = await prisma.task.updateMany({
+      where: { id: current.id, workspaceId, automationState: AUTOMATION_STATE.NONE },
+      data: { automationState: AUTOMATION_STATE.DELEGATED },
+    });
+    if (claimed.count !== 1) return;
+    let prepOutputId: string | null = null;
+    try {
+      // Delegation means producing useful work, not merely moving a card to an
+      // actionless state. A provider failure still saves a template fallback.
+      const prepOutput = await generateAndSaveAiPrep({
+        type: "CHECKLIST",
+        task: current,
+        userId,
+        workspaceId,
+        source: "automation:delegate",
       });
-      await tx.aiSuggestion.create({
+      prepOutputId = prepOutput.id;
+      await prisma.aiSuggestion.create({
         data: {
           type: "TIP",
           taskId: current.id,
           inputTitle: current.title,
           inputDescription: current.description,
-          output: requireApproval
-            ? "低スコア: AI委任候補（承認待ち）。AI委任キューに移動しました。"
-            : "低スコア: AI委任候補。AI委任キューに移動しました。",
+          output: "AIが実行用チェックリストを下準備しました。タスクから確認できます。",
           userId,
           workspaceId,
         },
       });
-    });
+    } catch (error) {
+      // Do not strand the task in an actionless delegated state if persistence
+      // fails after the conditional claim.
+      await prisma.task.updateMany({
+        where: {
+          id: current.id,
+          workspaceId,
+          automationState: AUTOMATION_STATE.DELEGATED,
+        },
+        data: { automationState: AUTOMATION_STATE.NONE },
+      });
+      if (prepOutputId) {
+        await prisma.aiPrepOutput.deleteMany({ where: { id: prepOutputId } });
+      }
+      throw error;
+    }
     return;
   }
 
@@ -167,32 +138,44 @@ export async function applyAutomationForTask(params: {
 
   const prefix = score > high ? "高スコア: 分割必須" : "中スコア: 分解提案";
 
-  // Medium score: log suggestion only
+  // Medium score: surface the saved split suggestion for explicit review.
   if (score <= high) {
-    await prisma.aiSuggestion.create({
-      data: {
-        type: "SPLIT",
-        taskId: current.id,
-        inputTitle: current.title,
-        inputDescription: current.description,
-        output: JSON.stringify({ note: prefix, suggestions }),
-        userId,
-        workspaceId,
-      },
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.task.updateMany({
+        where: { id: current.id, workspaceId, automationState: AUTOMATION_STATE.NONE },
+        data: { automationState: AUTOMATION_STATE.PENDING_SPLIT },
+      });
+      if (claimed.count !== 1) return;
+      await tx.aiSuggestion.create({
+        data: {
+          type: "SPLIT",
+          taskId: current.id,
+          inputTitle: current.title,
+          inputDescription: current.description,
+          output: JSON.stringify({ note: prefix, suggestions }),
+          userId,
+          workspaceId,
+        },
+      });
     });
     return;
   }
 
   // High score: auto-split (with approval if required)
-  if (requireApproval) {
+  if (requireApproval && stage < MAX_AUTOMATION_STAGE) {
     // Atomic state-flip + suggestion-create (see DELEGATED branch above).
     await prisma.$transaction(async (tx) => {
-      await tx.task.update({
-        where: { id: current.id },
+      const claimed = await tx.task.updateMany({
+        where: {
+          id: current.id,
+          workspaceId,
+          automationState: AUTOMATION_STATE.NONE,
+        },
         data: {
           automationState: AUTOMATION_STATE.PENDING_SPLIT,
         },
       });
+      if (claimed.count !== 1) return;
       await tx.aiSuggestion.create({
         data: {
           type: "SPLIT",
@@ -210,12 +193,17 @@ export async function applyAutomationForTask(params: {
 
   // Auto-split without approval
   await prisma.$transaction(async (tx) => {
-    await tx.task.update({
-      where: { id: current.id },
+    const claimed = await tx.task.updateMany({
+      where: {
+        id: current.id,
+        workspaceId,
+        automationState: AUTOMATION_STATE.NONE,
+      },
       data: {
         automationState: AUTOMATION_STATE.SPLIT_PARENT,
       },
     });
+    if (claimed.count !== 1) return;
 
     await Promise.all(
       suggestions.map((item) =>
@@ -232,6 +220,15 @@ export async function applyAutomationForTask(params: {
             parentId: current.id,
             workspaceId,
             userId,
+            statusEvents: {
+              create: {
+                fromStatus: null,
+                toStatus: TASK_STATUS.BACKLOG,
+                actorId: userId,
+                trigger: "API",
+                workspaceId,
+              },
+            },
           },
         }),
       ),

@@ -391,11 +391,7 @@ export default function BacklogPage() {
       }
 
       // visibleItems + groupedByType
-      if (
-        item.status === targetStatus &&
-        item.automationState !== AUTOMATION_STATE.DELEGATED &&
-        item.automationState !== AUTOMATION_STATE.SPLIT_PARENT
-      ) {
+      if (item.status === targetStatus && item.automationState !== AUTOMATION_STATE.SPLIT_PARENT) {
         visibleItems.push(item);
         groupedByType[type].push(item);
       }
@@ -973,63 +969,6 @@ export default function BacklogPage() {
       {tasksLoading && !items.length ? <PageSkeleton /> : null}
 
       <FocusPanel />
-
-      {items.filter(
-        (item) =>
-          item.status === TASK_STATUS.BACKLOG &&
-          item.automationState === AUTOMATION_STATE.DELEGATED,
-      ).length ? (
-        <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AIに任せる候補</h2>
-            <span className="text-xs text-[var(--text-muted)]">
-              {
-                items.filter(
-                  (item) =>
-                    item.status === TASK_STATUS.BACKLOG &&
-                    item.automationState === AUTOMATION_STATE.DELEGATED,
-                ).length
-              }{" "}
-              件
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {items
-              .filter(
-                (item) =>
-                  item.status === TASK_STATUS.BACKLOG &&
-                  item.automationState === AUTOMATION_STATE.DELEGATED,
-              )
-              .map((item) => (
-                <div
-                  key={item.id}
-                  className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-[var(--text-primary)] dark:border-amber-800 dark:bg-amber-950"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold text-[var(--text-primary)]">{item.title}</p>
-                    <span className="border border-amber-200 bg-[var(--surface)] px-2 py-1 text-xs text-amber-700 dark:border-amber-800 dark:text-amber-400">
-                      AIに任せる
-                    </span>
-                  </div>
-                  {item.description ? (
-                    <p className="mt-1 text-xs text-[var(--text-secondary)]">{item.description}</p>
-                  ) : null}
-                  <div className="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
-                      {item.points} pt
-                    </span>
-                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
-                      緊急度: {SEVERITY_LABELS[item.urgency as Severity] ?? item.urgency}
-                    </span>
-                    <span className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1">
-                      リスク: {SEVERITY_LABELS[item.risk as Severity] ?? item.risk}
-                    </span>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </section>
-      ) : null}
 
       {items.filter((item) => item.automationState === AUTOMATION_STATE.PENDING_SPLIT).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">

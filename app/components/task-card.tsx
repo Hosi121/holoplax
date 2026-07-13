@@ -272,6 +272,11 @@ export function TaskCard({
               確認待ち
             </span>
           )}
+          {item.automationState === AUTOMATION_STATE.DELEGATED && (
+            <span className="border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
+              AI下準備あり
+            </span>
+          )}
         </div>
       </div>
 

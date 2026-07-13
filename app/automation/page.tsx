@@ -78,9 +78,7 @@ export default function AutomationPage() {
 
   const resetStage = async () => {
     const res = await apiFetch("/api/automation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ low: thresholds.low, high: thresholds.high, stage: 0 }),
+      method: "DELETE",
     });
     if (res.ok) {
       const data = await res.json();
@@ -151,7 +149,7 @@ export default function AutomationPage() {
           </span>
           <ConfirmDialog
             title="自動化レベルをリセットしますか？"
-            description="学習によって調整された境界値を初期状態に戻します。"
+            description="承認履歴による自動化レベルだけを初期状態に戻します。しきい値は維持されます。"
             confirmLabel="リセットする"
             onConfirm={resetStage}
             trigger={

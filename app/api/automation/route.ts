@@ -6,8 +6,6 @@ import { AutomationUpdateSchema } from "../../../lib/contracts/automation";
 import { parseBody } from "../../../lib/http/validation";
 import prisma from "../../../lib/prisma";
 
-const STAGE_STEP = 5;
-
 export async function GET() {
   return withApiHandler(
     {
@@ -33,8 +31,8 @@ export async function GET() {
         low: current.low,
         high: current.high,
         stage,
-        effectiveLow: current.low + stage * STAGE_STEP,
-        effectiveHigh: current.high + stage * STAGE_STEP,
+        effectiveLow: current.low,
+        effectiveHigh: current.high,
         workspaceId,
       });
     },
@@ -59,7 +57,7 @@ export async function POST(request: Request) {
       const body = await parseBody(request, AutomationUpdateSchema, {
         code: "AUTOMATION_VALIDATION",
       });
-      // Schema guarantees low/high are finite numbers with 0 ≤ low < high ≤ 200.
+      // Schema guarantees low/high are finite normalized scores (0–100).
       // stage is intentionally not accepted from the client — it is server-managed.
       const { low, high } = body;
       const existing = await prisma.userAutomationSetting.findFirst({
@@ -84,8 +82,49 @@ export async function POST(request: Request) {
         low: saved.low,
         high: saved.high,
         stage: nextStage,
-        effectiveLow: saved.low + nextStage * STAGE_STEP,
-        effectiveHigh: saved.high + nextStage * STAGE_STEP,
+        effectiveLow: saved.low,
+        effectiveHigh: saved.high,
+        workspaceId,
+      });
+    },
+  );
+}
+
+export async function DELETE() {
+  return withApiHandler(
+    {
+      logLabel: "DELETE /api/automation",
+      errorFallback: {
+        code: "AUTOMATION_INTERNAL",
+        message: "failed to reset automation stage",
+        status: 500,
+      },
+    },
+    async () => {
+      const { userId, workspaceId } = await requireWorkspaceAuth({
+        domain: "AUTOMATION",
+        requireWorkspace: true,
+      });
+      const saved = await prisma.userAutomationSetting.upsert({
+        where: { userId_workspaceId: { userId, workspaceId } },
+        update: { stage: 0, lastStageAt: null },
+        create: { low: 35, high: 70, stage: 0, userId, workspaceId },
+      });
+      await prisma.automationStageHistory.create({
+        data: { userId, workspaceId, stage: 0, reason: "manual_reset" },
+      });
+      await logAudit({
+        actorId: userId,
+        action: "AUTOMATION_STAGE_RESET",
+        targetWorkspaceId: workspaceId,
+        metadata: { previousResetAt: new Date().toISOString() },
+      });
+      return ok({
+        low: saved.low,
+        high: saved.high,
+        stage: 0,
+        effectiveLow: saved.low,
+        effectiveHigh: saved.high,
         workspaceId,
       });
     },

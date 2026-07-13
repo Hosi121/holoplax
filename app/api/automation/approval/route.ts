@@ -15,52 +15,49 @@ const STAGE_COOLDOWN_DAYS = 7;
 const MAX_STAGE = 3;
 const errors = createDomainErrors("AUTOMATION");
 
-const parseSuggestions = (output: string | null, fallback: SplitItem[]) => {
-  if (!output) {
-    return fallback.map(sanitizeSplitSuggestion);
-  }
+const parseSuggestions = (output: string | null): SplitItem[] | null => {
+  if (!output) return null;
   try {
     const parsed = JSON.parse(output);
     if (Array.isArray(parsed)) {
-      return parsed.map(sanitizeSplitSuggestion);
+      return parsed.length ? parsed.map(sanitizeSplitSuggestion) : null;
     }
     if (Array.isArray(parsed?.suggestions)) {
-      return parsed.suggestions.map(sanitizeSplitSuggestion);
+      return parsed.suggestions.length ? parsed.suggestions.map(sanitizeSplitSuggestion) : null;
     }
   } catch {
-    // ignore
+    return null;
   }
-  return fallback.map(sanitizeSplitSuggestion);
+  return null;
 };
 
 const maybeRaiseStage = async (userId: string, workspaceId: string) => {
-  const setting = await prisma.userAutomationSetting.findFirst({
-    where: { userId, workspaceId },
-  });
-  if (!setting) return null;
-  const currentStage = setting.stage ?? 0;
-  if (currentStage >= MAX_STAGE) return null;
-  if (setting.lastStageAt) {
-    const diff = Date.now() - new Date(setting.lastStageAt).getTime();
-    if (diff < STAGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000) {
-      return null;
-    }
-  }
-  const nextStage = currentStage + 1;
-  await prisma.$transaction(async (tx) => {
-    await tx.userAutomationSetting.update({
-      where: { id: setting.id },
-      data: { stage: nextStage, lastStageAt: new Date() },
-    });
-    await tx.automationStageHistory.create({
-      data: {
-        userId,
-        workspaceId,
-        stage: nextStage,
-        reason: "split_approval",
-      },
-    });
-  });
+  const nextStage = await prisma.$transaction(
+    async (tx) => {
+      const setting = await tx.userAutomationSetting.findUnique({
+        where: { userId_workspaceId: { userId, workspaceId } },
+      });
+      if (!setting || setting.stage >= MAX_STAGE) return null;
+      const cooldownStart = new Date(Date.now() - STAGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+      if (setting.lastStageAt && setting.lastStageAt > cooldownStart) return null;
+      const stage = setting.stage + 1;
+      const claimed = await tx.userAutomationSetting.updateMany({
+        where: {
+          id: setting.id,
+          stage: setting.stage,
+          OR: [{ lastStageAt: null }, { lastStageAt: { lte: cooldownStart } }],
+        },
+        data: { stage, lastStageAt: new Date() },
+      });
+      if (claimed.count !== 1) return null;
+      await tx.automationStageHistory.create({
+        data: { userId, workspaceId, stage, reason: "split_approval" },
+      });
+      return stage;
+    },
+    { isolationLevel: "Serializable" },
+  );
+  if (nextStage === null) return null;
   await logAudit({
     actorId: userId,
     action: "AUTOMATION_STAGE_RAISE",
@@ -108,11 +105,15 @@ export async function POST(request: Request) {
       if (!task) return errors.notFound("task not found");
 
       if (action === "reject") {
-        await prisma.task.update({
-          where: { id: task.id },
+        const rejected = await prisma.task.updateMany({
+          where: {
+            id: task.id,
+            workspaceId,
+            automationState: AUTOMATION_STATE.PENDING_SPLIT,
+          },
           data: { automationState: AUTOMATION_STATE.SPLIT_REJECTED },
         });
-        return ok({ status: "rejected" });
+        return ok({ status: rejected.count === 1 ? "rejected" : "no-pending" });
       }
 
       if (task.automationState !== AUTOMATION_STATE.PENDING_SPLIT) {
@@ -125,45 +126,73 @@ export async function POST(request: Request) {
         select: { output: true },
       });
 
-      const fallbackResult = await generateSplitSuggestions({
-        title: task.title,
-        description: task.description ?? "",
-        points: task.points,
-        context: {
-          action: "AI_SPLIT",
-          userId,
-          workspaceId,
-          taskId: task.id,
-          source: "approval",
-        },
-      });
-      const suggestions = parseSuggestions(latest?.output ?? null, fallbackResult.suggestions);
-      await prisma.$transaction(async (tx) => {
-        await tx.task.update({
-          where: { id: task.id },
-          data: { automationState: AUTOMATION_STATE.SPLIT_PARENT },
-        });
+      const savedSuggestions = parseSuggestions(latest?.output ?? null);
+      const created = await prisma.$transaction(
+        async (tx) => {
+          // Conditional claim makes approval idempotent under double-clicks and
+          // concurrent clients. Only the winner may create children.
+          const claimed = await tx.task.updateMany({
+            where: {
+              id: task.id,
+              workspaceId,
+              automationState: AUTOMATION_STATE.PENDING_SPLIT,
+            },
+            data: { automationState: AUTOMATION_STATE.SPLIT_PARENT },
+          });
+          if (claimed.count !== 1) return 0;
 
-        await tx.task.createMany({
-          data: suggestions.map((item: SplitItem) => ({
-            title: item.title,
-            description: item.detail ?? "",
-            // item.points is already a valid Fibonacci number after sanitizeSplitSuggestion
-            points: item.points,
-            urgency: item.urgency ?? SEVERITY.MEDIUM,
-            risk: item.risk ?? SEVERITY.MEDIUM,
-            status: TASK_STATUS.BACKLOG,
-            automationState: AUTOMATION_STATE.SPLIT_CHILD,
-            type: TASK_TYPE.TASK,
-            parentId: task.id,
-            workspaceId,
-            userId,
-          })),
-        });
-      });
+          let suggestions = savedSuggestions;
+          if (!suggestions) {
+            const fallbackResult = await generateSplitSuggestions({
+              title: task.title,
+              description: task.description ?? "",
+              points: task.points,
+              context: {
+                action: "AI_SPLIT",
+                userId,
+                workspaceId,
+                taskId: task.id,
+                source: "approval",
+              },
+            });
+            suggestions = fallbackResult.suggestions.map(sanitizeSplitSuggestion);
+          }
+
+          for (const item of suggestions) {
+            await tx.task.create({
+              data: {
+                title: item.title,
+                description: item.detail ?? "",
+                points: item.points,
+                urgency: item.urgency ?? SEVERITY.MEDIUM,
+                risk: item.risk ?? SEVERITY.MEDIUM,
+                status: TASK_STATUS.BACKLOG,
+                automationState: AUTOMATION_STATE.SPLIT_CHILD,
+                type: TASK_TYPE.TASK,
+                parentId: task.id,
+                workspaceId,
+                userId,
+                statusEvents: {
+                  create: {
+                    fromStatus: null,
+                    toStatus: TASK_STATUS.BACKLOG,
+                    actorId: userId,
+                    trigger: "API",
+                    workspaceId,
+                  },
+                },
+              },
+            });
+          }
+          return suggestions.length;
+        },
+        { isolationLevel: "Serializable" },
+      );
+
+      if (created === 0) return ok({ status: "no-pending", created: 0 });
 
       await maybeRaiseStage(userId, workspaceId);
-      return ok({ status: "approved", created: suggestions.length });
+      return ok({ status: "approved", created });
     },
   );
 }

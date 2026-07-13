@@ -4,10 +4,9 @@ const toStringOrEmpty = (value: unknown) => (value == null ? "" : String(value))
 
 export const AutomationUpdateSchema = z
   .object({
-    // Points thresholds for automation triggers. Capped at 200 to prevent
-    // nonsensical values; negative thresholds make no sense for story points.
-    low: z.coerce.number().min(0).max(200),
-    high: z.coerce.number().min(0).max(200),
+    // Automation scores are normalized to 0–100.
+    low: z.coerce.number().min(0).max(100),
+    high: z.coerce.number().min(0).max(100),
     // NOTE: `stage` is intentionally absent.  It is a server-managed field
     // advanced by the approval flow (maybeRaiseStage) with a 7-day cooldown.
     // Accepting it here would let users bypass the progression system.
