@@ -112,6 +112,13 @@ export async function removeWorkspaceMember(params: MemberParams) {
         throw conflict("transfer ownership before removing the owner");
       }
 
+      // Assignment is workspace membership, not merely a reference to a User.
+      // Clear it in the same transaction so a removed member cannot remain an
+      // assignee in a workspace they can no longer access.
+      await tx.task.updateMany({
+        where: { workspaceId, assigneeId: targetUserId },
+        data: { assigneeId: null },
+      });
       await tx.workspaceMember.delete({
         where: { workspaceId_userId: { workspaceId, userId: targetUserId } },
       });

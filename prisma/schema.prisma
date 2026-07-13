@@ -14,6 +14,15 @@ enum TaskStatus {
   DONE
 }
 
+// Execution lifecycle is independent from backlog/sprint planning placement.
+enum TaskWorkflowState {
+  READY
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELED
+}
+
 // Work-breakdown level only. "Recurring" is orthogonal and modeled by the
 // presence of a RoutineRule (cadence), not by a task type.
 enum TaskType {
@@ -76,6 +85,13 @@ enum WorkspaceRole {
 enum SprintStatus {
   ACTIVE
   CLOSED
+}
+
+enum SprintItemOutcome {
+  COMMITTED
+  COMPLETED
+  REMOVED
+  CARRYOVER
 }
 
 enum RoutineCadence {
@@ -142,6 +158,29 @@ enum TaskAutomationState {
   SPLIT_REJECTED
 }
 
+// Current automation lifecycle. Structural split provenance is intentionally
+// modeled separately by TaskHierarchyRole.
+enum TaskAutomationStatus {
+  NONE
+  PREPARED
+  SPLIT_PENDING
+  SPLIT_REJECTED
+}
+
+enum TaskHierarchyRole {
+  STANDARD
+  SPLIT_PARENT
+  SPLIT_CHILD
+}
+
+enum TaskOrigin {
+  MANUAL
+  INTAKE
+  AUTOMATION
+  ROUTINE
+  ONBOARDING
+}
+
 // Origin of a TaskStatusEvent (write-only audit trail).
 enum TaskStatusEventSource {
   API
@@ -181,12 +220,14 @@ model User {
   sprints                  Sprint[]
   intakeItems              IntakeItem[]
   taskStatusEvents         TaskStatusEvent[]        @relation("StatusEventActor")
+  taskWorkflowEvents       TaskWorkflowEvent[]      @relation("WorkflowEventActor")
   memoryClaims             MemoryClaim[]
   memoryMetrics            MemoryMetric[]
   memoryQuestions          MemoryQuestion[]
   automationStageHistories AutomationStageHistory[]
   aiSuggestionReactions    AiSuggestionReaction[]
   taskComments             TaskComment[]
+  routineSeriesCreated     RoutineSeries[]          @relation("RoutineSeriesCreator")
   mcpApiKeys               McpApiKey[]
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
@@ -284,12 +325,14 @@ model Workspace {
   sprints                  Sprint[]
   intakeItems              IntakeItem[]
   statusEvents             TaskStatusEvent[]
+  workflowEvents           TaskWorkflowEvent[]
   memoryClaims             MemoryClaim[]
   memoryMetrics            MemoryMetric[]
   memoryQuestions          MemoryQuestion[]
   automationStageHistories AutomationStageHistory[]
   aiSuggestionReactions    AiSuggestionReaction[]
   taskComments             TaskComment[]
+  routineSeries            RoutineSeries[]
   mcpApiKeys               McpApiKey[]
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
@@ -343,40 +386,48 @@ model AuditLog {
 }
 
 model Task {
-  id               String              @id @default(uuid())
+  id               String               @id @default(uuid())
   title            String
-  description      String              @default("")
-  definitionOfDone String              @default("")
+  description      String               @default("")
+  definitionOfDone String               @default("")
   checklist        Json?
   points           Int
-  urgency          Severity            @default(MEDIUM)
-  risk             Severity            @default(MEDIUM)
-  status           TaskStatus          @default(BACKLOG)
-  type             TaskType            @default(PBI)
-  automationState  TaskAutomationState @default(NONE)
+  urgency          Severity             @default(MEDIUM)
+  risk             Severity             @default(MEDIUM)
+  status           TaskStatus           @default(BACKLOG)
+  workflowState    TaskWorkflowState    @default(READY)
+  type             TaskType             @default(PBI)
+  automationState  TaskAutomationState  @default(NONE)
+  automationStatus TaskAutomationStatus @default(NONE)
+  hierarchyRole    TaskHierarchyRole    @default(STANDARD)
+  origin           TaskOrigin           @default(MANUAL)
   parentId         String?
   sprintId         String?
+  routineSeriesId  String?
   dueDate          DateTime?
   assigneeId       String?
   tags             String[]
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   suggestions      AiSuggestion[]
   prepOutputs      AiPrepOutput[]
-  sprint           Sprint?             @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  assignee         User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  sprint           Sprint?              @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee         User?                @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   // A task always belongs to a workspace (tenant invariant) and a creator.
-  userId           String
-  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String?
+  user             User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceId      String
-  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent           Task?               @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children         Task[]              @relation("TaskHierarchy")
-  dependencies     TaskDependency[]    @relation("TaskDependencies")
-  dependents       TaskDependency[]    @relation("TaskDependents")
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent           Task?                @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children         Task[]               @relation("TaskHierarchy")
+  dependencies     TaskDependency[]     @relation("TaskDependencies")
+  dependents       TaskDependency[]     @relation("TaskDependents")
   intakeItems      IntakeItem[]
   statusEvents     TaskStatusEvent[]
+  workflowEvents   TaskWorkflowEvent[]
+  sprintItems      SprintItem[]
   routineRule      RoutineRule?
+  routineSeries    RoutineSeries?       @relation(fields: [routineSeriesId], references: [id], onDelete: SetNull)
   comments         TaskComment[]
 
   @@index([parentId])
@@ -385,6 +436,8 @@ model Task {
   @@index([workspaceId, status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, automationState])
+  @@index([workspaceId, automationStatus])
+  @@index([routineSeriesId, createdAt])
   @@index([sprintId, status])
 }
 
@@ -395,7 +448,7 @@ model VelocityEntry {
   range       String
   createdAt   DateTime   @default(now())
   userId      String?
-  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceId String?
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   // New velocity measurements are projections of a closed sprint. Null is
@@ -464,11 +517,31 @@ model RoutineRule {
   id        String         @id @default(cuid())
   taskId    String         @unique
   task      Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  seriesId  String         @unique
+  series    RoutineSeries  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   cadence   RoutineCadence
   nextAt    DateTime
   timezone  String         @default("UTC")
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+}
+
+model RoutineSeries {
+  id          String         @id @default(uuid())
+  cadence     RoutineCadence
+  nextAt      DateTime
+  timezone    String         @default("UTC")
+  active      Boolean        @default(true)
+  workspaceId String
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?          @relation("RoutineSeriesCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  tasks       Task[]
+  rule        RoutineRule?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([workspaceId, active, nextAt])
 }
 
 model AiSuggestion {
@@ -565,21 +638,22 @@ model AiUsage {
 }
 
 model Sprint {
-  id             String       @id @default(cuid())
+  id             String         @id @default(cuid())
   name           String
-  status         SprintStatus @default(ACTIVE)
+  status         SprintStatus   @default(ACTIVE)
   capacityPoints Int
-  startedAt      DateTime     @default(now())
+  startedAt      DateTime       @default(now())
   plannedEndAt   DateTime?
   endedAt        DateTime?
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   workspaceId    String
-  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks          Task[]
+  items          SprintItem[]
   velocityEntry  VelocityEntry?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 }
 
 model TaskDependency {
@@ -606,6 +680,45 @@ model TaskStatusEvent {
 
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+model TaskWorkflowEvent {
+  id          String                 @id @default(cuid())
+  taskId      String?
+  taskKey     String
+  fromState   TaskWorkflowState?
+  toState     TaskWorkflowState
+  actorId     String?
+  trigger     TaskStatusEventSource?
+  workspaceId String?
+  task        Task?                  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  actor       User?                  @relation("WorkflowEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  workspace   Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt   DateTime               @default(now())
+
+  @@index([taskKey, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, toState, createdAt])
+}
+
+model SprintItem {
+  id              String            @id @default(cuid())
+  sprintId        String
+  taskId          String?
+  taskKey         String
+  taskTitle       String
+  taskType        TaskType
+  committedPoints Int
+  outcome         SprintItemOutcome @default(COMMITTED)
+  committedAt     DateTime          @default(now())
+  completedAt     DateTime?
+  removedAt       DateTime?
+  sprint          Sprint            @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  task            Task?             @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@unique([sprintId, taskKey])
+  @@index([sprintId, outcome])
+  @@index([taskId, committedAt])
 }
 
 model MemoryDefinition {

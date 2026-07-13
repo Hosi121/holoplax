@@ -1,8 +1,16 @@
-import type { Prisma, TaskAutomationState, TaskStatus } from "@prisma/client";
+import type { Prisma, TaskAutomationStatus, TaskStatus } from "@prisma/client";
 import { sanitizeSplitSuggestion } from "../../../lib/ai-normalization";
-import { AUTOMATION_STATE, TASK_STATUS, TASK_TYPE } from "../../../lib/types";
+import {
+  AUTOMATION_STATE,
+  AUTOMATION_STATUS,
+  TASK_HIERARCHY_ROLE,
+  TASK_ORIGIN,
+  TASK_STATUS,
+  TASK_TYPE,
+} from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
 import { checkSprintCapacity } from "./prisma-sprint-capacity";
+import { removeTaskFromActiveSprint } from "./prisma-sprint-items";
 import { persistNewTask } from "./prisma-task-writer";
 
 type Tx = Prisma.TransactionClient;
@@ -37,7 +45,7 @@ export async function splitTaskIntoChildren(
     taskId: string;
     workspaceId: string;
     userId: string;
-    expectedStates: TaskAutomationState[];
+    expectedStatuses: TaskAutomationStatus[];
     status: TaskStatus;
     suggestions: SplitChildInput[];
   },
@@ -49,6 +57,12 @@ export async function splitTaskIntoChildren(
     throw badRequest("at least one split suggestion is required");
   }
 
+  const parent = await tx.task.findFirst({
+    where: { id: params.taskId, workspaceId: params.workspaceId },
+    select: { status: true, sprintId: true, type: true },
+  });
+  if (!parent) throw badRequest("task not found");
+
   const suggestions = params.suggestions.map(sanitizeSplitSuggestion);
   if (suggestions.some((item) => item.title.length === 0)) {
     throw badRequest("split child title is required");
@@ -58,9 +72,19 @@ export async function splitTaskIntoChildren(
     where: {
       id: params.taskId,
       workspaceId: params.workspaceId,
-      automationState: { in: params.expectedStates },
+      automationStatus: { in: params.expectedStatuses },
+      hierarchyRole: { not: TASK_HIERARCHY_ROLE.SPLIT_PARENT },
     },
-    data: { automationState: AUTOMATION_STATE.SPLIT_PARENT },
+    // A split parent becomes an informational container. Keeping it committed
+    // alongside its children would count both estimates and corrupt capacity
+    // and velocity, so only the children retain planning membership.
+    data: {
+      automationState: AUTOMATION_STATE.SPLIT_PARENT,
+      automationStatus: AUTOMATION_STATUS.NONE,
+      hierarchyRole: TASK_HIERARCHY_ROLE.SPLIT_PARENT,
+      status: TASK_STATUS.BACKLOG,
+      sprintId: null,
+    },
   });
   if (claimed.count !== 1) {
     return { applied: false, created: 0, sprintId: null };
@@ -71,11 +95,26 @@ export async function splitTaskIntoChildren(
     const capacity = await checkSprintCapacity(tx, {
       workspaceId: params.workspaceId,
       additionalPoints: suggestions.reduce((sum, item) => sum + item.points, 0),
+      excludeTaskIds: parent.status === TASK_STATUS.SPRINT ? [params.taskId] : [],
     });
     if (!capacity.activeSprint) throw badRequest("active sprint not found");
     if (capacity.exceeded) throw badRequest("sprint capacity exceeded");
     sprintId = capacity.activeSprint.id;
   }
+
+  if (parent.status !== TASK_STATUS.BACKLOG) {
+    await tx.taskStatusEvent.create({
+      data: {
+        taskId: params.taskId,
+        fromStatus: parent.status,
+        toStatus: TASK_STATUS.BACKLOG,
+        actorId: params.userId,
+        trigger: "API",
+        workspaceId: params.workspaceId,
+      },
+    });
+  }
+  await removeTaskFromActiveSprint(tx, { taskId: params.taskId });
 
   for (const item of suggestions) {
     await persistNewTask(
@@ -89,7 +128,10 @@ export async function splitTaskIntoChildren(
         status: params.status,
         sprintId,
         automationState: AUTOMATION_STATE.SPLIT_CHILD,
-        type: TASK_TYPE.TASK,
+        automationStatus: AUTOMATION_STATUS.NONE,
+        hierarchyRole: TASK_HIERARCHY_ROLE.SPLIT_CHILD,
+        origin: TASK_ORIGIN.AUTOMATION,
+        type: parent.type === TASK_TYPE.EPIC ? TASK_TYPE.PBI : TASK_TYPE.TASK,
         parentId: params.taskId,
         workspaceId: params.workspaceId,
         userId: params.userId,

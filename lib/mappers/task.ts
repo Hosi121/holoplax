@@ -1,9 +1,21 @@
-import type { TaskView } from "../../modules/tasks/application/task-view";
-import type { TaskAutomationState, TaskStatus } from "../types";
+import type { TaskView } from "../../modules/tasks";
+import type {
+  TaskAutomationState,
+  TaskAutomationStatus,
+  TaskHierarchyRole,
+  TaskOrigin,
+  TaskStatus,
+  TaskWorkflowState,
+} from "../types";
 
 type DepNode = {
   dependsOnId: string;
-  dependsOn?: { id: string; title: string; status: TaskStatus } | null;
+  dependsOn?: {
+    id: string;
+    title: string;
+    status: TaskStatus;
+    workflowState: TaskWorkflowState;
+  } | null;
 };
 
 type TaskWithDeps<T extends DepNode = DepNode> = {
@@ -16,14 +28,20 @@ type TaskWithDeps<T extends DepNode = DepNode> = {
   urgency: string;
   risk: string;
   status: TaskStatus;
+  workflowState: TaskView["workflowState"];
   type?: string | null;
   automationState?: TaskAutomationState | null;
+  automationStatus: TaskAutomationStatus;
+  hierarchyRole: TaskHierarchyRole;
+  origin: TaskOrigin;
   routineRule?: { cadence: string; nextAt: Date } | null;
   parentId?: string | null;
+  _count?: { children: number };
   dueDate: Date | null;
   assigneeId: string | null;
   tags: string[];
   sprintId?: string | null;
+  sprint?: { status: "ACTIVE" | "CLOSED" } | null;
   dependencies: T[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -33,7 +51,16 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskView => {
   const dependencyIds = task.dependencies.map((dep) => dep.dependsOnId);
   const dependencies = task.dependencies
     .map((dep) => dep.dependsOn)
-    .filter((dep): dep is { id: string; title: string; status: TaskStatus } => Boolean(dep));
+    .filter(
+      (
+        dep,
+      ): dep is {
+        id: string;
+        title: string;
+        status: TaskStatus;
+        workflowState: TaskWorkflowState;
+      } => Boolean(dep),
+    );
   return {
     id: task.id,
     title: task.title,
@@ -44,9 +71,15 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskView => {
     urgency: task.urgency as TaskView["urgency"],
     risk: task.risk as TaskView["risk"],
     status: task.status,
+    workflowState: task.workflowState,
+    planningState: task.sprint?.status === "ACTIVE" ? "COMMITTED" : "BACKLOG",
     type: (task.type ?? undefined) as TaskView["type"],
     automationState: (task.automationState ?? undefined) as TaskView["automationState"],
+    automationStatus: task.automationStatus,
+    hierarchyRole: task.hierarchyRole,
+    origin: task.origin,
     parentId: task.parentId,
+    childCount: task._count?.children ?? 0,
     dueDate: task.dueDate,
     assigneeId: task.assigneeId,
     tags: task.tags,

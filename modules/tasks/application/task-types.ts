@@ -2,8 +2,12 @@ import type {
   Severity,
   StoryPoint,
   TaskAutomationState,
+  TaskAutomationStatus,
+  TaskHierarchyRole,
+  TaskOrigin,
   TaskStatus,
   TaskType,
+  TaskWorkflowState,
 } from "../domain/task-types";
 
 export type TaskChecklistItemInput = {
@@ -21,6 +25,7 @@ export type CreateTaskInput = {
   urgency?: Severity;
   risk?: Severity;
   status?: TaskStatus;
+  workflowState?: TaskWorkflowState;
   type?: TaskType;
   parentId?: string | null;
   dueDate?: string | null;
@@ -45,14 +50,18 @@ export type TaskRecord = {
   urgency: Severity;
   risk: Severity;
   status: TaskStatus;
+  workflowState: TaskWorkflowState;
   type: TaskType;
   automationState: TaskAutomationState;
+  automationStatus: TaskAutomationStatus;
+  hierarchyRole: TaskHierarchyRole;
+  origin: TaskOrigin;
   parentId: string | null;
   sprintId: string | null;
   dueDate: Date | null;
   assigneeId: string | null;
   tags: string[];
-  userId: string;
+  userId: string | null;
   workspaceId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -61,4 +70,5 @@ export type TaskRecord = {
 export type TaskActor = {
   userId: string;
   workspaceId: string;
+  origin?: TaskOrigin;
 };

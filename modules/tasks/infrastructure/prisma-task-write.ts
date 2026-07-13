@@ -133,7 +133,7 @@ export async function syncTaskDependencies(
 }
 
 type TaskWithRoutineRule = Task & {
-  routineRule: { nextAt: Date | null; cadence: string } | null;
+  routineRule: { nextAt: Date; cadence: string; seriesId: string } | null;
 };
 
 /**
@@ -155,14 +155,47 @@ export async function syncRoutineRule(
     const baseDate = task.dueDate ? new Date(task.dueDate) : new Date();
     const nextAt =
       routineNextAt ?? task.routineRule?.nextAt ?? nextRoutineAt(cadenceValue, baseDate);
-    await tx.routineRule.upsert({
-      where: { taskId: task.id },
-      update: { cadence: cadenceValue, nextAt },
-      create: { taskId: task.id, cadence: cadenceValue, nextAt },
-    });
+    if (task.routineRule) {
+      await tx.routineRule.update({
+        where: { taskId: task.id },
+        data: { cadence: cadenceValue, nextAt },
+      });
+      await tx.routineSeries.update({
+        where: { id: task.routineRule.seriesId },
+        data: { cadence: cadenceValue, nextAt, active: true },
+      });
+    } else {
+      const seriesId = task.routineSeriesId ?? randomUUID();
+      await tx.routineSeries.upsert({
+        where: { id: seriesId },
+        create: {
+          id: seriesId,
+          cadence: cadenceValue,
+          nextAt,
+          workspaceId: task.workspaceId,
+          createdById: task.userId,
+        },
+        update: { cadence: cadenceValue, nextAt, active: true },
+      });
+      await tx.routineRule.create({
+        data: { taskId: task.id, seriesId, cadence: cadenceValue, nextAt },
+      });
+      await tx.task.update({
+        where: { id: task.id },
+        data: { routineSeriesId: seriesId },
+      });
+    }
   } else if (routineNextAt && task.routineRule) {
     await tx.routineRule.update({ where: { taskId: task.id }, data: { nextAt: routineNextAt } });
+    await tx.routineSeries.update({
+      where: { id: task.routineRule.seriesId },
+      data: { nextAt: routineNextAt },
+    });
   } else if (shouldClearRoutine && task.routineRule) {
+    await tx.routineSeries.update({
+      where: { id: task.routineRule.seriesId },
+      data: { active: false },
+    });
     await tx.routineRule.delete({ where: { taskId: task.id } });
   }
 }
@@ -201,12 +234,18 @@ export async function createNextRoutineOccurrence(
       assigneeId: task.assigneeId ?? null,
       userId: task.userId ?? userId,
       workspaceId,
+      routineSeriesId: rule.seriesId,
+      origin: "ROUTINE",
     },
     { actorId: userId, trigger: "ROUTINE" },
   );
   await tx.routineRule.update({
     where: { taskId: task.id },
     data: { taskId: newRoutineTask.id, nextAt },
+  });
+  await tx.routineSeries.update({
+    where: { id: rule.seriesId },
+    data: { nextAt },
   });
   return newRoutineTask;
 }

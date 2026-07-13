@@ -5,18 +5,26 @@
 export {
   Severity,
   TaskAutomationState,
+  TaskAutomationStatus,
+  TaskHierarchyRole,
+  TaskOrigin,
   TaskStatus,
   TaskType,
+  TaskWorkflowState,
 } from "@prisma/client";
 
 import type {
   Severity as PrismaSeverity,
   SprintStatus as PrismaSprintStatus,
   TaskAutomationState as PrismaTaskAutomationState,
+  TaskAutomationStatus as PrismaTaskAutomationStatus,
+  TaskHierarchyRole as PrismaTaskHierarchyRole,
+  TaskOrigin as PrismaTaskOrigin,
   TaskStatus as PrismaTaskStatus,
   TaskType as PrismaTaskType,
+  TaskWorkflowState as PrismaTaskWorkflowState,
 } from "@prisma/client";
-import type { TaskView } from "../modules/tasks/application/task-view";
+import type { TaskView } from "../modules/tasks";
 
 /**
  * Runtime constants for enum values
@@ -34,6 +42,14 @@ export const TASK_TYPE = {
   TASK: "TASK",
 } as const satisfies Record<string, PrismaTaskType>;
 
+export const TASK_WORKFLOW_STATE = {
+  READY: "READY",
+  IN_PROGRESS: "IN_PROGRESS",
+  BLOCKED: "BLOCKED",
+  DONE: "DONE",
+  CANCELED: "CANCELED",
+} as const satisfies Record<string, PrismaTaskWorkflowState>;
+
 export const AUTOMATION_STATE = {
   NONE: "NONE",
   DELEGATED: "DELEGATED",
@@ -42,6 +58,27 @@ export const AUTOMATION_STATE = {
   SPLIT_CHILD: "SPLIT_CHILD",
   SPLIT_REJECTED: "SPLIT_REJECTED",
 } as const satisfies Record<string, PrismaTaskAutomationState>;
+
+export const AUTOMATION_STATUS = {
+  NONE: "NONE",
+  PREPARED: "PREPARED",
+  SPLIT_PENDING: "SPLIT_PENDING",
+  SPLIT_REJECTED: "SPLIT_REJECTED",
+} as const satisfies Record<string, PrismaTaskAutomationStatus>;
+
+export const TASK_HIERARCHY_ROLE = {
+  STANDARD: "STANDARD",
+  SPLIT_PARENT: "SPLIT_PARENT",
+  SPLIT_CHILD: "SPLIT_CHILD",
+} as const satisfies Record<string, PrismaTaskHierarchyRole>;
+
+export const TASK_ORIGIN = {
+  MANUAL: "MANUAL",
+  INTAKE: "INTAKE",
+  AUTOMATION: "AUTOMATION",
+  ROUTINE: "ROUTINE",
+  ONBOARDING: "ONBOARDING",
+} as const satisfies Record<string, PrismaTaskOrigin>;
 
 export const SEVERITY = {
   LOW: "LOW",
@@ -97,4 +134,7 @@ export type SprintDTO = {
   startedAt?: string | Date;
   plannedEndAt?: string | Date | null;
   endedAt?: string | Date | null;
+  committedPoints?: number;
+  activePoints?: number;
+  completedPoints?: number;
 };

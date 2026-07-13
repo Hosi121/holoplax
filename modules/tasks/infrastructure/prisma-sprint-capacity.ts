@@ -1,5 +1,4 @@
 import type { Prisma } from "@prisma/client";
-import { TASK_STATUS } from "../../../lib/types";
 
 // Accepts either the root PrismaClient or a transaction client, so callers can
 // run the capacity check inside the same serializable transaction as their
@@ -21,24 +20,25 @@ export function findActiveSprint(
 }
 
 /**
- * Sum of story points already committed to the sprint column of a workspace,
- * optionally excluding the tasks being moved/updated in the current request so
- * they are not double-counted.
+ * Sum of immutable story-point snapshots currently occupying sprint capacity.
+ * Completed work still occupies the sprint commitment; removed/carry-over work
+ * does not. `taskKey` survives task deletion, so history stays attributable.
  */
 export async function sumSprintPoints(
   client: SprintDb,
-  workspaceId: string,
+  sprintId: string,
   excludeTaskIds: string[] = [],
 ): Promise<number> {
-  const agg = await client.task.aggregate({
+  const agg = await client.sprintItem.aggregate({
     where: {
-      workspaceId,
-      status: TASK_STATUS.SPRINT,
-      ...(excludeTaskIds.length ? { id: { notIn: excludeTaskIds } } : {}),
+      sprintId,
+      removedAt: null,
+      outcome: { in: ["COMMITTED", "COMPLETED"] },
+      ...(excludeTaskIds.length ? { taskKey: { notIn: excludeTaskIds } } : {}),
     },
-    _sum: { points: true },
+    _sum: { committedPoints: true },
   });
-  return agg._sum.points ?? 0;
+  return agg._sum.committedPoints ?? 0;
 }
 
 export type CapacityCheck = {
@@ -73,7 +73,7 @@ export async function checkSprintCapacity(
   }
   const committedPoints = await sumSprintPoints(
     client,
-    params.workspaceId,
+    activeSprint.id,
     params.excludeTaskIds ?? [],
   );
   const nextTotal = committedPoints + params.additionalPoints;

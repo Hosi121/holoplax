@@ -11,6 +11,8 @@ export type StoryPoint = StoryPointType;
 export type TaskAutomationState = TaskAutomationStateType;
 export type TaskStatus = TaskStatusType;
 export type TaskType = TaskTypeType;
+export type { TaskView } from "./application/task-view";
+export { projectLegacyAutomationState } from "./domain/task-automation";
 
 export type RoutineCadence = "DAILY" | "WEEKLY";
 

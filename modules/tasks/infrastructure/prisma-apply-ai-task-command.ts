@@ -1,10 +1,10 @@
 import { normalizeSeverity, normalizeStoryPoint } from "../../../lib/ai-normalization";
 import { AiSplitApplyPayloadSchema } from "../../../lib/contracts/ai";
 import prisma from "../../../lib/prisma";
-import { AUTOMATION_STATE } from "../../../lib/types";
+import { AUTOMATION_STATUS } from "../../../lib/types";
 import { ApplicationError } from "../../shared/application/application-error";
 import type { ApplyAiTaskCommandPort } from "../application/apply-ai-task-command";
-import { checkSprintCapacity } from "./prisma-sprint-capacity";
+import { projectLegacyAutomationState } from "../domain/task-automation";
 import { splitTaskIntoChildren } from "./prisma-task-split";
 
 const badRequest = (message: string) =>
@@ -44,22 +44,23 @@ export const prismaApplyAiTaskCommandPort: ApplyAiTaskCommandPort = {
             throw badRequest("payload.points/urgency/risk are required");
           }
           const normalizedPoints = normalizeStoryPoint(points);
-          if (task.status === "SPRINT") {
-            const capacity = await checkSprintCapacity(tx, {
-              workspaceId: actor.workspaceId,
-              additionalPoints: normalizedPoints,
-              excludeTaskIds: [task.id],
-            });
-            if (capacity.exceeded) throw badRequest("sprint capacity exceeded");
-          }
+          // SprintItem owns the estimate captured at commitment time. Updating
+          // the task estimate prepares future planning and must not rewrite or
+          // revalidate the current sprint snapshot.
           await tx.task.updateMany({
             where: { id: task.id, workspaceId: actor.workspaceId },
             data: {
               points: normalizedPoints,
               urgency: normalizeSeverity(payload.urgency),
               risk: normalizeSeverity(payload.risk),
-              ...(task.automationState === "DELEGATED" || task.automationState === "SPLIT_REJECTED"
-                ? { automationState: "NONE" as const }
+              ...(task.automationStatus === "PREPARED" || task.automationStatus === "SPLIT_REJECTED"
+                ? {
+                    automationStatus: "NONE" as const,
+                    automationState: projectLegacyAutomationState({
+                      automationStatus: "NONE",
+                      hierarchyRole: task.hierarchyRole,
+                    }),
+                  }
                 : {}),
             },
           });
@@ -70,12 +71,11 @@ export const prismaApplyAiTaskCommandPort: ApplyAiTaskCommandPort = {
             taskId: task.id,
             workspaceId: actor.workspaceId,
             userId: actor.userId,
-            expectedStates: [
-              AUTOMATION_STATE.NONE,
-              AUTOMATION_STATE.DELEGATED,
-              AUTOMATION_STATE.PENDING_SPLIT,
-              AUTOMATION_STATE.SPLIT_CHILD,
-              AUTOMATION_STATE.SPLIT_REJECTED,
+            expectedStatuses: [
+              AUTOMATION_STATUS.NONE,
+              AUTOMATION_STATUS.PREPARED,
+              AUTOMATION_STATUS.SPLIT_PENDING,
+              AUTOMATION_STATUS.SPLIT_REJECTED,
             ],
             status: splitPayload.data.status,
             suggestions: splitPayload.data.suggestions,

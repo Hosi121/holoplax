@@ -1,11 +1,18 @@
 import { z } from "zod";
 import { isStoryPoint, type StoryPoint } from "../points";
-import { SEVERITY, TASK_STATUS, TASK_TYPE } from "../types";
+import { SEVERITY, TASK_STATUS, TASK_TYPE, TASK_WORKFLOW_STATE } from "../types";
 import { OptionalNullableDateSchema } from "./common";
 
 const taskStatusValues = [TASK_STATUS.BACKLOG, TASK_STATUS.SPRINT, TASK_STATUS.DONE] as const;
 const taskTypeValues = [TASK_TYPE.EPIC, TASK_TYPE.PBI, TASK_TYPE.TASK] as const;
 const severityValues = [SEVERITY.LOW, SEVERITY.MEDIUM, SEVERITY.HIGH] as const;
+const workflowStateValues = [
+  TASK_WORKFLOW_STATE.READY,
+  TASK_WORKFLOW_STATE.IN_PROGRESS,
+  TASK_WORKFLOW_STATE.BLOCKED,
+  TASK_WORKFLOW_STATE.DONE,
+  TASK_WORKFLOW_STATE.CANCELED,
+] as const;
 
 export const TaskStatusSchema = z.enum(taskStatusValues);
 export const TaskTypeSchema = z.enum(taskTypeValues);
@@ -53,6 +60,7 @@ export const TaskCreateSchema = z
     urgency: z.enum(severityValues).optional(),
     risk: z.enum(severityValues).optional(),
     status: z.preprocess(toEnumInput, TaskStatusSchema.optional()),
+    workflowState: z.preprocess(toEnumInput, z.enum(workflowStateValues).optional()),
     type: z.preprocess(toEnumInput, TaskTypeSchema.optional()),
     parentId: nullableId,
     dueDate: OptionalNullableDateSchema,
@@ -74,6 +82,7 @@ export const TaskUpdateSchema = z
     urgency: z.enum(severityValues).optional(),
     risk: z.enum(severityValues).optional(),
     status: z.preprocess(toEnumInput, TaskStatusSchema.optional()),
+    workflowState: z.preprocess(toEnumInput, z.enum(workflowStateValues).optional()),
     type: z.preprocess(toEnumInput, TaskTypeSchema.optional()),
     // NOTE: automationState is intentionally absent here. It is an internal
     // field managed exclusively by the server-side automation engine. Allowing

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
       update: vi.fn(),
       delete: vi.fn(),
     },
+    task: { updateMany: vi.fn() },
     auditLog: { create: vi.fn() },
   };
   return {
@@ -85,5 +86,18 @@ describe("workspace member application service", () => {
     });
     expect(mocks.tx.workspaceMember.delete).not.toHaveBeenCalled();
     expect(mocks.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("clears task assignments before removing a workspace member", async () => {
+    mocks.tx.task.updateMany.mockResolvedValue({ count: 2 });
+    mocks.tx.workspaceMember.delete.mockResolvedValue({ id: "membership-1" });
+
+    await expect(removeWorkspaceMember(params)).resolves.toBeUndefined();
+
+    expect(mocks.tx.task.updateMany).toHaveBeenCalledWith({
+      where: { workspaceId: "workspace-1", assigneeId: "member-1" },
+      data: { assigneeId: null },
+    });
+    expect(mocks.tx.workspaceMember.delete).toHaveBeenCalledAfter(mocks.tx.task.updateMany);
   });
 });

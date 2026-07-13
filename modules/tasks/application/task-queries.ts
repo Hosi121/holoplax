@@ -1,8 +1,9 @@
-import type { Severity, TaskStatus, TaskType } from "../domain/task-types";
+import type { Severity, TaskStatus, TaskType, TaskWorkflowState } from "../domain/task-types";
 import type { TaskView } from "./task-view";
 
 export type TaskListFilters = {
   statuses?: TaskStatus[];
+  workflowStates?: TaskWorkflowState[];
   types?: TaskType[];
   urgency?: Severity;
   risk?: Severity;

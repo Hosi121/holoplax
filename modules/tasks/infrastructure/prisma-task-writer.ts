@@ -3,12 +3,20 @@ import type {
   RoutineCadence,
   Severity,
   TaskAutomationState,
+  TaskAutomationStatus,
+  TaskHierarchyRole,
+  TaskOrigin,
   TaskStatus,
   TaskStatusEventSource,
   TaskType,
+  TaskWorkflowState,
 } from "@prisma/client";
+import { randomUUID } from "crypto";
 import { ApplicationError } from "../../shared/application/application-error";
 import { findTaskPolicyViolation } from "../domain/task-policy";
+import { initialWorkflowState } from "../domain/task-workflow";
+import { commitTaskToSprint } from "./prisma-sprint-items";
+import { recordWorkflowTransition } from "./prisma-workflow-events";
 
 type Tx = Prisma.TransactionClient;
 
@@ -21,8 +29,12 @@ export type PersistTaskInput = {
   urgency: Severity;
   risk: Severity;
   status: TaskStatus;
+  workflowState?: TaskWorkflowState;
   type: TaskType;
   automationState?: TaskAutomationState;
+  automationStatus?: TaskAutomationStatus;
+  hierarchyRole?: TaskHierarchyRole;
+  origin?: TaskOrigin;
   parentId?: string | null;
   sprintId?: string | null;
   dueDate?: Date | null;
@@ -30,8 +42,9 @@ export type PersistTaskInput = {
   tags?: string[];
   userId: string;
   workspaceId: string;
+  routineSeriesId?: string | null;
   dependencyIds?: string[];
-  routineRule?: { cadence: RoutineCadence; nextAt: Date } | null;
+  routineRule?: { cadence: RoutineCadence; nextAt: Date; seriesId?: string } | null;
 };
 
 export async function persistNewTask(
@@ -42,13 +55,36 @@ export async function persistNewTask(
   const violation = findTaskPolicyViolation({
     type: input.type,
     status: input.status,
+    workflowState: input.workflowState,
     checklist: input.checklist,
   });
   if (violation) {
     throw new ApplicationError("TASK_BAD_REQUEST", violation, "bad_request");
   }
 
-  return tx.task.create({
+  const workflowState = initialWorkflowState(input.status, input.workflowState);
+  const routineSeriesId =
+    input.routineSeriesId ??
+    input.routineRule?.seriesId ??
+    (input.routineRule ? randomUUID() : null);
+  if (input.routineRule && routineSeriesId) {
+    await tx.routineSeries.upsert({
+      where: { id: routineSeriesId },
+      create: {
+        id: routineSeriesId,
+        cadence: input.routineRule.cadence,
+        nextAt: input.routineRule.nextAt,
+        workspaceId: input.workspaceId,
+        createdById: input.userId,
+      },
+      update: {
+        cadence: input.routineRule.cadence,
+        nextAt: input.routineRule.nextAt,
+        active: true,
+      },
+    });
+  }
+  const created = await tx.task.create({
     data: {
       title: input.title,
       description: input.description ?? "",
@@ -58,8 +94,12 @@ export async function persistNewTask(
       urgency: input.urgency,
       risk: input.risk,
       status: input.status,
+      workflowState,
       type: input.type,
       automationState: input.automationState,
+      automationStatus: input.automationStatus,
+      hierarchyRole: input.hierarchyRole,
+      origin: input.origin,
       parentId: input.parentId,
       sprintId: input.sprintId,
       dueDate: input.dueDate,
@@ -67,7 +107,17 @@ export async function persistNewTask(
       tags: input.tags ?? [],
       userId: input.userId,
       workspaceId: input.workspaceId,
-      routineRule: input.routineRule ? { create: input.routineRule } : undefined,
+      routineSeriesId,
+      routineRule:
+        input.routineRule && routineSeriesId
+          ? {
+              create: {
+                cadence: input.routineRule.cadence,
+                nextAt: input.routineRule.nextAt,
+                seriesId: routineSeriesId,
+              },
+            }
+          : undefined,
       dependencies: input.dependencyIds?.length
         ? {
             createMany: {
@@ -87,4 +137,16 @@ export async function persistNewTask(
       },
     },
   });
+  await recordWorkflowTransition(tx, {
+    taskId: created.id,
+    workspaceId: input.workspaceId,
+    actorId: event.actorId,
+    fromState: null,
+    toState: workflowState,
+    trigger: event.trigger,
+  });
+  if (input.sprintId) {
+    await commitTaskToSprint(tx, { sprintId: input.sprintId, task: created });
+  }
+  return created;
 }

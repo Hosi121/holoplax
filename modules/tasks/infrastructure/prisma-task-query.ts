@@ -1,9 +1,10 @@
-import type { Prisma, Severity, TaskStatus, TaskType } from "@prisma/client";
+import type { Prisma, Severity, TaskStatus, TaskType, TaskWorkflowState } from "@prisma/client";
 import { mapTaskWithDependencies } from "../../../lib/mappers/task";
 import prisma from "../../../lib/prisma";
 
 type PrismaTaskListFilters = {
   statuses?: TaskStatus[];
+  workflowStates?: TaskWorkflowState[];
   types?: TaskType[];
   urgency?: Severity;
   risk?: Severity;
@@ -24,9 +25,13 @@ const taskRelations = {
   dependencies: {
     select: {
       dependsOnId: true,
-      dependsOn: { select: { id: true, title: true, status: true } },
+      dependsOn: {
+        select: { id: true, title: true, status: true, workflowState: true },
+      },
     },
   },
+  sprint: { select: { status: true } },
+  _count: { select: { children: true } },
 } satisfies Prisma.TaskInclude;
 
 export async function listTasks(workspaceId: string, filters: PrismaTaskListFilters = {}) {
@@ -52,6 +57,7 @@ export async function listTasks(workspaceId: string, filters: PrismaTaskListFilt
   const where: Prisma.TaskWhereInput = {
     workspaceId,
     ...(filters.statuses?.length ? { status: { in: filters.statuses } } : {}),
+    ...(filters.workflowStates?.length ? { workflowState: { in: filters.workflowStates } } : {}),
     ...(filters.types?.length ? { type: { in: filters.types } } : {}),
     ...(filters.urgency ? { urgency: filters.urgency } : {}),
     ...(filters.risk ? { risk: filters.risk } : {}),

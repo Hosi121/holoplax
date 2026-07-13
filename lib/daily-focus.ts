@@ -32,7 +32,7 @@ export type DailyFocusResult = {
  * タスクがブロックされているかチェック
  */
 function isBlocked(task: TaskDTO): boolean {
-  return (task.dependencies ?? []).some((dep) => dep.status !== TASK_STATUS.DONE);
+  return (task.dependencies ?? []).some((dep) => dep.workflowState !== "DONE");
 }
 
 /**
@@ -112,7 +112,7 @@ export function selectDailyFocus(
   // フィルタリング
   for (const task of tasks) {
     // 完了済みはスキップ
-    if (task.status === TASK_STATUS.DONE) {
+    if (task.workflowState === "DONE" || task.workflowState === "CANCELED") {
       continue;
     }
 
