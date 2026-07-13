@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // CI supplies environment variables directly and may not have a local file.
+}
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,

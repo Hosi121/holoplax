@@ -1,4 +1,23 @@
 import { expect, test } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+let createdUserEmail: string | null = null;
+
+test.afterEach(async () => {
+  if (!createdUserEmail) return;
+  const user = await prisma.user.findUnique({
+    where: { email: createdUserEmail },
+    select: { id: true },
+  });
+  if (user) {
+    await prisma.workspace.deleteMany({ where: { ownerId: user.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+  }
+  createdUserEmail = null;
+});
+
+test.afterAll(() => prisma.$disconnect());
 
 test("health reports a reachable database", async ({ request }) => {
   const response = await request.get("/api/health");
@@ -11,6 +30,7 @@ test("health reports a reachable database", async ({ request }) => {
 
 test("a new user can register, onboard, and see the first task", async ({ page }) => {
   const email = `e2e-${Date.now()}@example.test`;
+  createdUserEmail = email;
   await page.goto("/auth/signin");
   await page.getByRole("button", { name: "新規登録" }).click();
   await page.getByPlaceholder("名前").fill("E2E User");
@@ -57,21 +77,46 @@ test("a new user can register, onboard, and see the first task", async ({ page }
     );
 
   expect((await mutate("/api/sprints/current", "POST", { capacityPoints: 5 })).status).toBe(200);
-  expect((await mutate(`/api/tasks/${task.id}`, "PATCH", { status: "SPRINT" })).status).toBe(200);
-  expect(
-    (await mutate(`/api/tasks/${task.id}`, "PATCH", { workflowState: "IN_PROGRESS" })).status,
-  ).toBe(200);
-  expect((await mutate(`/api/tasks/${task.id}`, "PATCH", { workflowState: "DONE" })).status).toBe(
-    200,
+  const candidateBody = (title: string) => ({
+    title,
+    points: 3,
+    urgency: "MEDIUM",
+    risk: "MEDIUM",
+    status: "BACKLOG",
+    type: "TASK",
+  });
+  const [candidateA, candidateB] = await Promise.all([
+    mutate("/api/tasks", "POST", candidateBody("並行候補A")),
+    mutate("/api/tasks", "POST", candidateBody("並行候補B")),
+  ]);
+  expect(candidateA.status).toBe(200);
+  expect(candidateB.status).toBe(200);
+  const candidates = [candidateA.data.task, candidateB.data.task];
+  const commitments = await Promise.all(
+    candidates.map((candidate: { id: string }) =>
+      mutate(`/api/tasks/${candidate.id}`, "PATCH", { status: "SPRINT" }),
+    ),
   );
+  const commitmentStatuses = commitments.map(({ status }) => status);
+  expect(commitmentStatuses.filter((status) => status === 200)).toHaveLength(1);
+  expect([400, 409]).toContain(commitmentStatuses.find((status) => status !== 200));
+  const executionTask = candidates[commitments.findIndex(({ status }) => status === 200)];
+
+  expect(
+    (await mutate(`/api/tasks/${executionTask.id}`, "PATCH", { workflowState: "IN_PROGRESS" }))
+      .status,
+  ).toBe(200);
+  expect(
+    (await mutate(`/api/tasks/${executionTask.id}`, "PATCH", { workflowState: "DONE" })).status,
+  ).toBe(200);
 
   const currentSprint = await page.request.get("/api/sprints/current");
   await expect(currentSprint.json()).resolves.toMatchObject({
-    sprint: { committedPoints: 1, completedPoints: 1 },
+    sprint: { committedPoints: 3, activePoints: 3, completedPoints: 3 },
   });
   expect((await mutate("/api/sprints/current", "PATCH")).status).toBe(200);
   const velocity = await page.request.get("/api/velocity");
-  await expect(velocity.json()).resolves.toMatchObject({ velocity: [{ points: 1 }] });
+  await expect(velocity.json()).resolves.toMatchObject({ velocity: [{ points: 3 }] });
 
   const accountLoaded = page.waitForResponse(
     (response) =>
