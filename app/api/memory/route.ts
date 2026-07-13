@@ -1,178 +1,13 @@
-import {
-  type MemoryScope,
-  type MemorySource,
-  type MemoryStatus,
-  type MemoryValueType,
-  Prisma,
-} from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../lib/api-guards";
 import { withApiHandler } from "../../../lib/api-handler";
 import { ok } from "../../../lib/api-response";
-import { logAudit } from "../../../lib/audit";
 import { MemoryClaimCreateSchema, MemoryClaimDeleteSchema } from "../../../lib/contracts/memory";
-import { createDomainErrors } from "../../../lib/http/errors";
 import { parseBody } from "../../../lib/http/validation";
-import { logger } from "../../../lib/logger";
-import prisma from "../../../lib/prisma";
-
-const errors = createDomainErrors("MEMORY");
-
-const isMemoryScope = (value: unknown): value is MemoryScope =>
-  value === "USER" || value === "WORKSPACE";
-
-const isMemoryValueType = (value: unknown): value is MemoryValueType =>
-  value === "STRING" ||
-  value === "NUMBER" ||
-  value === "BOOL" ||
-  value === "JSON" ||
-  value === "RATIO" ||
-  value === "DURATION_MS" ||
-  value === "HISTOGRAM_24x7" ||
-  value === "RATIO_BY_TYPE";
-
-const toNullableJsonInput = (
-  value: unknown | null | undefined,
-): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
-  if (value === undefined) return undefined;
-  if (value === null) return Prisma.DbNull;
-  return value as Prisma.InputJsonValue;
-};
-
-const defaultMemoryDefinitions = [
-  {
-    key: "life_rhythm",
-    scope: "USER",
-    valueType: "HISTOGRAM_24x7",
-    unit: null,
-    granularity: "weekly",
-    updatePolicy: "manual",
-    decayDays: 56,
-    description: "活動時間帯の分布",
-  },
-  {
-    key: "deadline_strictness",
-    scope: "USER",
-    valueType: "RATIO",
-    unit: null,
-    granularity: "daily",
-    updatePolicy: "manual",
-    decayDays: 30,
-    description: "期限遵守の厳しさ (0-1)",
-  },
-  {
-    key: "execution_pattern",
-    scope: "USER",
-    valueType: "STRING",
-    unit: null,
-    granularity: "daily",
-    updatePolicy: "manual",
-    decayDays: 30,
-    description: "実行パターンや習慣",
-  },
-  {
-    key: "sprint_length",
-    scope: "WORKSPACE",
-    valueType: "NUMBER",
-    unit: "days",
-    granularity: "static",
-    updatePolicy: "manual",
-    decayDays: null,
-    description: "スプリント長 (日)",
-  },
-  {
-    key: "team_dod",
-    scope: "WORKSPACE",
-    valueType: "STRING",
-    unit: null,
-    granularity: "static",
-    updatePolicy: "manual",
-    decayDays: null,
-    description: "完了の条件",
-  },
-  {
-    key: "team_workflow_schema",
-    scope: "WORKSPACE",
-    valueType: "JSON",
-    unit: null,
-    granularity: "static",
-    updatePolicy: "manual",
-    decayDays: null,
-    description: "ステータス/遷移のスキーマ",
-  },
-];
-
-const ensureMemoryDefinitions = async (scopes: MemoryScope[]) => {
-  const targets = defaultMemoryDefinitions.filter((item) =>
-    scopes.includes(item.scope as MemoryScope),
-  );
-  if (!targets.length) return;
-  await prisma.$transaction(
-    targets.map((item) =>
-      prisma.memoryDefinition.upsert({
-        where: { key_scope: { key: item.key, scope: item.scope as MemoryScope } },
-        update: {
-          valueType: item.valueType as MemoryValueType,
-          unit: item.unit,
-          granularity: item.granularity,
-          updatePolicy: item.updatePolicy,
-          decayDays: item.decayDays,
-          description: item.description,
-        },
-        create: {
-          key: item.key,
-          scope: item.scope as MemoryScope,
-          valueType: item.valueType as MemoryValueType,
-          unit: item.unit,
-          granularity: item.granularity,
-          updatePolicy: item.updatePolicy,
-          decayDays: item.decayDays,
-          description: item.description,
-        },
-      }),
-    ),
-  );
-};
-
-const parseValue = (value: unknown, valueType: MemoryValueType) => {
-  if (value === null || value === undefined || value === "") {
-    return { ok: false, reason: "value is required" };
-  }
-  if (valueType === "STRING") {
-    return { ok: true, data: { valueStr: String(value) } };
-  }
-  if (valueType === "NUMBER" || valueType === "DURATION_MS") {
-    const num = Number(value);
-    if (Number.isNaN(num)) return { ok: false, reason: "invalid number" };
-    return { ok: true, data: { valueNum: num } };
-  }
-  if (valueType === "RATIO") {
-    const num = Number(value);
-    if (Number.isNaN(num) || num < 0 || num > 1) {
-      return { ok: false, reason: "ratio must be 0..1" };
-    }
-    return { ok: true, data: { valueNum: num } };
-  }
-  if (valueType === "BOOL") {
-    if (typeof value === "boolean") {
-      return { ok: true, data: { valueBool: value } };
-    }
-    if (value === "true" || value === "false") {
-      return { ok: true, data: { valueBool: value === "true" } };
-    }
-    return { ok: false, reason: "invalid boolean" };
-  }
-  if (valueType === "JSON" || valueType === "HISTOGRAM_24x7" || valueType === "RATIO_BY_TYPE") {
-    if (typeof value === "string") {
-      try {
-        return { ok: true, data: { valueJson: JSON.parse(value) } };
-      } catch {
-        return { ok: false, reason: "invalid json" };
-      }
-    }
-    return { ok: true, data: { valueJson: value } };
-  }
-  return { ok: false, reason: "unsupported value type" };
-};
+import {
+  createMemoryClaim,
+  deleteMemoryClaim,
+  listMemory,
+} from "../../../modules/memory/index.server";
 
 export async function GET() {
   return withApiHandler(
@@ -186,33 +21,7 @@ export async function GET() {
     },
     async () => {
       const { userId, workspaceId } = await requireWorkspaceAuth();
-      const scopes: MemoryScope[] = workspaceId ? ["USER", "WORKSPACE"] : ["USER"];
-
-      await ensureMemoryDefinitions(scopes);
-
-      const definitions = await prisma.memoryDefinition.findMany({
-        where: { scope: { in: scopes } },
-        orderBy: { key: "asc" },
-        take: 100,
-      });
-
-      const userClaims = await prisma.memoryClaim.findMany({
-        where: { userId, status: "ACTIVE" },
-        orderBy: { updatedAt: "desc" },
-        distinct: ["definitionId"],
-        take: 100,
-      });
-
-      const workspaceClaims = workspaceId
-        ? await prisma.memoryClaim.findMany({
-            where: { workspaceId, status: "ACTIVE" },
-            orderBy: { updatedAt: "desc" },
-            distinct: ["definitionId"],
-            take: 100,
-          })
-        : [];
-
-      return ok({ definitions, userClaims, workspaceClaims, workspaceId });
+      return ok(await listMemory({ userId, workspaceId }));
     },
   );
 }
@@ -232,76 +41,7 @@ export async function POST(request: Request) {
       const body = await parseBody(request, MemoryClaimCreateSchema, {
         code: "MEMORY_VALIDATION",
       });
-      logger.debug("MEMORY_CLAIM_CREATE input", {
-        definitionId: body.definitionId,
-        valueType: typeof body.value,
-        valueNull: body.value === null,
-      });
-      const definitionId = body.definitionId;
-      const rawValue = body.value;
-
-      const definition = await prisma.memoryDefinition.findFirst({
-        where: { id: definitionId },
-      });
-      if (!definition) {
-        return errors.badRequest("invalid definitionId");
-      }
-      if (!isMemoryScope(definition.scope) || !isMemoryValueType(definition.valueType)) {
-        return errors.badRequest("invalid memory type configuration");
-      }
-      if (definition.updatePolicy !== "manual") {
-        return errors.badRequest("derived memory cannot be edited manually");
-      }
-
-      if (definition.scope === "WORKSPACE" && !workspaceId) {
-        return errors.badRequest("workspace is required");
-      }
-
-      const parsed = parseValue(rawValue, definition.valueType);
-      logger.debug("MEMORY_CLAIM_CREATE parsed", {
-        ok: parsed.ok,
-        valueType: definition.valueType,
-      });
-      if (!parsed.ok) {
-        return errors.badRequest(parsed.reason ?? "invalid value");
-      }
-
-      const now = new Date();
-      const claim = await prisma.$transaction(async (tx) => {
-        await tx.memoryClaim.updateMany({
-          where:
-            definition.scope === "USER"
-              ? { definitionId, userId, status: "ACTIVE" }
-              : { definitionId, workspaceId, status: "ACTIVE" },
-          data: { status: "STALE", validTo: now },
-        });
-        const data = {
-          definitionId,
-          userId: definition.scope === "USER" ? userId : null,
-          workspaceId: definition.scope === "WORKSPACE" ? workspaceId : null,
-          ...parsed.data,
-          provenance: "EXPLICIT" as MemorySource,
-          status: "ACTIVE" as MemoryStatus,
-          validFrom: now,
-          confidence: 0.7,
-        };
-        return tx.memoryClaim.create({
-          data: {
-            ...data,
-            valueJson:
-              "valueJson" in data
-                ? toNullableJsonInput((data as { valueJson?: unknown }).valueJson)
-                : undefined,
-          },
-        });
-      });
-
-      await logAudit({
-        actorId: userId,
-        action: "MEMORY_CLAIM_CREATE",
-        targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { claimId: claim.id, definitionId, scope: definition.scope },
-      });
+      const claim = await createMemoryClaim({ userId, workspaceId }, body.definitionId, body.value);
       return ok({ claim });
     },
   );
@@ -322,32 +62,7 @@ export async function DELETE(request: Request) {
       const body = await parseBody(request, MemoryClaimDeleteSchema, {
         code: "MEMORY_VALIDATION",
       });
-      const claimId = body.claimId;
-
-      const claim = await prisma.memoryClaim.findFirst({
-        where: { id: claimId },
-      });
-      if (!claim) {
-        return errors.badRequest("invalid claimId");
-      }
-
-      const isOwner = claim.userId === userId;
-      const isWorkspaceMember = workspaceId && claim.workspaceId === workspaceId;
-      if (!isOwner && !isWorkspaceMember) {
-        return errors.badRequest("not allowed");
-      }
-
-      const updated = await prisma.memoryClaim.update({
-        where: { id: claimId },
-        data: { status: "STALE", validTo: new Date() },
-      });
-
-      await logAudit({
-        actorId: userId,
-        action: "MEMORY_CLAIM_DELETE",
-        targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { claimId, definitionId: claim.definitionId },
-      });
+      const updated = await deleteMemoryClaim({ userId, workspaceId }, body.claimId);
       return ok({ claim: updated });
     },
   );

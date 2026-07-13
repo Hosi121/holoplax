@@ -1,40 +1,9 @@
-import { Prisma } from "@prisma/client";
 import { requireWorkspaceAuth } from "../../../../../lib/api-guards";
 import { withApiHandler } from "../../../../../lib/api-handler";
 import { ok } from "../../../../../lib/api-response";
-import { logAudit } from "../../../../../lib/audit";
 import { MemoryQuestionActionSchema } from "../../../../../lib/contracts/memory";
-import { createDomainErrors } from "../../../../../lib/http/errors";
 import { parseBody } from "../../../../../lib/http/validation";
-import { logger } from "../../../../../lib/logger";
-import prisma from "../../../../../lib/prisma";
-
-const pickClaimValue = (question: {
-  valueStr: string | null;
-  valueNum: number | null;
-  valueBool: boolean | null;
-  valueJson: unknown | null;
-}) => {
-  logger.debug("MEMORY_QUESTION_ACCEPT values", {
-    valueJsonType: typeof question.valueJson,
-    valueJsonNull: question.valueJson === null,
-  });
-  return {
-    valueStr: question.valueStr,
-    valueNum: question.valueNum,
-    valueBool: question.valueBool,
-    valueJson: question.valueJson,
-  };
-};
-
-const toNullableJsonInput = (
-  value: unknown | null | undefined,
-): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
-  if (value === undefined) return undefined;
-  if (value === null) return Prisma.DbNull;
-  return value as Prisma.InputJsonValue;
-};
-const errors = createDomainErrors("MEMORY");
+import { actOnMemoryQuestion } from "../../../../../modules/memory/index.server";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApiHandler(
@@ -53,77 +22,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         code: "MEMORY_VALIDATION",
       });
       const action = body.action;
-      if (!questionId) {
-        return errors.badRequest("id is required");
-      }
-
-      const question = await prisma.memoryQuestion.findFirst({
-        where: { id: questionId },
-        include: { definition: { select: { scope: true } } },
-      });
-      if (!question) {
-        return errors.badRequest("invalid question");
-      }
-
-      const belongsToUser = question.userId === userId;
-      const belongsToWorkspace = workspaceId && question.workspaceId === workspaceId;
-      if (!belongsToUser && !belongsToWorkspace) {
-        return errors.badRequest("not allowed");
-      }
-
-      const now = new Date();
-      let nextStatus: "ACCEPTED" | "REJECTED" | "HOLD";
-      if (action === "accept") {
-        nextStatus = "ACCEPTED";
-      } else if (action === "reject") {
-        nextStatus = "REJECTED";
-      } else if (action === "hold") {
-        nextStatus = "HOLD";
-      } else {
-        return errors.badRequest("invalid action");
-      }
-
-      const updated = await prisma.$transaction(async (tx) => {
-        if (action === "accept") {
-          await tx.memoryClaim.updateMany({
-            where:
-              question.definition.scope === "USER"
-                ? { definitionId: question.definitionId, userId, status: "ACTIVE" }
-                : { definitionId: question.definitionId, workspaceId, status: "ACTIVE" },
-            data: { status: "STALE", validTo: now },
-          });
-          const claimValue = pickClaimValue(question);
-          await tx.memoryClaim.create({
-            data: {
-              definitionId: question.definitionId,
-              userId: question.definition.scope === "USER" ? userId : null,
-              workspaceId: question.definition.scope === "WORKSPACE" ? workspaceId : null,
-              ...claimValue,
-              valueJson: toNullableJsonInput(claimValue.valueJson),
-              confidence: question.confidence,
-              provenance: "INFERRED",
-              status: "ACTIVE",
-              validFrom: now,
-            },
-          });
-        }
-
-        return tx.memoryQuestion.update({
-          where: { id: question.id },
-          data: { status: nextStatus },
-          select: {
-            id: true,
-            status: true,
-          },
-        });
-      });
-
-      await logAudit({
-        actorId: userId,
-        action: `MEMORY_QUESTION_${nextStatus}`,
-        targetWorkspaceId: workspaceId ?? undefined,
-        metadata: { questionId, definitionId: question.definitionId },
-      });
+      const updated = await actOnMemoryQuestion(
+        { userId, workspaceId },
+        questionId,
+        action as "accept" | "reject" | "hold",
+      );
       return ok({ question: updated });
     },
   );
