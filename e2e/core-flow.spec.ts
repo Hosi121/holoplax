@@ -51,7 +51,41 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   await page.getByRole("button", { name: "利用を開始" }).click();
   expect((await onboardingCompleted).status()).toBe(200);
 
-  await expect(page).toHaveURL(/\/backlog/);
+  await expect(page).toHaveURL(/\/delegate/);
+  await expect(page.getByRole("heading", { name: "面倒な仕事を、そのまま任せる" })).toBeVisible();
+
+  await page
+    .getByPlaceholder("例：このメモを整理して、明日そのまま使える説明文にして")
+    .fill("この内容をメールで送って");
+  const delegationCreated = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/delegations",
+  );
+  await page.getByRole("button", { name: "AIに任せる" }).click();
+  expect((await delegationCreated).status()).toBe(201);
+  await expect(
+    page.getByText("外部サービスや実行環境を変更する操作が含まれています。"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "下書きだけ作る" })).toBeVisible();
+
+  await page.getByLabel("任せ方").selectOption("PREPARE");
+  await page
+    .getByPlaceholder("例：このメモを整理して、明日そのまま使える説明文にして")
+    .fill("APIキーを使って文章を作って");
+  const sensitiveDelegationRejected = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/delegations",
+  );
+  await page.getByRole("button", { name: "AIに任せる" }).click();
+  expect((await sensitiveDelegationRejected).status()).toBe(400);
+  await expect(page.getByText(/機密情報や個人情報が含まれている可能性があります/)).toBeVisible();
+  const delegatedWork = await page.request.get("/api/delegations");
+  expect(delegatedWork.ok()).toBe(true);
+  expect((await delegatedWork.json()).jobs).toHaveLength(1);
+
+  await page.goto("/backlog");
   await expect(page.getByText("最初のE2Eタスク", { exact: true })).toBeVisible();
 
   const tasksResponse = await page.request.get("/api/tasks?status=BACKLOG");

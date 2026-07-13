@@ -82,6 +82,27 @@ flowchart LR
   TaskUpdate --> Log[AuditLog]
 ```
 
+### Personal delegation flow
+```mermaid
+flowchart LR
+  Request[Personal request] --> Policy[Deterministic safety policy]
+  Policy -->|safe| Queue[DelegationJob]
+  Policy -->|external or destructive| Approval[Needs approval]
+  Policy -->|sensitive| Revise[Remove sensitive data]
+  Approval -->|prepare only| Queue
+  Queue --> Worker[Durable delegation worker]
+  Worker --> Generate[AI artifact generation]
+  Generate --> Verify[Independent AI verification]
+  Verify -->|pass| Done[Saved result]
+  Verify -->|insufficient| Input[Needs input]
+```
+
+The current executor is deliberately artifact-only. It cannot send, publish,
+delete, modify files, or claim that an external operation happened. Those
+capabilities must be added as scoped execution-port adapters with their own
+authorization and idempotency rules. See
+[personal-delegation.md](./personal-delegation.md).
+
 ### Focus Queue Computation
 ```mermaid
 flowchart LR
@@ -117,6 +138,10 @@ flowchart LR
   claims, recovers stale workers, and exposes queue degradation via health.
   Health classifies overdue PENDING and RUNNING jobs using independently
   configurable age thresholds; queue depth alone is not considered healthy.
+- Personal delegation follows the same durable boundary through
+  `DelegationJob`, but owns its policy, commands, runner, and adapters in the
+  `modules/delegation` layers. Domain and application code do not depend on
+  Prisma, Next.js, or the AI provider.
 - Task list consumers follow the cursor until `hasMore` is false. Sprint views
   apply `sprintId` in the server query instead of loading workspace-wide DONE
   work and filtering it in the browser.
