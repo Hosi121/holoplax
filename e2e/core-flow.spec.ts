@@ -28,6 +28,51 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   await expect(page).toHaveURL(/\/backlog/);
   await expect(page.getByText("最初のE2Eタスク", { exact: true })).toBeVisible();
 
+  const tasksResponse = await page.request.get("/api/tasks?status=BACKLOG");
+  expect(tasksResponse.ok()).toBe(true);
+  const task = (await tasksResponse.json()).tasks.find(
+    (item: { title: string }) => item.title === "最初のE2Eタスク",
+  );
+  expect(task).toBeTruthy();
+
+  const mutate = (url: string, method: "POST" | "PATCH", body?: unknown) =>
+    page.evaluate(
+      async ({ url, method, body }) => {
+        const csrfToken = document.cookie
+          .split(";")
+          .map((cookie) => cookie.trim())
+          .find((cookie) => cookie.startsWith("csrf_token="))
+          ?.slice("csrf_token=".length);
+        const response = await fetch(url, {
+          method,
+          headers: {
+            ...(body ? { "Content-Type": "application/json" } : {}),
+            ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        return { status: response.status, data: await response.json() };
+      },
+      { url, method, body },
+    );
+
+  expect((await mutate("/api/sprints/current", "POST", { capacityPoints: 5 })).status).toBe(200);
+  expect((await mutate(`/api/tasks/${task.id}`, "PATCH", { status: "SPRINT" })).status).toBe(200);
+  expect(
+    (await mutate(`/api/tasks/${task.id}`, "PATCH", { workflowState: "IN_PROGRESS" })).status,
+  ).toBe(200);
+  expect((await mutate(`/api/tasks/${task.id}`, "PATCH", { workflowState: "DONE" })).status).toBe(
+    200,
+  );
+
+  const currentSprint = await page.request.get("/api/sprints/current");
+  await expect(currentSprint.json()).resolves.toMatchObject({
+    sprint: { committedPoints: 1, completedPoints: 1 },
+  });
+  expect((await mutate("/api/sprints/current", "PATCH")).status).toBe(200);
+  const velocity = await page.request.get("/api/velocity");
+  await expect(velocity.json()).resolves.toMatchObject({ velocity: [{ points: 1 }] });
+
   const accountLoaded = page.waitForResponse(
     (response) =>
       response.request().method() === "GET" && new URL(response.url()).pathname === "/api/account",
