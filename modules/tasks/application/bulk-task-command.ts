@@ -1,6 +1,5 @@
 import type { StoryPoint, TaskStatus, TaskType, TaskWorkflowState } from "../domain/task-types";
 import { planTaskLifecycleUpdate } from "./task-lifecycle";
-import type { TaskActor } from "./task-types";
 
 export type BulkTaskCommand = {
   action: "status" | "delete" | "points";
@@ -99,19 +98,3 @@ export const planBulkStatusExecution = (input: {
     requiresActiveSprint: input.requestedStatus === "SPRINT",
   };
 };
-
-export type BulkTaskPlanners = {
-  planStatus: typeof planBulkStatusExecution;
-};
-
-export interface BulkTaskCommandPort {
-  execute(
-    actor: TaskActor,
-    command: BulkTaskCommand,
-    planners: BulkTaskPlanners,
-  ): Promise<BulkTaskResult>;
-}
-
-export const createBulkTaskCommand =
-  (port: BulkTaskCommandPort) => (actor: TaskActor, command: BulkTaskCommand) =>
-    port.execute(actor, command, { planStatus: planBulkStatusExecution });

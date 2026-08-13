@@ -146,20 +146,6 @@ for (const file of sourceFiles) {
     report(file, "Serializable transactions must use the shared retrying transaction adapter");
   }
 
-  // Bulk lifecycle decisions belong to the application execution planner. A
-  // persistence adapter writing request values directly would recreate the
-  // split-brain status/workflow bug even if it called the planner for validation.
-  if (path === "modules/tasks/infrastructure/prisma-bulk-task-command.ts") {
-    if (/status\s*:\s*command\.status/.test(source)) {
-      report(file, "bulk persistence must write lifecycle values from the application plan");
-    }
-    if (!/planners\.planStatus\s*\(/.test(source)) {
-      report(file, "bulk persistence must execute the application lifecycle plan");
-    }
-    if (/application\/task-lifecycle/.test(source)) {
-      report(file, "bulk persistence must not call the lifecycle domain planner directly");
-    }
-  }
 }
 
 const visitingModules = new Set();

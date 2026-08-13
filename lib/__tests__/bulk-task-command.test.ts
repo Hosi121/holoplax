@@ -27,10 +27,7 @@ vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => 
   wakeTaskAutomationWorker: mocks.wakeAutomation,
 }));
 
-import { createBulkTaskCommand } from "../../modules/tasks/application/bulk-task-command";
-import { prismaBulkTaskCommandPort } from "../../modules/tasks/infrastructure/prisma-bulk-task-command";
-
-const executeBulkTaskCommand = createBulkTaskCommand(prismaBulkTaskCommandPort);
+import { bulkUpdateTasks } from "../../modules/tasks/infrastructure/prisma-bulk-task-command";
 
 describe("bulk task commands", () => {
   beforeEach(() => {
@@ -76,7 +73,7 @@ describe("bulk task commands", () => {
   });
 
   it("retains sprint membership when tasks are completed in bulk", async () => {
-    await executeBulkTaskCommand(
+    await bulkUpdateTasks(
       { userId: "user-1", workspaceId: "workspace-1" },
       { action: "status", taskIds: ["task-1"], status: "DONE" },
     );
@@ -127,7 +124,7 @@ describe("bulk task commands", () => {
         },
       ]);
 
-    await executeBulkTaskCommand(
+    await bulkUpdateTasks(
       { userId: "user-1", workspaceId: "workspace-1" },
       { action: "points", taskIds: ["task-1"], points: 5 },
     );

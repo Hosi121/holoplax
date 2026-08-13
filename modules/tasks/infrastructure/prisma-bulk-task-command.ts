@@ -7,12 +7,9 @@ import {
   removeTaskFromActiveSprint,
 } from "../../shared/infrastructure/prisma-sprint-items";
 import { recordTaskStatusTransitions } from "../../shared/infrastructure/prisma-task-status-events";
-import type {
-  BulkTaskCommand,
-  BulkTaskCommandPort,
-  BulkTaskPlanners,
-  BulkTaskResult,
-} from "../application/bulk-task-command";
+import type { BulkTaskCommand, BulkTaskResult } from "../application/bulk-task-command";
+import { planBulkStatusExecution } from "../application/bulk-task-command";
+import type { TaskActor } from "../application/task-types";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { deriveLegacyStatus } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
@@ -32,12 +29,11 @@ type AutomationTask = Pick<
   "id" | "title" | "description" | "points" | "workflowState" | "updatedAt"
 >;
 
-const executeBulkCommand = async (
-  actor: { userId: string; workspaceId: string },
+export const bulkUpdateTasks = async (
+  actor: TaskActor,
   command: BulkTaskCommand,
-  planners: BulkTaskPlanners,
-): Promise<BulkTaskResult> =>
-  runSerializableTransaction(
+): Promise<BulkTaskResult> => {
+  const result = await runSerializableTransaction<BulkTaskResult>(
     async (tx) => {
       const taskIds = [...new Set(command.taskIds)];
       const tasks = await tx.task.findMany({
@@ -92,7 +88,7 @@ const executeBulkCommand = async (
 
       if (command.action === "status") {
         if (!command.status) throw badRequest("status is required for status action");
-        const executionPlan = planners.planStatus({
+        const executionPlan = planBulkStatusExecution({
           requestedStatus: command.status,
           tasks: tasks.map((task) => ({
             id: task.id,
@@ -288,11 +284,6 @@ const executeBulkCommand = async (
       message: "tasks changed concurrently; retry the operation",
     },
   );
-
-export const prismaBulkTaskCommandPort: BulkTaskCommandPort = {
-  async execute(actor, command, planners) {
-    const result = await executeBulkCommand(actor, command, planners);
-    wakeTaskAutomationWorker();
-    return result;
-  },
+  wakeTaskAutomationWorker();
+  return result;
 };

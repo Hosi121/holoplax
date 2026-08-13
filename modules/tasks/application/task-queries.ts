@@ -26,13 +26,3 @@ export type TaskListResult = {
   hasMore: boolean;
   page?: number;
 };
-
-export interface TaskQueryPort {
-  list(workspaceId: string, filters?: TaskListFilters): Promise<TaskListResult>;
-  get(workspaceId: string, taskId: string): Promise<TaskView | null>;
-}
-
-export const createTaskQueries = (port: TaskQueryPort) => ({
-  list: (workspaceId: string, filters?: TaskListFilters) => port.list(workspaceId, filters),
-  get: (workspaceId: string, taskId: string) => port.get(workspaceId, taskId),
-});

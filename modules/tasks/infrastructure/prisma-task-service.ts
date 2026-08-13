@@ -17,6 +17,7 @@ import {
 } from "../../shared/infrastructure/prisma-sprint-items";
 import { recordTaskStatusTransition } from "../../shared/infrastructure/prisma-task-status-events";
 import { planTaskLifecycleUpdate } from "../application/task-lifecycle";
+import type { TaskActor } from "../application/task-types";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { findTaskHierarchyViolation, findTaskPolicyViolation } from "../domain/task-policy";
 import {
@@ -87,13 +88,8 @@ const toChecklistForUpdate = (value: unknown) => {
  * event, audit log, automation). Caller supplies the authenticated identity and
  * the validated request body.
  */
-export async function createTask(params: {
-  userId: string;
-  workspaceId: string;
-  origin?: "MANUAL" | "INTAKE" | "AUTOMATION" | "ROUTINE" | "ONBOARDING";
-  input: TaskCreateInput;
-}): Promise<ProjectedTask> {
-  const { userId, workspaceId, origin, input } = params;
+export async function createTask(actor: TaskActor, input: TaskCreateInput): Promise<ProjectedTask> {
+  const { userId, workspaceId, origin } = actor;
   const {
     title,
     description,
@@ -281,13 +277,12 @@ export async function createTask(params: {
  * dependency/routine reconciliation, audit, status event, and routine-completion
  * cloning), then run automation. Throws on a missing task or invalid transition.
  */
-export async function updateTask(params: {
-  userId: string;
-  workspaceId: string;
-  taskId: string;
-  input: TaskUpdateInput;
-}): Promise<ProjectedTask> {
-  const { userId, workspaceId, taskId: id, input: body } = params;
+export async function updateTask(
+  actor: TaskActor,
+  id: string,
+  body: TaskUpdateInput,
+): Promise<ProjectedTask> {
+  const { userId, workspaceId } = actor;
   logger.debug("TASK_UPDATE input", {
     id,
     status: body.status,
@@ -667,12 +662,8 @@ export async function updateTask(params: {
 }
 
 /** Delete a task with its dependency edges and AI suggestions. Throws if absent. */
-export async function deleteTask(params: {
-  userId: string;
-  workspaceId: string;
-  taskId: string;
-}): Promise<void> {
-  const { userId, workspaceId, taskId: id } = params;
+export async function deleteTask(actor: TaskActor, id: string): Promise<void> {
+  const { userId, workspaceId } = actor;
   await prisma.$transaction(async (tx) => {
     const task = await tx.task.findFirst({
       where: { id, workspaceId },

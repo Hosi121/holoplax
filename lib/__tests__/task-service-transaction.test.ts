@@ -102,12 +102,14 @@ describe("task update transaction boundary", () => {
 
   it("reads invariants and writes through the same serializable transaction", async () => {
     await expect(
-      updateTask({
-        userId: "user-1",
-        workspaceId: "workspace-1",
-        taskId: "task-1",
-        input: { title: "After" },
-      }),
+      updateTask(
+        {
+          userId: "user-1",
+          workspaceId: "workspace-1",
+        },
+        "task-1",
+        { title: "After" },
+      ),
     ).resolves.toMatchObject({ id: "task-1", title: "After" });
 
     expect(mocks.outsideTaskRead).not.toHaveBeenCalled();
