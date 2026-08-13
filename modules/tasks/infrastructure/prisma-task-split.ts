@@ -1,7 +1,6 @@
 import type { Prisma, TaskAutomationStatus, TaskStatus } from "@prisma/client";
 import { sanitizeSplitSuggestion } from "../../../lib/ai-normalization";
 import {
-  AUTOMATION_STATE,
   AUTOMATION_STATUS,
   TASK_HIERARCHY_ROLE,
   TASK_ORIGIN,
@@ -91,7 +90,6 @@ export async function splitTaskIntoChildren(
     // alongside its children would count both estimates and corrupt capacity
     // and velocity, so only the children retain planning membership.
     data: {
-      automationState: AUTOMATION_STATE.SPLIT_PARENT,
       automationStatus: AUTOMATION_STATUS.NONE,
       hierarchyRole: TASK_HIERARCHY_ROLE.SPLIT_PARENT,
       sprintId: null,
@@ -137,7 +135,6 @@ export async function splitTaskIntoChildren(
         risk: item.risk,
         status: params.status,
         sprintId,
-        automationState: AUTOMATION_STATE.SPLIT_CHILD,
         automationStatus: AUTOMATION_STATUS.NONE,
         hierarchyRole: TASK_HIERARCHY_ROLE.SPLIT_CHILD,
         origin: TASK_ORIGIN.AUTOMATION,

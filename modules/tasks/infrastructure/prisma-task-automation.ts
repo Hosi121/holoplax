@@ -3,7 +3,6 @@ import { hasNoDelegateTag } from "../../../lib/automation-constants";
 import prisma from "../../../lib/prisma";
 import { AUTOMATION_STATUS, TASK_STATUS } from "../../../lib/types";
 import { generateAiPrep } from "../../ai/index.server";
-import { projectLegacyAutomationState } from "../domain/task-automation";
 import { splitTaskIntoChildren } from "./prisma-task-split";
 
 const scoreFromPoints = (points: number) => Math.min(100, Math.max(0, Math.round(points * 9)));
@@ -55,10 +54,6 @@ export async function applyAutomationForTask(params: {
       where: { id: current.id, workspaceId, automationStatus: AUTOMATION_STATUS.NONE },
       data: {
         automationStatus: AUTOMATION_STATUS.PREPARED,
-        automationState: projectLegacyAutomationState({
-          automationStatus: "PREPARED",
-          hierarchyRole: current.hierarchyRole,
-        }),
       },
     });
     if (claimed.count !== 1) return;
@@ -93,10 +88,6 @@ export async function applyAutomationForTask(params: {
         },
         data: {
           automationStatus: AUTOMATION_STATUS.NONE,
-          automationState: projectLegacyAutomationState({
-            automationStatus: "NONE",
-            hierarchyRole: current.hierarchyRole,
-          }),
         },
       });
       if (prepOutputId) await prisma.aiPrepOutput.deleteMany({ where: { id: prepOutputId } });
@@ -127,10 +118,6 @@ export async function applyAutomationForTask(params: {
         where: { id: current.id, workspaceId, automationStatus: AUTOMATION_STATUS.NONE },
         data: {
           automationStatus: AUTOMATION_STATUS.SPLIT_PENDING,
-          automationState: projectLegacyAutomationState({
-            automationStatus: "SPLIT_PENDING",
-            hierarchyRole: current.hierarchyRole,
-          }),
         },
       });
       if (claimed.count !== 1) return;

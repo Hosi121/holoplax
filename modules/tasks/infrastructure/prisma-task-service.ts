@@ -20,6 +20,7 @@ import { planTaskLifecycleUpdate } from "../application/task-lifecycle";
 import type { TaskActor } from "../application/task-types";
 import { projectLegacyAutomationState } from "../domain/task-automation";
 import { findTaskHierarchyViolation, findTaskPolicyViolation } from "../domain/task-policy";
+import type { TaskAutomationState } from "../domain/task-types";
 import {
   conflictingLifecycleRequest,
   deriveLegacyStatus,
@@ -43,7 +44,7 @@ import { recordWorkflowTransition } from "./prisma-workflow-events";
 
 export type TaskCreateInput = z.infer<typeof TaskCreateSchema>;
 export type TaskUpdateInput = z.infer<typeof TaskUpdateSchema>;
-type ProjectedTask = Task & { status: TaskStatus };
+type ProjectedTask = Task & { status: TaskStatus; automationState: TaskAutomationState };
 
 const badRequest = (message: string) =>
   new ApplicationError("TASK_BAD_REQUEST", message, "bad_request");
@@ -269,7 +270,11 @@ export async function createTask(actor: TaskActor, input: TaskCreateInput): Prom
   });
 
   wakeTaskAutomationWorker();
-  return { ...task, status: statusValue };
+  return {
+    ...task,
+    status: statusValue,
+    automationState: projectLegacyAutomationState(task),
+  };
 }
 
 /**
@@ -319,8 +324,7 @@ export async function updateTask(
   if (body.type !== undefined) {
     baseData.type = body.type;
   }
-  // automationState is intentionally not writable by users.
-  // It is managed exclusively by the server-side automation engine.
+  // Legacy automationState is derived at the response boundary and is not persisted.
   if (body.dueDate !== undefined) {
     baseData.dueDate = body.dueDate ? new Date(body.dueDate) : null;
   }
@@ -443,10 +447,6 @@ export async function updateTask(
         currentTask.automationStatus === "SPLIT_REJECTED")
     ) {
       data.automationStatus = "NONE";
-      data.automationState = projectLegacyAutomationState({
-        automationStatus: "NONE",
-        hierarchyRole: currentTask.hierarchyRole,
-      });
     }
 
     // Batch the assignee/parent validation and the sprint capacity read.
@@ -650,7 +650,15 @@ export async function updateTask(
       });
     }
 
-    return { task: updatedTask ? { ...updatedTask, status: statusValue } : null };
+    return {
+      task: updatedTask
+        ? {
+            ...updatedTask,
+            status: statusValue,
+            automationState: projectLegacyAutomationState(updatedTask),
+          }
+        : null,
+    };
   });
 
   if (!task) {

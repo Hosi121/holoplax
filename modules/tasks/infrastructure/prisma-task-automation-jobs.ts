@@ -2,7 +2,6 @@ import type { Prisma, Task } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { logger } from "../../../lib/logger";
 import prisma from "../../../lib/prisma";
-import { projectLegacyAutomationState } from "../domain/task-automation";
 import { applyAutomationForTask } from "./prisma-task-automation";
 
 type Tx = Prisma.TransactionClient;
@@ -87,10 +86,6 @@ const reconcileInterruptedTask = async (job: {
     },
     data: {
       automationStatus: "NONE",
-      automationState: projectLegacyAutomationState({
-        automationStatus: "NONE",
-        hierarchyRole: task.hierarchyRole,
-      }),
     },
   });
 };

@@ -5,7 +5,6 @@ import { ApplicationError } from "../../shared/application/application-error";
 import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
 import type { ApplyAiTaskCommand } from "../application/apply-ai-task-command";
 import type { TaskActor } from "../application/task-types";
-import { projectLegacyAutomationState } from "../domain/task-automation";
 import { splitTaskIntoChildren } from "./prisma-task-split";
 
 const badRequest = (message: string) =>
@@ -56,10 +55,6 @@ export function applyAiTaskChange(actor: TaskActor, command: ApplyAiTaskCommand)
             ...(task.automationStatus === "PREPARED" || task.automationStatus === "SPLIT_REJECTED"
               ? {
                   automationStatus: "NONE" as const,
-                  automationState: projectLegacyAutomationState({
-                    automationStatus: "NONE",
-                    hierarchyRole: task.hierarchyRole,
-                  }),
                 }
               : {}),
           },

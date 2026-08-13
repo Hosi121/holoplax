@@ -2,7 +2,6 @@ import type {
   Prisma,
   RoutineCadence,
   Severity,
-  TaskAutomationState,
   TaskAutomationStatus,
   TaskHierarchyRole,
   TaskOrigin,
@@ -32,7 +31,6 @@ export type PersistTaskInput = {
   status: TaskStatus;
   workflowState?: TaskWorkflowState;
   type: TaskType;
-  automationState?: TaskAutomationState;
   automationStatus?: TaskAutomationStatus;
   hierarchyRole?: TaskHierarchyRole;
   origin?: TaskOrigin;
@@ -96,7 +94,6 @@ export async function persistNewTask(
       risk: input.risk,
       workflowState,
       type: input.type,
-      automationState: input.automationState,
       automationStatus: input.automationStatus,
       hierarchyRole: input.hierarchyRole,
       origin: input.origin,

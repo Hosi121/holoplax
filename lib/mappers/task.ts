@@ -1,7 +1,7 @@
 import type { TaskView } from "../../modules/tasks";
+import { projectLegacyAutomationState } from "../../modules/tasks/domain/task-automation";
 import { deriveLegacyStatus } from "../../modules/tasks/domain/task-workflow";
 import type {
-  TaskAutomationState,
   TaskAutomationStatus,
   TaskHierarchyRole,
   TaskOrigin,
@@ -29,7 +29,6 @@ type TaskWithDeps<T extends DepNode = DepNode> = {
   risk: string;
   workflowState: TaskView["workflowState"];
   type?: string | null;
-  automationState?: TaskAutomationState | null;
   automationStatus: TaskAutomationStatus;
   hierarchyRole: TaskHierarchyRole;
   origin: TaskOrigin;
@@ -85,7 +84,7 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskView => {
     workflowState: task.workflowState,
     planningState: task.sprint?.status === "ACTIVE" ? "COMMITTED" : "BACKLOG",
     type: (task.type ?? undefined) as TaskView["type"],
-    automationState: (task.automationState ?? undefined) as TaskView["automationState"],
+    automationState: projectLegacyAutomationState(task),
     automationStatus: task.automationStatus,
     hierarchyRole: task.hierarchyRole,
     origin: task.origin,

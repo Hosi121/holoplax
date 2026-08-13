@@ -26,7 +26,6 @@ const task = {
   status: "DONE",
   workflowState: "DONE",
   type: "TASK",
-  automationState: "NONE",
   automationStatus: "NONE",
   hierarchyRole: "STANDARD",
   origin: "MANUAL",

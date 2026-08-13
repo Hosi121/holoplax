@@ -202,17 +202,6 @@ enum MemoryQuestionStatus {
   HOLD
 }
 
-// Per-task automation lifecycle. Distinct from the per-workspace threshold
-// escalation "stage" (UserAutomationSetting.stage / AutomationStageHistory).
-enum TaskAutomationState {
-  NONE
-  DELEGATED
-  PENDING_SPLIT
-  SPLIT_PARENT
-  SPLIT_CHILD
-  SPLIT_REJECTED
-}
-
 // Current automation lifecycle. Structural split provenance is intentionally
 // modeled separately by TaskHierarchyRole.
 enum TaskAutomationStatus {
@@ -457,7 +446,6 @@ model Task {
   risk                           Severity              @default(MEDIUM)
   workflowState                  TaskWorkflowState     @default(READY)
   type                           TaskType              @default(PBI)
-  automationState                TaskAutomationState   @default(NONE)
   automationStatus               TaskAutomationStatus  @default(NONE)
   hierarchyRole                  TaskHierarchyRole     @default(STANDARD)
   origin                         TaskOrigin            @default(MANUAL)
@@ -499,7 +487,6 @@ model Task {
   // unique id makes cursor pagination deterministic when timestamps tie.
   @@index([workspaceId, workflowState, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, createdAt(sort: Desc), id(sort: Desc)])
-  @@index([workspaceId, automationState])
   @@index([workspaceId, automationStatus])
   @@index([routineSeriesId, createdAt])
   @@index([sprintId, workflowState])

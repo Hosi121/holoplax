@@ -67,7 +67,6 @@ const currentTask = {
   status: "BACKLOG",
   workflowState: "READY",
   type: "TASK",
-  automationState: "NONE",
   automationStatus: "NONE",
   hierarchyRole: "STANDARD",
   origin: "MANUAL",

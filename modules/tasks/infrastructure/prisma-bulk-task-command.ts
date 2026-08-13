@@ -10,7 +10,6 @@ import { recordTaskStatusTransitions } from "../../shared/infrastructure/prisma-
 import type { BulkTaskCommand, BulkTaskResult } from "../application/bulk-task-command";
 import { planBulkStatusExecution } from "../application/bulk-task-command";
 import type { TaskActor } from "../application/task-types";
-import { projectLegacyAutomationState } from "../domain/task-automation";
 import { deriveLegacyStatus } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
 import { enqueueTaskAutomation, wakeTaskAutomationWorker } from "./prisma-task-automation-jobs";
@@ -237,10 +236,6 @@ export const bulkUpdateTasks = async (
           where: { id: task.id, workspaceId: actor.workspaceId },
           data: {
             automationStatus: "NONE",
-            automationState: projectLegacyAutomationState({
-              automationStatus: "NONE",
-              hierarchyRole: task.hierarchyRole,
-            }),
           },
         });
       }

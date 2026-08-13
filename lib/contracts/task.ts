@@ -84,10 +84,8 @@ export const TaskUpdateSchema = z
     status: z.preprocess(toEnumInput, TaskStatusSchema.optional()),
     workflowState: z.preprocess(toEnumInput, z.enum(workflowStateValues).optional()),
     type: z.preprocess(toEnumInput, TaskTypeSchema.optional()),
-    // NOTE: automationState is intentionally absent here. It is an internal
-    // field managed exclusively by the server-side automation engine. Allowing
-    // users to set SPLIT_PARENT / SPLIT_CHILD / DELEGATED etc. directly would
-    // break automation invariants.
+    // automationState is a read-only compatibility projection derived from
+    // automationStatus + hierarchyRole and is never accepted as input.
     parentId: nullableId,
     dueDate: OptionalNullableDateSchema,
     assigneeId: nullableId,

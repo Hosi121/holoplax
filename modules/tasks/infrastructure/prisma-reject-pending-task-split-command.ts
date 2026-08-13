@@ -1,5 +1,4 @@
 import prisma from "../../../lib/prisma";
-import { projectLegacyAutomationState } from "../domain/task-automation";
 
 export function rejectPendingTaskSplit(
   actor: { userId: string; workspaceId: string },
@@ -15,10 +14,6 @@ export function rejectPendingTaskSplit(
       where: { id: taskId, workspaceId: actor.workspaceId, automationStatus: "SPLIT_PENDING" },
       data: {
         automationStatus: "SPLIT_REJECTED",
-        automationState: projectLegacyAutomationState({
-          automationStatus: "SPLIT_REJECTED",
-          hierarchyRole: task.hierarchyRole,
-        }),
       },
     });
     if (!claimed.count) return false;

@@ -89,7 +89,7 @@ describe("splitTaskIntoChildren", () => {
         points: 3,
         workflowState: "READY",
         parentId: "parent",
-        automationState: "SPLIT_CHILD",
+        hierarchyRole: "SPLIT_CHILD",
       }),
     });
     expect(tx.taskStatusEvent.create).toHaveBeenCalledWith({

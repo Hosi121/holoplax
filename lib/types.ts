@@ -4,7 +4,6 @@
  */
 export {
   Severity,
-  TaskAutomationState,
   TaskAutomationStatus,
   TaskHierarchyRole,
   TaskOrigin,
@@ -16,7 +15,6 @@ export {
 import type {
   Severity as PrismaSeverity,
   SprintStatus as PrismaSprintStatus,
-  TaskAutomationState as PrismaTaskAutomationState,
   TaskAutomationStatus as PrismaTaskAutomationStatus,
   TaskHierarchyRole as PrismaTaskHierarchyRole,
   TaskOrigin as PrismaTaskOrigin,
@@ -25,6 +23,9 @@ import type {
   TaskWorkflowState as PrismaTaskWorkflowState,
 } from "@prisma/client";
 import type { TaskView } from "../modules/tasks";
+import type { TaskAutomationState as DomainTaskAutomationState } from "../modules/tasks/domain/task-types";
+
+export type TaskAutomationState = DomainTaskAutomationState;
 
 /**
  * Runtime constants for enum values
@@ -49,15 +50,6 @@ export const TASK_WORKFLOW_STATE = {
   DONE: "DONE",
   CANCELED: "CANCELED",
 } as const satisfies Record<string, PrismaTaskWorkflowState>;
-
-export const AUTOMATION_STATE = {
-  NONE: "NONE",
-  DELEGATED: "DELEGATED",
-  PENDING_SPLIT: "PENDING_SPLIT",
-  SPLIT_PARENT: "SPLIT_PARENT",
-  SPLIT_CHILD: "SPLIT_CHILD",
-  SPLIT_REJECTED: "SPLIT_REJECTED",
-} as const satisfies Record<string, PrismaTaskAutomationState>;
 
 export const AUTOMATION_STATUS = {
   NONE: "NONE",

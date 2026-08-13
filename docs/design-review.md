@@ -42,18 +42,21 @@
 - Prisma/application model から互換 `Task.status` を撤去。実行状態は `workflowState`、現在の計画所属は
   active Sprint への `sprintId` を正本とし、旧 `BACKLOG` / `SPRINT` / `DONE` はAPI境界で導出する。
 - MCP task tool の手書き JSON Schema と入力詰め替えを廃止し、実行時 Zod schema から公開契約を生成する。
+- Prisma/application model から互換 `TaskAutomationState` を撤去。automation workflow は
+  `automationStatus`、分割由来の構造は `hierarchyRole` を正本とし、旧値はAPI境界で導出する。
 
 ## 残存負債
 
 新規 VelocityEntry は `sprintId` を持つ。旧手入力行は移行時に Sprint を安全に特定できないため
 nullable の legacy row として保持するが、新たに作る経路は Sprint 終了だけに限定した。
 
-### P2: DB-only Task.status 互換列の contract migration
+### P2: DB-only Task互換列の contract migration
 
-CD はDB migrationを旧ECSタスクの停止前に適用する。そのため、アプリから撤去済みの `Task.status` は
-一回のローリング更新だけDB列と同期triggerを残している。
+CD はDB migrationを旧ECSタスクの停止前に適用する。そのため、アプリから撤去済みの `Task.status` と
+`Task.automationState` は一回のローリング更新だけDB列と同期triggerを残している。
 
-次の方針: 新版への切替完了とrollback期間終了後、旧status index、trigger/function、status列を削除する。
+次の方針: 新版への切替完了とrollback期間終了後、旧index、trigger/function、互換列と
+`TaskAutomationState` DB enumを削除する。
 
 ### P2: nullable ownership の残存
 
@@ -62,13 +65,6 @@ MemoryClaim / MemoryQuestion / MemoryMetric は排他的 owner CHECK を持つ�
 表現しきれていない。
 
 次の方針: scope 別テーブルへの分離、または owner kind/id の明示モデル化を設計してから移行する。
-
-### P2: 互換 TaskAutomationState の撤去
-
-automation workflow は `automationStatus`、分割由来の構造は `hierarchyRole` に分離済みだが、
-旧クライアント向け projection として `TaskAutomationState` をまだ dual-write している。
-
-次の方針: クライアント移行と本番 backfill 検証後に互換列と projection 関数を撤去する。
 
 ### P2: 依存監査で自動修正不能な項目
 
