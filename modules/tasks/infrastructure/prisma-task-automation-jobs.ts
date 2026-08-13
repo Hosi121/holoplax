@@ -13,7 +13,7 @@ const HEARTBEAT_MS = 60 * 1000;
 
 type AutomationJobTask = Pick<
   Task,
-  "id" | "title" | "description" | "points" | "status" | "workflowState" | "updatedAt"
+  "id" | "title" | "description" | "points" | "workflowState" | "updatedAt"
 >;
 
 export const enqueueTaskAutomation = (
@@ -199,7 +199,6 @@ export const processTaskAutomationJobs = async (
           title: task.title,
           description: task.description,
           points: task.points,
-          status: task.status,
         },
       });
       const completed = await prisma.taskAutomationJob.updateMany({

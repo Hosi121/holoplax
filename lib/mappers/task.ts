@@ -1,10 +1,10 @@
 import type { TaskView } from "../../modules/tasks";
+import { deriveLegacyStatus } from "../../modules/tasks/domain/task-workflow";
 import type {
   TaskAutomationState,
   TaskAutomationStatus,
   TaskHierarchyRole,
   TaskOrigin,
-  TaskStatus,
   TaskWorkflowState,
 } from "../types";
 
@@ -13,8 +13,8 @@ type DepNode = {
   dependsOn?: {
     id: string;
     title: string;
-    status: TaskStatus;
     workflowState: TaskWorkflowState;
+    sprint?: { status: "ACTIVE" | "CLOSED" } | null;
   } | null;
 };
 
@@ -27,7 +27,6 @@ type TaskWithDeps<T extends DepNode = DepNode> = {
   points: number;
   urgency: string;
   risk: string;
-  status: TaskStatus;
   workflowState: TaskView["workflowState"];
   type?: string | null;
   automationState?: TaskAutomationState | null;
@@ -57,10 +56,19 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskView => {
       ): dep is {
         id: string;
         title: string;
-        status: TaskStatus;
         workflowState: TaskWorkflowState;
+        sprint?: { status: "ACTIVE" | "CLOSED" } | null;
       } => Boolean(dep),
-    );
+    )
+    .map((dependency) => ({
+      id: dependency.id,
+      title: dependency.title,
+      workflowState: dependency.workflowState,
+      status: deriveLegacyStatus({
+        workflowState: dependency.workflowState,
+        isInActiveSprint: dependency.sprint?.status === "ACTIVE",
+      }),
+    }));
   return {
     id: task.id,
     title: task.title,
@@ -70,7 +78,10 @@ export const mapTaskWithDependencies = (task: TaskWithDeps): TaskView => {
     points: task.points as TaskView["points"],
     urgency: task.urgency as TaskView["urgency"],
     risk: task.risk as TaskView["risk"],
-    status: task.status,
+    status: deriveLegacyStatus({
+      workflowState: task.workflowState,
+      isInActiveSprint: task.sprint?.status === "ACTIVE",
+    }),
     workflowState: task.workflowState,
     planningState: task.sprint?.status === "ACTIVE" ? "COMMITTED" : "BACKLOG",
     type: (task.type ?? undefined) as TaskView["type"],

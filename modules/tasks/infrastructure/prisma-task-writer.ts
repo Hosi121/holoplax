@@ -94,7 +94,6 @@ export async function persistNewTask(
       points: input.points,
       urgency: input.urgency,
       risk: input.risk,
-      status: input.status,
       workflowState,
       type: input.type,
       automationState: input.automationState,

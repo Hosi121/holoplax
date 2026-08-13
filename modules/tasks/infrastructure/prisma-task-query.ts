@@ -28,7 +28,12 @@ const taskRelations = {
     select: {
       dependsOnId: true,
       dependsOn: {
-        select: { id: true, title: true, status: true, workflowState: true },
+        select: {
+          id: true,
+          title: true,
+          workflowState: true,
+          sprint: { select: { status: true } },
+        },
       },
     },
   },
@@ -56,9 +61,21 @@ export async function listTasks(workspaceId: string, filters: PrismaTaskListFilt
       ? filters.maxPoints
       : undefined;
 
+  const statusClauses: Prisma.TaskWhereInput[] = [];
+  if (filters.statuses?.includes("DONE")) {
+    statusClauses.push({ workflowState: "DONE" });
+  }
+  if (filters.statuses?.includes("SPRINT")) {
+    statusClauses.push({ workflowState: { not: "DONE" }, sprint: { status: "ACTIVE" } });
+  }
+  if (filters.statuses?.includes("BACKLOG")) {
+    statusClauses.push({
+      workflowState: { not: "DONE" },
+      OR: [{ sprintId: null }, { sprint: { status: "CLOSED" } }],
+    });
+  }
   const where: Prisma.TaskWhereInput = {
     workspaceId,
-    ...(filters.statuses?.length ? { status: { in: filters.statuses } } : {}),
     ...(filters.workflowStates?.length ? { workflowState: { in: filters.workflowStates } } : {}),
     ...(filters.types?.length ? { type: { in: filters.types } } : {}),
     ...(filters.urgency ? { urgency: filters.urgency } : {}),
@@ -82,11 +99,20 @@ export async function listTasks(workspaceId: string, filters: PrismaTaskListFilt
           },
         }
       : {}),
-    ...(filters.search
+    ...(statusClauses.length || filters.search
       ? {
-          OR: [
-            { title: { contains: filters.search, mode: "insensitive" as const } },
-            { description: { contains: filters.search, mode: "insensitive" as const } },
+          AND: [
+            ...(statusClauses.length ? [{ OR: statusClauses }] : []),
+            ...(filters.search
+              ? [
+                  {
+                    OR: [
+                      { title: { contains: filters.search, mode: "insensitive" as const } },
+                      { description: { contains: filters.search, mode: "insensitive" as const } },
+                    ],
+                  },
+                ]
+              : []),
           ],
         }
       : {}),

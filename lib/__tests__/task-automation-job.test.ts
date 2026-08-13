@@ -56,7 +56,6 @@ describe("durable task automation jobs", () => {
         title: "Task",
         description: "",
         points: 3,
-        status: "BACKLOG",
         workflowState: "READY",
         updatedAt,
       },

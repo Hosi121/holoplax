@@ -56,7 +56,7 @@ describe("task automation execution", () => {
     await applyAutomationForTask({
       userId: "user-1",
       workspaceId: "workspace-1",
-      task: { id: "task-1", title: "stale", description: "", points: 1, status: "BACKLOG" },
+      task: { id: "task-1", title: "stale", description: "", points: 1 },
     });
 
     expect(mocks.db.task.updateMany).toHaveBeenCalledWith(
@@ -78,7 +78,7 @@ describe("task automation execution", () => {
     await applyAutomationForTask({
       userId: "user-1",
       workspaceId: "workspace-1",
-      task: { id: "task-1", title: "stale", description: "", points: 5, status: "BACKLOG" },
+      task: { id: "task-1", title: "stale", description: "", points: 5 },
     });
 
     expect(mocks.db.task.updateMany).toHaveBeenCalledWith(

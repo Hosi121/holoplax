@@ -22,8 +22,10 @@ const createTx = (options: {
   const tx = {
     task: {
       findFirst: vi.fn().mockResolvedValue({
-        status: options.parentStatus ?? "BACKLOG",
+        title: "Parent",
+        workflowState: "READY",
         sprintId: options.parentStatus === "SPRINT" ? "sprint" : null,
+        sprint: options.parentStatus === "SPRINT" ? { status: "ACTIVE" } : null,
         type: options.parentType ?? "PBI",
       }),
       updateMany: vi.fn().mockResolvedValue({ count: options.claimed ?? 1 }),
@@ -85,7 +87,7 @@ describe("splitTaskIntoChildren", () => {
       data: expect.objectContaining({
         title: "Child",
         points: 3,
-        status: "BACKLOG",
+        workflowState: "READY",
         parentId: "parent",
         automationState: "SPLIT_CHILD",
       }),
@@ -167,7 +169,7 @@ describe("splitTaskIntoChildren", () => {
     );
     expect(tx.task.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: "BACKLOG", sprintId: null }),
+        data: expect.objectContaining({ sprintId: null }),
       }),
     );
     expect(create).toHaveBeenCalledTimes(2);

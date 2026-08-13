@@ -128,7 +128,6 @@ const main = async () => {
       points: 3,
       urgency: "MEDIUM",
       risk: "LOW",
-      status: "SPRINT",
       type: "TASK",
       sprintId: sprint.id,
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 4),
@@ -145,7 +144,6 @@ const main = async () => {
       points: 5,
       urgency: "MEDIUM",
       risk: "MEDIUM",
-      status: "SPRINT",
       type: "TASK",
       sprintId: sprint.id,
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 6),
@@ -162,7 +160,7 @@ const main = async () => {
       points: 2,
       urgency: "LOW",
       risk: "LOW",
-      status: "DONE",
+      workflowState: "DONE",
       type: "TASK",
       sprintId: sprint.id,
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 1),
@@ -179,7 +177,6 @@ const main = async () => {
       points: 8,
       urgency: "MEDIUM",
       risk: "HIGH",
-      status: "BACKLOG",
       type: "PBI",
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 10),
       tags: ["intake", "spec"],
@@ -195,7 +192,6 @@ const main = async () => {
       points: 5,
       urgency: "LOW",
       risk: "MEDIUM",
-      status: "BACKLOG",
       type: "PBI",
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 12),
       tags: ["notification"],
@@ -211,7 +207,6 @@ const main = async () => {
       points: 3,
       urgency: "MEDIUM",
       risk: "LOW",
-      status: "BACKLOG",
       type: "PBI",
       dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 8),
       tags: ["retro"],
@@ -225,6 +220,14 @@ const main = async () => {
       { taskId: onboarding.id, dependsOnId: heroCopy.id, workspaceId: workspace.id },
       { taskId: reviewTemplate.id, dependsOnId: velocityCopy.id, workspaceId: workspace.id },
       { taskId: notifyDesign.id, dependsOnId: inboxSpec.id, workspaceId: workspace.id },
+    ],
+    skipDuplicates: true,
+  });
+  await prisma.sprintItem.createMany({
+    data: [
+      { sprintId: sprint.id, taskId: heroCopy.id, taskKey: heroCopy.id, taskTitle: heroCopy.title, taskType: heroCopy.type, committedPoints: heroCopy.points },
+      { sprintId: sprint.id, taskId: onboarding.id, taskKey: onboarding.id, taskTitle: onboarding.title, taskType: onboarding.type, committedPoints: onboarding.points },
+      { sprintId: sprint.id, taskId: velocityCopy.id, taskKey: velocityCopy.id, taskTitle: velocityCopy.title, taskType: velocityCopy.type, committedPoints: velocityCopy.points, outcome: "COMPLETED", completedAt: velocityCopy.updatedAt },
     ],
     skipDuplicates: true,
   });
@@ -246,18 +249,23 @@ const main = async () => {
     skipDuplicates: true,
   });
   await prisma.taskStatusEvent.createMany({
-    data: [heroCopy, onboarding, velocityCopy, inboxSpec, notifyDesign, reviewTemplate].map(
-      (task) => ({
+    data: [
+      { task: heroCopy, status: "SPRINT" },
+      { task: onboarding, status: "SPRINT" },
+      { task: velocityCopy, status: "DONE" },
+      { task: inboxSpec, status: "BACKLOG" },
+      { task: notifyDesign, status: "BACKLOG" },
+      { task: reviewTemplate, status: "BACKLOG" },
+    ].map(({ task, status }) => ({
         taskId: task.id,
         taskKey: task.id,
         taskTitle: task.title,
         fromStatus: null,
-        toStatus: task.status,
+        toStatus: status,
         actorId: testUser.id,
         trigger: "API",
         workspaceId: workspace.id,
-      }),
-    ),
+      })),
   });
 
   const existingVelocity = await prisma.velocityEntry.count({ where: { userId: testUser.id } });

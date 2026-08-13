@@ -124,7 +124,15 @@ export const prismaAiOperationsPort: AiOperationsPort = {
             select: { id: true },
           })
         : null,
-      workspaceId ? prisma.task.count({ where: { workspaceId, status: "SPRINT" } }) : 0,
+      workspaceId
+        ? prisma.task.count({
+            where: {
+              workspaceId,
+              workflowState: { not: "DONE" },
+              sprint: { status: "ACTIVE" },
+            },
+          })
+        : 0,
       prisma.memoryDefinition.findMany({
         where: { key: { in: keys }, scope: "USER" },
         select: { id: true, key: true },

@@ -4,6 +4,7 @@ import { encrypt, isEncrypted } from "../../../lib/encryption";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
 import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
+import { deriveLegacyStatus } from "../../tasks";
 import type { AdminOperationsPort } from "../application/admin-operations";
 import { getAdminAudit } from "./prisma-admin-audit";
 
@@ -261,14 +262,19 @@ export const prismaAdminOperationsPort: AdminOperationsPort = {
       select: {
         id: true,
         title: true,
-        status: true,
+        workflowState: true,
+        sprint: { select: { status: true } },
         points: true,
         updatedAt: true,
         workspace: { select: { name: true } },
       },
     });
-    return tasks.map(({ workspace, ...task }) => ({
+    return tasks.map(({ workspace, sprint, workflowState, ...task }) => ({
       ...task,
+      status: deriveLegacyStatus({
+        workflowState,
+        isInActiveSprint: sprint?.status === "ACTIVE",
+      }),
       workspaceName: workspace?.name ?? null,
     }));
   },

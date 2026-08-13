@@ -1,6 +1,6 @@
 # 設計レビュー台帳
 
-最終更新: 2026-07-13
+最終更新: 2026-08-13
 
 この文書は現行実装の負債だけを扱う。過去に指摘された nullable Task ownership、
 `TaskType.ROUTINE`、汎用 `source`、旧 `MemoryType` など、既に解消済みの内容は台帳から除外した。
@@ -39,11 +39,21 @@
 - task 一覧の全 consumer を cursor 完走へ変更し、Sprint は `sprintId` でDB側絞り込み。
 - automation health に設定可能な PENDING/RUNNING 滞留閾値を追加し、false-green を解消。
 - Sprint期間、Memory owner scope、dependency tenant/self edge、Audit actor削除時の履歴保持をDB制約化。
+- Prisma/application model から互換 `Task.status` を撤去。実行状態は `workflowState`、現在の計画所属は
+  active Sprint への `sprintId` を正本とし、旧 `BACKLOG` / `SPRINT` / `DONE` はAPI境界で導出する。
+- MCP task tool の手書き JSON Schema と入力詰め替えを廃止し、実行時 Zod schema から公開契約を生成する。
 
 ## 残存負債
 
 新規 VelocityEntry は `sprintId` を持つ。旧手入力行は移行時に Sprint を安全に特定できないため
 nullable の legacy row として保持するが、新たに作る経路は Sprint 終了だけに限定した。
+
+### P2: DB-only Task.status 互換列の contract migration
+
+CD はDB migrationを旧ECSタスクの停止前に適用する。そのため、アプリから撤去済みの `Task.status` は
+一回のローリング更新だけDB列と同期triggerを残している。
+
+次の方針: 新版への切替完了とrollback期間終了後、旧status index、trigger/function、status列を削除する。
 
 ### P2: nullable ownership の残存
 

@@ -41,16 +41,7 @@ export const clearWorkspaceTaskAssignee = (
     data: { assigneeId: null },
   });
 
-export const attachLegacySprintProjection = (
-  tx: Tx,
-  input: { workspaceId: string; sprintId: string },
-) =>
-  tx.task.updateMany({
-    where: { workspaceId: input.workspaceId, status: "SPRINT" },
-    data: { sprintId: input.sprintId },
-  });
-
-export const clearClosedSprintProjection = (
+export const clearClosedSprintMembership = (
   tx: Tx,
   input: { workspaceId: string; sprintId: string },
 ) =>
@@ -58,7 +49,6 @@ export const clearClosedSprintProjection = (
     where: {
       workspaceId: input.workspaceId,
       sprintId: input.sprintId,
-      status: "SPRINT",
     },
-    data: { status: "BACKLOG", sprintId: null },
+    data: { sprintId: null },
   });

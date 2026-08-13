@@ -42,8 +42,8 @@ describe("review query", () => {
     for (const call of mocks.taskCount.mock.calls) {
       expect(call[0].where).toMatchObject({
         workspaceId: "workspace-1",
-        status: "BACKLOG",
-        workflowState: { not: "CANCELED" },
+        sprintId: null,
+        workflowState: { notIn: ["DONE", "CANCELED"] },
       });
     }
     expect(mocks.dependencyCount).toHaveBeenCalledWith(

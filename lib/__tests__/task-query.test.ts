@@ -50,6 +50,28 @@ describe("task query boundary", () => {
     );
   });
 
+  it("translates legacy status filters into canonical workflow and sprint predicates", async () => {
+    await listTasks("workspace-1", { statuses: ["BACKLOG", "DONE"] });
+
+    expect(mocks.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { workflowState: "DONE" },
+                {
+                  workflowState: { not: "DONE" },
+                  OR: [{ sprintId: null }, { sprint: { status: "CLOSED" } }],
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
   it("always scopes a task lookup to its workspace", async () => {
     await expect(getTask("workspace-1", "task-1")).resolves.toBeNull();
 

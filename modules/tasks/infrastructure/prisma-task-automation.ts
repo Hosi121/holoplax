@@ -20,7 +20,7 @@ const shouldDelegate = (task: { title: string; description: string; tags?: strin
 export async function applyAutomationForTask(params: {
   userId: string;
   workspaceId: string;
-  task: { id: string; title: string; description: string; points: number; status: string };
+  task: { id: string; title: string; description: string; points: number };
 }) {
   const { userId, workspaceId, task } = params;
   const current = await prisma.task.findFirst({
@@ -30,14 +30,14 @@ export async function applyAutomationForTask(params: {
       title: true,
       description: true,
       points: true,
-      status: true,
       workflowState: true,
+      sprint: { select: { status: true } },
       tags: true,
       automationStatus: true,
       hierarchyRole: true,
     },
   });
-  if (!current || current.status !== TASK_STATUS.BACKLOG || current.workflowState !== "READY") {
+  if (!current || current.sprint?.status === "ACTIVE" || current.workflowState !== "READY") {
     return;
   }
   if (current.automationStatus !== AUTOMATION_STATUS.NONE) return;

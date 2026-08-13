@@ -455,7 +455,6 @@ model Task {
   points                         Int
   urgency                        Severity              @default(MEDIUM)
   risk                           Severity              @default(MEDIUM)
-  status                         TaskStatus            @default(BACKLOG)
   workflowState                  TaskWorkflowState     @default(READY)
   type                           TaskType              @default(PBI)
   automationState                TaskAutomationState   @default(NONE)
@@ -498,12 +497,12 @@ model Task {
   @@index([parentId])
   // Task lists are tenant-scoped and ordered newest-first. Including the
   // unique id makes cursor pagination deterministic when timestamps tie.
-  @@index([workspaceId, status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([workspaceId, workflowState, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, automationState])
   @@index([workspaceId, automationStatus])
   @@index([routineSeriesId, createdAt])
-  @@index([sprintId, status])
+  @@index([sprintId, workflowState])
 }
 
 model VelocityEntry {

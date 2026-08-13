@@ -11,6 +11,7 @@ import {
 import { ApplicationError } from "../../shared/application/application-error";
 import { removeTaskFromActiveSprint } from "../../shared/infrastructure/prisma-sprint-items";
 import { recordTaskStatusTransition } from "../../shared/infrastructure/prisma-task-status-events";
+import { deriveLegacyStatus } from "../domain/task-workflow";
 import { checkSprintCapacity } from "./prisma-sprint-capacity";
 import { persistNewTask } from "./prisma-task-writer";
 
@@ -60,9 +61,19 @@ export async function splitTaskIntoChildren(
 
   const parent = await tx.task.findFirst({
     where: { id: params.taskId, workspaceId: params.workspaceId },
-    select: { title: true, status: true, sprintId: true, type: true },
+    select: {
+      title: true,
+      workflowState: true,
+      sprintId: true,
+      sprint: { select: { status: true } },
+      type: true,
+    },
   });
   if (!parent) throw badRequest("task not found");
+  const parentStatus = deriveLegacyStatus({
+    workflowState: parent.workflowState,
+    isInActiveSprint: parent.sprint?.status === "ACTIVE",
+  });
 
   const suggestions = params.suggestions.map(sanitizeSplitSuggestion);
   if (suggestions.some((item) => item.title.length === 0)) {
@@ -83,7 +94,6 @@ export async function splitTaskIntoChildren(
       automationState: AUTOMATION_STATE.SPLIT_PARENT,
       automationStatus: AUTOMATION_STATUS.NONE,
       hierarchyRole: TASK_HIERARCHY_ROLE.SPLIT_PARENT,
-      status: TASK_STATUS.BACKLOG,
       sprintId: null,
     },
   });
@@ -96,18 +106,18 @@ export async function splitTaskIntoChildren(
     const capacity = await checkSprintCapacity(tx, {
       workspaceId: params.workspaceId,
       additionalPoints: suggestions.reduce((sum, item) => sum + item.points, 0),
-      excludeTaskIds: parent.status === TASK_STATUS.SPRINT ? [params.taskId] : [],
+      excludeTaskIds: parentStatus === TASK_STATUS.SPRINT ? [params.taskId] : [],
     });
     if (!capacity.activeSprint) throw badRequest("active sprint not found");
     if (capacity.exceeded) throw badRequest("sprint capacity exceeded");
     sprintId = capacity.activeSprint.id;
   }
 
-  if (parent.status !== TASK_STATUS.BACKLOG) {
+  if (parentStatus !== TASK_STATUS.BACKLOG) {
     await recordTaskStatusTransition(tx, {
       taskId: params.taskId,
       taskTitle: parent.title,
-      fromStatus: parent.status,
+      fromStatus: parentStatus,
       toStatus: TASK_STATUS.BACKLOG,
       actorId: params.userId,
       trigger: "API",

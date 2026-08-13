@@ -21,6 +21,7 @@ import { projectLegacyAutomationState } from "../domain/task-automation";
 import { findTaskHierarchyViolation, findTaskPolicyViolation } from "../domain/task-policy";
 import {
   conflictingLifecycleRequest,
+  deriveLegacyStatus,
   initialWorkflowState,
   projectLegacyStatus,
 } from "../domain/task-workflow";
@@ -41,6 +42,7 @@ import { recordWorkflowTransition } from "./prisma-workflow-events";
 
 export type TaskCreateInput = z.infer<typeof TaskCreateSchema>;
 export type TaskUpdateInput = z.infer<typeof TaskUpdateSchema>;
+type ProjectedTask = Task & { status: TaskStatus };
 
 const badRequest = (message: string) =>
   new ApplicationError("TASK_BAD_REQUEST", message, "bad_request");
@@ -90,7 +92,7 @@ export async function createTask(params: {
   workspaceId: string;
   origin?: "MANUAL" | "INTAKE" | "AUTOMATION" | "ROUTINE" | "ONBOARDING";
   input: TaskCreateInput;
-}): Promise<Task> {
+}): Promise<ProjectedTask> {
   const { userId, workspaceId, origin, input } = params;
   const {
     title,
@@ -162,7 +164,12 @@ export async function createTask(params: {
       parentCandidate
         ? tx.task.findFirst({
             where: { id: parentCandidate, workspaceId },
-            select: { id: true, type: true, status: true },
+            select: {
+              id: true,
+              type: true,
+              workflowState: true,
+              sprint: { select: { status: true } },
+            },
           })
         : Promise.resolve(null),
       statusValue === TASK_STATUS.SPRINT
@@ -177,7 +184,13 @@ export async function createTask(params: {
       parentType: parent?.type,
     });
     if (hierarchyViolation) throw badRequest(hierarchyViolation);
-    if (parent?.status === TASK_STATUS.SPRINT) {
+    if (
+      parent &&
+      deriveLegacyStatus({
+        workflowState: parent.workflowState,
+        isInActiveSprint: parent.sprint?.status === "ACTIVE",
+      }) === TASK_STATUS.SPRINT
+    ) {
       throw badRequest("remove a parent from the sprint before adding child work items");
     }
     if (allowedDependencies.length !== uniqueRequestedDependencies.length) {
@@ -248,7 +261,7 @@ export async function createTask(params: {
         actorId: userId,
         action: "TASK_CREATE",
         targetWorkspaceId: workspaceId,
-        metadata: { taskId: created.id, status: created.status },
+        metadata: { taskId: created.id, status: statusValue },
       },
     });
     await enqueueTaskAutomation(tx, {
@@ -260,7 +273,7 @@ export async function createTask(params: {
   });
 
   wakeTaskAutomationWorker();
-  return task;
+  return { ...task, status: statusValue };
 }
 
 /**
@@ -273,7 +286,7 @@ export async function updateTask(params: {
   workspaceId: string;
   taskId: string;
   input: TaskUpdateInput;
-}): Promise<Task> {
+}): Promise<ProjectedTask> {
   const { userId, workspaceId, taskId: id, input: body } = params;
   logger.debug("TASK_UPDATE input", {
     id,
@@ -352,7 +365,13 @@ export async function updateTask(params: {
       where: { id, workspaceId },
       include: {
         routineRule: true,
-        parent: { select: { type: true, status: true } },
+        parent: {
+          select: {
+            type: true,
+            workflowState: true,
+            sprint: { select: { status: true } },
+          },
+        },
         children: { select: { type: true, workflowState: true } },
         sprint: { select: { status: true } },
         dependencies:
@@ -364,7 +383,7 @@ export async function updateTask(params: {
                 where: { state: "REQUIRED", dependsOn: { workflowState: { not: "DONE" } } },
                 select: {
                   dependsOn: {
-                    select: { id: true, title: true, status: true, workflowState: true },
+                    select: { id: true, title: true, workflowState: true },
                   },
                 },
               }
@@ -385,9 +404,12 @@ export async function updateTask(params: {
       throw badRequest("one or more dependencies were not found in workspace");
     }
 
+    const currentStatus = deriveLegacyStatus({
+      workflowState: currentTask.workflowState,
+      isInActiveSprint: currentTask.sprint?.status === "ACTIVE",
+    });
     const lifecycle = planTaskLifecycleUpdate({
-      currentStatus:
-        currentTask.sprint?.status === "ACTIVE" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG,
+      currentStatus,
       currentWorkflowState: currentTask.workflowState,
       requestedStatus,
       requestedWorkflowState: body.workflowState,
@@ -405,7 +427,6 @@ export async function updateTask(params: {
     const workflowStateValue = lifecycle.workflowState;
     const statusValue = lifecycle.status;
     if (workflowStateValue !== currentTask.workflowState) data.workflowState = workflowStateValue;
-    if (statusValue !== currentTask.status) data.status = statusValue;
     logger.debug("TASK_UPDATE narrowed", {
       statusValue,
       workflowStateValue,
@@ -449,7 +470,12 @@ export async function updateTask(params: {
       needsParentCheck
         ? tx.task.findFirst({
             where: { id: String(body.parentId), workspaceId },
-            select: { id: true, type: true, status: true },
+            select: {
+              id: true,
+              type: true,
+              workflowState: true,
+              sprint: { select: { status: true } },
+            },
           })
         : Promise.resolve(null),
       needsSprintCheck
@@ -484,7 +510,13 @@ export async function updateTask(params: {
       childTypes: currentTask.children.map(({ type }) => type),
     });
     if (proposedHierarchyViolation) throw badRequest(proposedHierarchyViolation);
-    if (parentResult?.status === TASK_STATUS.SPRINT) {
+    if (
+      parentResult &&
+      deriveLegacyStatus({
+        workflowState: parentResult.workflowState,
+        isInActiveSprint: parentResult.sprint?.status === "ACTIVE",
+      }) === TASK_STATUS.SPRINT
+    ) {
       throw badRequest("remove a parent from the sprint before adding child work items");
     }
     if (statusValue === TASK_STATUS.SPRINT && currentTask.children.length > 0) {
@@ -588,11 +620,11 @@ export async function updateTask(params: {
       },
     });
 
-    if (updatedTask && currentTask.status !== statusValue) {
+    if (updatedTask && currentStatus !== statusValue) {
       await recordTaskStatusTransition(tx, {
         taskId: updatedTask.id,
         taskTitle: updatedTask.title,
-        fromStatus: currentTask.status ?? null,
+        fromStatus: currentStatus,
         toStatus: statusValue,
         actorId: userId,
         trigger: "API",
@@ -623,7 +655,7 @@ export async function updateTask(params: {
       });
     }
 
-    return { task: updatedTask };
+    return { task: updatedTask ? { ...updatedTask, status: statusValue } : null };
   });
 
   if (!task) {

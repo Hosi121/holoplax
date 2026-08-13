@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
 import { applyTaskDescriptionAppendix } from "../../shared/infrastructure/prisma-task-consistency";
+import { deriveLegacyStatus } from "../../tasks";
 import type { IntakeCommandPort, IntakeDuplicate } from "../application/intake-types";
 import { deriveIntakeTitle, intakeTitleSimilarity } from "../domain/intake-text";
 
@@ -16,12 +17,25 @@ const findDuplicateTasks = async (
 ): Promise<IntakeDuplicate[]> => {
   const tasks = await prisma.task.findMany({
     where: { workspaceId },
-    select: { id: true, title: true, status: true },
+    select: {
+      id: true,
+      title: true,
+      workflowState: true,
+      sprint: { select: { status: true } },
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
   return tasks
-    .map((task) => ({ ...task, score: intakeTitleSimilarity(title, task.title) }))
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: deriveLegacyStatus({
+        workflowState: task.workflowState,
+        isInActiveSprint: task.sprint?.status === "ACTIVE",
+      }),
+      score: intakeTitleSimilarity(title, task.title),
+    }))
     .filter((item) => item.score >= 0.35)
     .sort((left, right) => right.score - left.score)
     .slice(0, limit);

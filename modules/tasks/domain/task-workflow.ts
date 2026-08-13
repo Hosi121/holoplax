@@ -1,5 +1,18 @@
 import type { TaskStatus, TaskWorkflowState } from "./task-types";
 
+/**
+ * Compatibility projection for clients that still speak the old TaskStatus
+ * vocabulary. Current state is stored only as workflowState + active sprint
+ * membership; callers must never persist this result back to Task.
+ */
+export const deriveLegacyStatus = (input: {
+  workflowState: TaskWorkflowState;
+  isInActiveSprint: boolean;
+}): TaskStatus => {
+  if (input.workflowState === "DONE") return "DONE";
+  return input.isInActiveSprint ? "SPRINT" : "BACKLOG";
+};
+
 export const initialWorkflowState = (
   status: TaskStatus,
   requested?: TaskWorkflowState,

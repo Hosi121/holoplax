@@ -14,6 +14,7 @@ import type {
   BulkTaskResult,
 } from "../application/bulk-task-command";
 import { projectLegacyAutomationState } from "../domain/task-automation";
+import { deriveLegacyStatus } from "../domain/task-workflow";
 import { checkSprintCapacity, findActiveSprint } from "./prisma-sprint-capacity";
 import { enqueueTaskAutomation, wakeTaskAutomationWorker } from "./prisma-task-automation-jobs";
 import {
@@ -28,7 +29,7 @@ const notFound = (message: string) => new ApplicationError("TASK_NOT_FOUND", mes
 
 type AutomationTask = Pick<
   Task,
-  "id" | "title" | "description" | "points" | "status" | "workflowState" | "updatedAt"
+  "id" | "title" | "description" | "points" | "workflowState" | "updatedAt"
 >;
 
 const executeBulkCommand = async (
@@ -43,6 +44,7 @@ const executeBulkCommand = async (
         where: { id: { in: taskIds }, workspaceId: actor.workspaceId },
         include: {
           routineRule: true,
+          sprint: { select: { status: true } },
           children: { select: { workflowState: true } },
           dependencies: {
             where: { state: "REQUIRED" },
@@ -94,7 +96,10 @@ const executeBulkCommand = async (
           requestedStatus: command.status,
           tasks: tasks.map((task) => ({
             id: task.id,
-            status: task.status,
+            status: deriveLegacyStatus({
+              workflowState: task.workflowState,
+              isInActiveSprint: task.sprint?.status === "ACTIVE",
+            }),
             workflowState: task.workflowState,
             type: task.type,
             checklist: task.checklist,
@@ -131,7 +136,6 @@ const executeBulkCommand = async (
           const updated = await tx.task.updateMany({
             where: { id: task.id, workspaceId: actor.workspaceId },
             data: {
-              status: taskPlan.status,
               workflowState: taskPlan.workflowState,
               ...(taskPlan.planningAction === "COMMIT"
                 ? { sprintId }
@@ -163,20 +167,30 @@ const executeBulkCommand = async (
           });
         }
         const changedTasks = tasks
-          .map((task) => ({ task, plan: taskPlans.get(task.id) }))
+          .map((task) => ({
+            task,
+            currentStatus: deriveLegacyStatus({
+              workflowState: task.workflowState,
+              isInActiveSprint: task.sprint?.status === "ACTIVE",
+            }),
+            plan: taskPlans.get(task.id),
+          }))
           .filter(
             (
               entry,
-            ): entry is { task: (typeof tasks)[number]; plan: NonNullable<typeof entry.plan> } =>
-              Boolean(entry.plan) && entry.task.status !== entry.plan?.status,
+            ): entry is {
+              task: (typeof tasks)[number];
+              currentStatus: "BACKLOG" | "SPRINT" | "DONE";
+              plan: NonNullable<typeof entry.plan>;
+            } => Boolean(entry.plan) && entry.currentStatus !== entry.plan?.status,
           );
         if (changedTasks.length) {
           await recordTaskStatusTransitions(
             tx,
-            changedTasks.map(({ task, plan }) => ({
+            changedTasks.map(({ task, currentStatus, plan }) => ({
               taskId: task.id,
               taskTitle: task.title,
-              fromStatus: task.status,
+              fromStatus: currentStatus,
               toStatus: plan.status,
               actorId: actor.userId,
               trigger: "BULK" as const,
@@ -253,7 +267,6 @@ const executeBulkCommand = async (
           title: true,
           description: true,
           points: true,
-          status: true,
           workflowState: true,
           updatedAt: true,
         },

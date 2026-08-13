@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   conflictingLifecycleRequest,
+  deriveLegacyStatus,
   nextWorkflowState,
   projectLegacyStatus,
 } from "./task-workflow";
 
 describe("task workflow compatibility", () => {
+  it("derives the legacy projection from the two canonical state dimensions", () => {
+    expect(deriveLegacyStatus({ workflowState: "READY", isInActiveSprint: false })).toBe("BACKLOG");
+    expect(deriveLegacyStatus({ workflowState: "READY", isInActiveSprint: true })).toBe("SPRINT");
+    expect(deriveLegacyStatus({ workflowState: "DONE", isInActiveSprint: true })).toBe("DONE");
+  });
+
   it("maps completion to the legacy done projection", () => {
     expect(
       projectLegacyStatus({

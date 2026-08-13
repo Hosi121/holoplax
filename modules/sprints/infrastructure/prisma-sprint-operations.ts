@@ -2,14 +2,8 @@ import { Prisma } from "@prisma/client";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
 import { runSerializableTransaction } from "../../shared/infrastructure/prisma-serializable-transaction";
-import {
-  carryOverSprintCommitments,
-  commitTaskToSprint,
-} from "../../shared/infrastructure/prisma-sprint-items";
-import {
-  attachLegacySprintProjection,
-  clearClosedSprintProjection,
-} from "../../shared/infrastructure/prisma-task-consistency";
+import { carryOverSprintCommitments } from "../../shared/infrastructure/prisma-sprint-items";
+import { clearClosedSprintMembership } from "../../shared/infrastructure/prisma-task-consistency";
 import { recordTaskStatusTransitions } from "../../shared/infrastructure/prisma-task-status-events";
 import type { SprintOperationsPort } from "../application/sprint-operations";
 import { sprintWindowViolation } from "../domain/sprint-policy";
@@ -108,14 +102,7 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
             select: { id: true },
           });
           if (active) throw error("conflict", "close the active sprint before starting a new one");
-          const legacySprintTasks = await tx.task.findMany({
-            where: { workspaceId: actor.workspaceId, status: "SPRINT" },
-            select: { id: true, title: true, type: true, points: true },
-          });
           const capacityPoints = input.capacityPoints ?? 24;
-          if (legacySprintTasks.reduce((sum, task) => sum + task.points, 0) > capacityPoints) {
-            throw error("bad_request", "tasks selected for the sprint exceed its capacity");
-          }
           const sprint = await tx.sprint.create({
             data: {
               name: input.name?.trim() || `Sprint-${new Date().toISOString().slice(0, 10)}`,
@@ -127,13 +114,6 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
             },
             select: sprintSelect,
           });
-          await attachLegacySprintProjection(tx, {
-            workspaceId: actor.workspaceId,
-            sprintId: sprint.id,
-          });
-          for (const task of legacySprintTasks) {
-            await commitTaskToSprint(tx, { sprintId: sprint.id, task });
-          }
           await tx.auditLog.create({
             data: {
               actorId: actor.userId,
@@ -193,10 +173,14 @@ export const prismaSprintOperationsPort: SprintOperationsPort = {
           },
         });
         const sprintTasks = await tx.task.findMany({
-          where: { workspaceId: actor.workspaceId, sprintId: active.id, status: "SPRINT" },
+          where: {
+            workspaceId: actor.workspaceId,
+            sprintId: active.id,
+            workflowState: { not: "DONE" },
+          },
           select: { id: true, title: true },
         });
-        await clearClosedSprintProjection(tx, {
+        await clearClosedSprintMembership(tx, {
           workspaceId: actor.workspaceId,
           sprintId: active.id,
         });

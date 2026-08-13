@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createTaskSchema,
   listTasksSchema,
+  taskTools,
   updateTaskSchema,
 } from "../../mcp-server/src/tools/tasks";
 
@@ -33,5 +34,17 @@ describe("MCP task contracts", () => {
     expect(createTaskSchema.safeParse({ title: "x", points: 3, dueDate: "nope" }).success).toBe(
       false,
     );
+  });
+
+  it("advertises every accepted create/update field from the runtime schema", () => {
+    const createProperties = taskTools.find(({ name }) => name === "create_task")?.inputSchema
+      .properties;
+    const updateProperties = taskTools.find(({ name }) => name === "update_task")?.inputSchema
+      .properties;
+
+    expect(createProperties).toHaveProperty("checklist");
+    expect(createProperties).toHaveProperty("workflowState");
+    expect(updateProperties).toHaveProperty("checklist");
+    expect(updateProperties).toHaveProperty("workflowState");
   });
 });

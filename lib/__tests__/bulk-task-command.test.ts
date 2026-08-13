@@ -83,7 +83,7 @@ describe("bulk task commands", () => {
 
     expect(mocks.tx.task.updateMany).toHaveBeenCalledWith({
       where: { id: "task-1", workspaceId: "workspace-1" },
-      data: { status: "DONE", workflowState: "DONE" },
+      data: { workflowState: "DONE" },
     });
     expect(mocks.tx.sprintItem.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({

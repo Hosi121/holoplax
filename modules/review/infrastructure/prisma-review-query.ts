@@ -84,24 +84,24 @@ export const prismaReviewQueryPort: ReviewQueryPort = {
       prisma.task.count({
         where: {
           workspaceId,
-          status: "BACKLOG",
-          workflowState: { not: "CANCELED" },
+          sprintId: null,
+          workflowState: { notIn: ["DONE", "CANCELED"] },
           urgency: "HIGH",
         },
       }),
       prisma.task.count({
         where: {
           workspaceId,
-          status: "BACKLOG",
-          workflowState: { not: "CANCELED" },
+          sprintId: null,
+          workflowState: { notIn: ["DONE", "CANCELED"] },
           automationStatus: "SPLIT_PENDING",
         },
       }),
       prisma.task.count({
         where: {
           workspaceId,
-          status: "BACKLOG",
-          workflowState: { not: "CANCELED" },
+          sprintId: null,
+          workflowState: { notIn: ["DONE", "CANCELED"] },
           points: { lte: 3 },
         },
       }),
