@@ -1,12 +1,8 @@
-"use client";
-
 import { Chrome, Github, Lock, Mail, User } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { Suspense, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { signIn } from "@/lib/auth-client";
+import { Image, Link, useRouter, useSearchParams } from "@/lib/navigation";
 
 type Providers = Record<string, { id: string; name: string }>;
 

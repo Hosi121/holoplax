@@ -225,9 +225,32 @@ const main = async () => {
   });
   await prisma.sprintItem.createMany({
     data: [
-      { sprintId: sprint.id, taskId: heroCopy.id, taskKey: heroCopy.id, taskTitle: heroCopy.title, taskType: heroCopy.type, committedPoints: heroCopy.points },
-      { sprintId: sprint.id, taskId: onboarding.id, taskKey: onboarding.id, taskTitle: onboarding.title, taskType: onboarding.type, committedPoints: onboarding.points },
-      { sprintId: sprint.id, taskId: velocityCopy.id, taskKey: velocityCopy.id, taskTitle: velocityCopy.title, taskType: velocityCopy.type, committedPoints: velocityCopy.points, outcome: "COMPLETED", completedAt: velocityCopy.updatedAt },
+      {
+        sprintId: sprint.id,
+        taskId: heroCopy.id,
+        taskKey: heroCopy.id,
+        taskTitle: heroCopy.title,
+        taskType: heroCopy.type,
+        committedPoints: heroCopy.points,
+      },
+      {
+        sprintId: sprint.id,
+        taskId: onboarding.id,
+        taskKey: onboarding.id,
+        taskTitle: onboarding.title,
+        taskType: onboarding.type,
+        committedPoints: onboarding.points,
+      },
+      {
+        sprintId: sprint.id,
+        taskId: velocityCopy.id,
+        taskKey: velocityCopy.id,
+        taskTitle: velocityCopy.title,
+        taskType: velocityCopy.type,
+        committedPoints: velocityCopy.points,
+        outcome: "COMPLETED",
+        completedAt: velocityCopy.updatedAt,
+      },
     ],
     skipDuplicates: true,
   });
@@ -257,26 +280,56 @@ const main = async () => {
       { task: notifyDesign, status: "BACKLOG" },
       { task: reviewTemplate, status: "BACKLOG" },
     ].map(({ task, status }) => ({
-        taskId: task.id,
-        taskKey: task.id,
-        taskTitle: task.title,
-        fromStatus: null,
-        toStatus: status,
-        actorId: testUser.id,
-        trigger: "API",
-        workspaceId: workspace.id,
-      })),
+      taskId: task.id,
+      taskKey: task.id,
+      taskTitle: task.title,
+      fromStatus: null,
+      toStatus: status,
+      actorId: testUser.id,
+      trigger: "API",
+      workspaceId: workspace.id,
+    })),
   });
 
   const existingVelocity = await prisma.velocityEntry.count({ where: { userId: testUser.id } });
   if (existingVelocity === 0) {
     await prisma.velocityEntry.createMany({
       data: [
-        { name: "Sprint-08", points: 18, range: "16-22", userId: testUser.id, workspaceId: workspace.id },
-        { name: "Sprint-09", points: 20, range: "18-24", userId: testUser.id, workspaceId: workspace.id },
-        { name: "Sprint-10", points: 22, range: "20-26", userId: testUser.id, workspaceId: workspace.id },
-        { name: "Sprint-11", points: 24, range: "22-28", userId: testUser.id, workspaceId: workspace.id },
-        { name: "Sprint-12", points: 21, range: "20-26", userId: testUser.id, workspaceId: workspace.id },
+        {
+          name: "Sprint-08",
+          points: 18,
+          range: "16-22",
+          userId: testUser.id,
+          workspaceId: workspace.id,
+        },
+        {
+          name: "Sprint-09",
+          points: 20,
+          range: "18-24",
+          userId: testUser.id,
+          workspaceId: workspace.id,
+        },
+        {
+          name: "Sprint-10",
+          points: 22,
+          range: "20-26",
+          userId: testUser.id,
+          workspaceId: workspace.id,
+        },
+        {
+          name: "Sprint-11",
+          points: 24,
+          range: "22-28",
+          userId: testUser.id,
+          workspaceId: workspace.id,
+        },
+        {
+          name: "Sprint-12",
+          points: 21,
+          range: "20-26",
+          userId: testUser.id,
+          workspaceId: workspace.id,
+        },
       ],
     });
   }

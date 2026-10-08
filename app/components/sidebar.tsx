@@ -1,5 +1,3 @@
-"use client";
-
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Dialog } from "@base-ui/react/dialog";
 import type { LucideIcon } from "lucide-react";
@@ -15,11 +13,9 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { memo, useCallback, useEffect, useState } from "react";
+import { useSession } from "@/lib/auth-client";
+import { Image, Link, usePathname, useRouter } from "@/lib/navigation";
 import { cn } from "../../lib/cn";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 import { NAV_LABELS } from "../../lib/ui-language";

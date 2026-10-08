@@ -1,9 +1,6 @@
-"use client";
-
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { Link, useSearchParams } from "@/lib/navigation";
 
 function ResetPasswordForm() {
   const params = useSearchParams();

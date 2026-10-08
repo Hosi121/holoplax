@@ -11,16 +11,20 @@ type EnvVar = {
 
 const envVars: EnvVar[] = [
   { key: "DATABASE_URL", required: true, description: "PostgreSQL connection URL" },
-  { key: "NEXTAUTH_SECRET", required: true, description: "NextAuth.js secret key" },
   {
-    key: "NEXTAUTH_URL",
+    key: "AUTH_SECRET",
+    required: true,
+    description: "Session encryption secret (NEXTAUTH_SECRET also accepted)",
+  },
+  {
+    key: "APP_URL",
     required: false,
-    description: "NextAuth.js URL (auto-detected in Vercel)",
+    description: "Application public URL (NEXTAUTH_URL also accepted)",
   },
   { key: "ENCRYPTION_KEY", required: true, description: "AES-256 encryption key (64 hex chars)" },
   { key: "GOOGLE_CLIENT_ID", required: false, description: "Google OAuth client ID" },
   { key: "GOOGLE_CLIENT_SECRET", required: false, description: "Google OAuth client secret" },
-  // NOTE: NextAuth GitHub provider reads GITHUB_ID / GITHUB_SECRET (not GITHUB_CLIENT_*)
+  // NOTE: The GitHub provider reads GITHUB_ID / GITHUB_SECRET (not GITHUB_CLIENT_*)
   { key: "GITHUB_ID", required: false, description: "GitHub OAuth client ID" },
   { key: "GITHUB_SECRET", required: false, description: "GitHub OAuth client secret" },
   // Storage uses MinIO-compatible env vars (also compatible with AWS S3 via MINIO_* naming)
@@ -45,7 +49,13 @@ function validateEnv(): ValidationResult {
   const warnings: string[] = [];
 
   for (const envVar of envVars) {
-    const value = process.env[envVar.key];
+    const value =
+      process.env[envVar.key] ??
+      (envVar.key === "AUTH_SECRET"
+        ? process.env.NEXTAUTH_SECRET
+        : envVar.key === "APP_URL"
+          ? process.env.NEXTAUTH_URL
+          : undefined);
     if (envVar.required && !value) {
       missing.push(`${envVar.key}: ${envVar.description}`);
     } else if (!envVar.required && !value) {
@@ -59,10 +69,10 @@ function validateEnv(): ValidationResult {
     missing.push("ENCRYPTION_KEY: must be exactly 64 hexadecimal characters");
   }
 
-  // NEXTAUTH_SECRET signs JWT sessions — a weak/short secret enables forgery.
-  const nextauthSecret = process.env.NEXTAUTH_SECRET;
-  if (nextauthSecret && nextauthSecret.length < 32) {
-    missing.push("NEXTAUTH_SECRET: must be at least 32 characters");
+  // AUTH_SECRET encrypts JWT sessions — a weak/short secret enables forgery.
+  const authSecretValue = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (authSecretValue && authSecretValue.length < 32) {
+    missing.push("AUTH_SECRET: must be at least 32 characters");
   }
 
   return {
@@ -100,12 +110,9 @@ function assertEnv(): void {
 }
 
 // Auto-validate on import in non-test environments
-// Skip validation during build phase (next build sets NEXT_PHASE)
-const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 if (
   typeof window === "undefined" &&
   process.env.NODE_ENV !== "test" &&
-  !isBuildPhase &&
   !process.env.SKIP_ENV_VALIDATION
 ) {
   assertEnv();

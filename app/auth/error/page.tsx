@@ -1,7 +1,5 @@
-"use client";
-
-import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "@/lib/navigation";
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();

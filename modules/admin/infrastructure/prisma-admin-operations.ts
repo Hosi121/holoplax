@@ -1,5 +1,5 @@
 import type { UserRole } from "@prisma/client";
-import { hash } from "bcryptjs";
+import bcrypt from "bcryptjs";
 import { encrypt, isEncrypted } from "../../../lib/encryption";
 import prisma from "../../../lib/prisma";
 import { ApplicationError } from "../../shared/application/application-error";
@@ -161,7 +161,7 @@ export const prismaAdminOperationsPort: AdminOperationsPort = {
   async createUser(actorId, input) {
     const role = (input.role?.toUpperCase() || "USER") as UserRole;
     if (!roles.has(role)) throw badRequest("invalid role");
-    const passwordHash = await hash(input.password, 10);
+    const passwordHash = await bcrypt.hash(input.password, 10);
     return prisma.$transaction(async (tx) => {
       const existing = await tx.user.findUnique({
         where: { email: input.email },

@@ -1,48 +1,65 @@
 # syntax=docker/dockerfile:1
-
-FROM node:20-slim AS base
-
-FROM base AS deps
+FROM node:24-slim AS base
 WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-RUN npx prisma generate
-RUN npm run build
-
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --system --gid 1001 nodejs
-RUN useradd --system --uid 1001 --gid nodejs nextjs
+FROM base AS manifests
+COPY package.json package-lock.json ./
+COPY server/package.json ./server/
+COPY packages/runtime/package.json ./packages/runtime/
+COPY mcp-server/package.json ./mcp-server/
+COPY bots/package.json ./bots/
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
+FROM manifests AS deps
+RUN npm ci --workspace server --workspace mcp-server --include-workspace-root
 
-# Install prisma CLI globally for migrations
-RUN npm install -g prisma@5.20.0
+FROM deps AS source
+COPY . .
+RUN npx prisma generate
 
-RUN mkdir .next
-RUN chown nextjs:nodejs .next
+FROM source AS web-builder
+RUN npm run build
 
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+FROM source AS mcp-builder
+RUN npm run build:mcp
 
-USER nextjs
+FROM manifests AS web-deps
+RUN PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --omit=optional --workspace server --include-workspace-root=false
 
+FROM manifests AS mcp-deps
+RUN PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --omit=optional --workspace mcp-server --include-workspace-root=false
+
+FROM base AS migration-deps
+COPY packages/migrations/package.json packages/migrations/package-lock.json ./
+RUN npm ci --omit=dev
+
+FROM base AS migrations
+ENV NODE_ENV=production
+ENV PATH="/app/node_modules/.bin:$PATH"
+COPY --from=migration-deps /app/node_modules ./node_modules
+COPY prisma ./prisma
+USER node
+CMD ["prisma", "migrate", "deploy"]
+
+FROM base AS mcp
+ENV NODE_ENV=production MCP_TRANSPORT=http MCP_PORT=3001
+COPY --from=mcp-deps /app/node_modules ./node_modules
+COPY --from=mcp-deps /app/packages/runtime ./packages/runtime
+COPY --from=mcp-builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=mcp-builder /app/mcp-server/dist ./mcp-server/dist
+COPY mcp-server/package.json ./mcp-server/
+USER node
+EXPOSE 3001
+CMD ["node", "mcp-server/dist/index.js"]
+
+FROM base AS web
+ENV NODE_ENV=production PORT=3000 APP_HOST=0.0.0.0
+COPY --from=web-deps /app/node_modules ./node_modules
+COPY --from=web-deps /app/packages/runtime ./packages/runtime
+COPY --from=web-builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=web-builder /app/dist ./dist
+COPY package.json ./
+COPY server/package.json ./server/
+USER node
 EXPOSE 3000
-
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-CMD ["node", "server.js"]
+CMD ["node", "dist/server/index.js"]

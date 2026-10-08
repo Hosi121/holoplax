@@ -1,10 +1,7 @@
-"use client";
-
 import { Chrome, Github } from "lucide-react";
-import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
-import { signIn, signOut, useSession } from "next-auth/react";
 import { Suspense, useEffect, useRef } from "react";
+import { signIn, signOut, useSession } from "@/lib/auth-client";
+import { Image, useRouter, useSearchParams } from "@/lib/navigation";
 import { useToast } from "../components/toast";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useWorkspaceId } from "../components/use-workspace-id";
@@ -56,7 +53,6 @@ function SettingsContent() {
     onSessionUpdate: async (user) => {
       await update({ user });
     },
-    onRouterRefresh: () => router.refresh(),
     onError: toast.error,
     onSuccess: toast.success,
   });

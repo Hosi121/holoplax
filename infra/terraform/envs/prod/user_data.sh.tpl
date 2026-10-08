@@ -9,8 +9,8 @@ exec > >(tee /var/log/user-data.log) 2>&1
 echo "=== Starting deployment at $(date) ==="
 echo "=== Deploy version: ${deploy_version} ==="
 
-# Install Node.js 20
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+# Install Node.js 24
+curl -fsSL https://rpm.nodesource.com/setup_24.x | bash -
 yum install -y nodejs
 
 # Install jq for JSON parsing
@@ -87,13 +87,16 @@ chown -R ec2-user:ec2-user $APP_DIR
 
 # Install dependencies
 cd $APP_DIR
-sudo -u ec2-user npm install
+sudo -u ec2-user npm ci --workspace server --workspace mcp-server --include-workspace-root
 
 # Generate Prisma client
 sudo -u ec2-user npx prisma generate
 
 # Run database migrations
 sudo -u ec2-user npx prisma migrate deploy
+
+# Build the deployable application
+sudo -u ec2-user npm run build
 
 # Start application with PM2
 sudo -u ec2-user pm2 delete holoplax 2>/dev/null || true

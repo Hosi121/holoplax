@@ -7,11 +7,9 @@ import {
   ListTodo,
   Timer,
 } from "lucide-react";
-import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { resolveWorkspaceId } from "@/lib/workspace-context";
-import { getReviewSnapshot } from "@/modules/review/index.server";
+import { useEffect, useState } from "react";
+import { Link } from "@/lib/navigation";
+import type { ReviewSnapshot } from "@/modules/review";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -23,28 +21,42 @@ import { QuickStartCard } from "../components/quick-start-card";
 
 const formatPercent = (value: number) => `${Math.round(value)}%`;
 const formatDays = (value: number) => `${value.toFixed(1)} 日`;
-export default async function ReviewPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id ?? null;
-  const workspaceId = userId ? await resolveWorkspaceId(userId) : null;
-  // React's render-purity rule rejects Date.now() here; an explicit Date keeps
-  // the server-render snapshot stable for this invocation.
-  // biome-ignore lint/complexity/useDateNow: see purity rationale above
-  const activitySince = new Date(new Date().getTime() - MS_PER_DAY);
+export default function ReviewPage() {
+  const [snapshot, setSnapshot] = useState<ReviewSnapshot | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/review", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Review request failed");
+        const data = JSON.parse(await response.text(), (key, value) =>
+          value && ["startedAt", "plannedEndAt", "endedAt", "completedAt"].includes(key)
+            ? new Date(value)
+            : value,
+        ) as ReviewSnapshot;
+        setSnapshot(data);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError(true);
+      });
+    return () => controller.abort();
+  }, []);
+  if (error)
+    return (
+      <p role="alert" className="p-8">
+        振り返りを読み込めませんでした。
+      </p>
+    );
+  if (!snapshot)
+    return (
+      <p role="status" className="p-8">
+        読み込み中…
+      </p>
+    );
+  return <ReviewContent snapshot={snapshot} />;
+}
 
-  const snapshot =
-    userId && workspaceId
-      ? await getReviewSnapshot(userId, workspaceId, activitySince)
-      : {
-          activeSprint: null,
-          latestClosedSprint: null,
-          leadTimeDays: null,
-          backlogSummary: { highPriority: 0, splitPending: 0, smallTasks: 0 },
-          velocityEntries: [],
-          openDependencies: 0,
-          activity: [],
-          automation: null,
-        };
+function ReviewContent({ snapshot }: { snapshot: ReviewSnapshot }) {
   const {
     activeSprint,
     latestClosedSprint,

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect } from "react";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";
 

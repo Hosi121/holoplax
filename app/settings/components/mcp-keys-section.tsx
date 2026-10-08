@@ -1,5 +1,3 @@
-"use client";
-
 import { KeyRound } from "lucide-react";
 import { useEffect } from "react";
 import { useToast } from "../../components/toast";

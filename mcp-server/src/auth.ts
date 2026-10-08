@@ -126,9 +126,9 @@ async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
  * Verify NextAuth.js JWT token (legacy support)
  */
 async function verifyJwtToken(token: string): Promise<AuthResponse> {
-  const secret = process.env.NEXTAUTH_SECRET;
+  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) {
-    return { success: false, error: "NEXTAUTH_SECRET not configured" };
+    return { success: false, error: "AUTH_SECRET not configured" };
   }
 
   try {

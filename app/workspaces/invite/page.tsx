@@ -1,10 +1,7 @@
-"use client";
-
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { Suspense, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { useSession } from "@/lib/auth-client";
+import { Link, useSearchParams } from "@/lib/navigation";
 
 function InviteContent() {
   const params = useSearchParams();

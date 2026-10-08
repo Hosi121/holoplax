@@ -1,9 +1,7 @@
-"use client";
-
 import { CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { Link } from "@/lib/navigation";
 import { fetchAllTasks } from "@/lib/task-client";
 import { STORY_POINTS } from "../../lib/points";
 import {

@@ -164,8 +164,7 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   );
   await page.goto("/settings");
   expect((await accountLoaded).status()).toBe(200);
-  // Wait for client hydration/account loading so a development compilation
-  // refresh cannot replace the file input between selection and its handler.
+  // Wait for account loading before editing the form.
   await expect(page.getByRole("textbox", { name: "メール" })).toHaveValue(email);
   const uploadPreparation = page.waitForResponse((response) =>
     response.url().includes("/api/storage/avatar"),
@@ -191,4 +190,20 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   await page.getByRole("button", { name: "接続キーを作成" }).click();
   await expect(page.getByText("このキーは一度だけ表示されます")).toBeVisible();
   await expect(page.locator("code").filter({ hasText: "mcp_" })).toBeVisible();
+
+  await page.goto("/velocity");
+  await expect(page).toHaveURL(/\/review#completion-pace$/);
+  await expect(page.getByRole("heading", { name: "今回の進み方を振り返る" })).toBeVisible();
+  await page.locator("header").getByRole("link", { name: "やることへ", exact: true }).click();
+  await expect(page).toHaveURL(/\/backlog$/);
+  await expect(page.getByText("最初のE2Eタスク", { exact: true })).toBeVisible();
+
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "ログアウト", exact: true }).click();
+  await expect(page).toHaveURL(/\/auth\/signin$/);
+  await page.goto("/review");
+  await expect(page).toHaveURL(/\/auth\/signin\?callbackUrl=%2Freview$/);
+  await expect(page.request.get("/api/review").then((response) => response.status())).resolves.toBe(
+    401,
+  );
 });

@@ -1,5 +1,3 @@
-"use client";
-
 import { BarChart2, Lightbulb, Pencil, Scissors, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import {

@@ -1,17 +1,3 @@
-/**
- * Re-export Prisma enum types for consistency
- * These are the source of truth for enum values
- */
-export {
-  Severity,
-  TaskAutomationStatus,
-  TaskHierarchyRole,
-  TaskOrigin,
-  TaskStatus,
-  TaskType,
-  TaskWorkflowState,
-} from "@prisma/client";
-
 import type {
   Severity as PrismaSeverity,
   SprintStatus as PrismaSprintStatus,
@@ -77,6 +63,22 @@ export const SEVERITY = {
   MEDIUM: "MEDIUM",
   HIGH: "HIGH",
 } as const satisfies Record<string, PrismaSeverity>;
+
+// Browser-safe enums; type-only Prisma imports still check their values.
+export const Severity = SEVERITY;
+export type Severity = PrismaSeverity;
+export const TaskAutomationStatus = AUTOMATION_STATUS;
+export type TaskAutomationStatus = PrismaTaskAutomationStatus;
+export const TaskHierarchyRole = TASK_HIERARCHY_ROLE;
+export type TaskHierarchyRole = PrismaTaskHierarchyRole;
+export const TaskOrigin = TASK_ORIGIN;
+export type TaskOrigin = PrismaTaskOrigin;
+export const TaskStatus = TASK_STATUS;
+export type TaskStatus = PrismaTaskStatus;
+export const TaskType = TASK_TYPE;
+export type TaskType = PrismaTaskType;
+export const TaskWorkflowState = TASK_WORKFLOW_STATE;
+export type TaskWorkflowState = PrismaTaskWorkflowState;
 
 /**
  * Labels for display (Japanese)

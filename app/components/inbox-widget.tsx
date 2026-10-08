@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { useWorkspaceStore } from "../../lib/stores/workspace-store";

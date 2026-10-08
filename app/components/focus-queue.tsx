@@ -1,8 +1,6 @@
-"use client";
-
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { Link } from "@/lib/navigation";
 import { InlineError, Skeleton } from "./ui/feedback";
 
 type FocusItem = {

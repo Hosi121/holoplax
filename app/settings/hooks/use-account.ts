@@ -13,17 +13,11 @@ export type UseAccountOptions = {
     email: string | null;
     image: string | null;
   }) => Promise<void>;
-  onRouterRefresh?: () => void;
   onError?: (message: string) => void;
   onSuccess?: (message: string) => void;
 };
 
-export function useAccount({
-  onSessionUpdate,
-  onRouterRefresh,
-  onError,
-  onSuccess,
-}: UseAccountOptions = {}) {
+export function useAccount({ onSessionUpdate, onError, onSuccess }: UseAccountOptions = {}) {
   const [account, setAccount] = useState<AccountForm>({ name: "", email: "", image: "" });
   const [accountDirty, setAccountDirty] = useState(false);
   const [linkedProviders, setLinkedProviders] = useState<string[]>([]);
@@ -62,7 +56,6 @@ export function useAccount({
         email: account.email || null,
         image: account.image || null,
       });
-      onRouterRefresh?.();
       setAccountDirty(false);
       onSuccess?.("アカウント情報を保存しました。");
     } else {

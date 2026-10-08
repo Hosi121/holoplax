@@ -8,4 +8,4 @@ pre-commit:
 
     - name: typecheck
       glob: "*.{ts,tsx}"
-      run: npx tsc --noEmit
+      run: npm run typecheck

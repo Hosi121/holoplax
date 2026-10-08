@@ -60,6 +60,8 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker build --target migrations -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-migrations .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-migrations
 
       - name: Build and push metrics image
         env:
@@ -77,7 +79,7 @@ jobs:
           ECR_REPOSITORY: ${{ steps.set-env.outputs.name_prefix }}-mcp
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f mcp-server/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest --target mcp .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
@@ -114,7 +116,7 @@ jobs:
             --output json)
 
           # Create migration task definition with updated image and command
-          MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-app:$IMAGE_TAG" \
+          MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-staging-app:$IMAGE_TAG-migrations" \
             '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE |
              (.containerDefinitions[] | select(.name == "app")).command = ["prisma", "migrate", "deploy"] |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
@@ -261,7 +263,7 @@ jobs:
             --output json)
 
           # Create migration task definition with updated image and command
-          MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-app:$IMAGE_TAG" \
+          MIGRATE_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/holoplax-prod-app:$IMAGE_TAG-migrations" \
             '(.containerDefinitions[] | select(.name == "app")).image = $IMAGE |
              (.containerDefinitions[] | select(.name == "app")).command = ["prisma", "migrate", "deploy"] |
              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |

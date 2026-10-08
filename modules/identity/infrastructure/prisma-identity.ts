@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { compare, hash } from "bcryptjs";
+import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { getBaseUrl } from "../../../lib/base-url";
 import { logger } from "../../../lib/logger";
@@ -175,10 +175,10 @@ export const prismaIdentityPort: IdentityPort = {
         "this account has no password — sign in with your OAuth provider instead",
       );
     }
-    if (!(await compare(currentPassword, stored.hash))) {
+    if (!(await bcrypt.compare(currentPassword, stored.hash))) {
       throw accountBadRequest("current password is incorrect");
     }
-    const newHash = await hash(newPassword, 12);
+    const newHash = await bcrypt.hash(newPassword, 12);
     await prisma.$transaction(async (tx) => {
       await tx.userPassword.update({ where: { userId }, data: { hash: newHash } });
       await tx.user.update({ where: { id: userId }, data: { passwordChangedAt: new Date() } });
@@ -211,7 +211,7 @@ export const prismaIdentityPort: IdentityPort = {
   },
 
   async register(input) {
-    const passwordHash = await hash(input.password, 10);
+    const passwordHash = await bcrypt.hash(input.password, 10);
     const requiresEmailVerification = shouldVerifyEmail();
     let user: { id: string; email: string | null };
     try {
@@ -319,7 +319,7 @@ export const prismaIdentityPort: IdentityPort = {
   },
 
   async resetPassword(token, password) {
-    const passwordHash = await hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
     const userId = await runSerializableTransaction(
       async (tx) => {
         const record = await tx.passwordResetToken.findUnique({ where: { token } });

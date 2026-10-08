@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import {
   ApplicationError,
@@ -130,7 +129,7 @@ export const errorResponse = (
   fallback?: { code?: string; message?: string; status?: number; requestId?: string },
 ) => {
   const { status, envelope } = toErrorResult(error, fallback);
-  return NextResponse.json(envelope, { status });
+  return Response.json(envelope, { status });
 };
 
 export const createDomainErrors = (domain: string) => {

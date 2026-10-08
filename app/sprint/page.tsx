@@ -1,9 +1,7 @@
-"use client";
-
 import { Inbox } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { Link } from "@/lib/navigation";
 import { STORY_POINTS } from "../../lib/points";
 import { SEVERITY, SEVERITY_LABELS, type Severity } from "../../lib/types";
 import { NAV_LABELS } from "../../lib/ui-language";

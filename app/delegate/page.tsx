@@ -1,5 +1,3 @@
-"use client";
-
 import { Bot, CheckCircle2, ClipboardList, Send, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api-client";

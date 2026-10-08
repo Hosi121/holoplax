@@ -3,8 +3,13 @@ node_modules
 .npm
 
 # Build outputs
-.next
-out
+dist
+**/dist
+**/node_modules
+server/route-table.generated.ts
+*.tsbuildinfo
+playwright-report
+test-results
 
 # Development — exclude ALL env files and key material from the build context
 .env

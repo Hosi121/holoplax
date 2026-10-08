@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -54,6 +54,9 @@ for (const file of sourceFiles) {
       if (
         target === "@prisma/client" ||
         target.startsWith("next/") ||
+        target === "hono" ||
+        target.startsWith("hono/") ||
+        target.startsWith("@hono/") ||
         target.includes("/lib/") ||
         target.includes("/application/") ||
         target.includes("/infrastructure/") ||
@@ -68,6 +71,9 @@ for (const file of sourceFiles) {
       if (
         target === "@prisma/client" ||
         target.startsWith("next/") ||
+        target === "hono" ||
+        target.startsWith("hono/") ||
+        target.startsWith("@hono/") ||
         target.includes("/lib/") ||
         target.includes("/infrastructure/") ||
         target.includes("index.server")
@@ -83,9 +89,12 @@ for (const file of sourceFiles) {
       }
     }
   }
-  if ((path.startsWith("app/") || path.startsWith("mcp-server/src/")) && imports.some(
-    (target) => /modules\/[^/]+\/(?:application|domain|infrastructure)\//.test(target),
-  )) {
+  if (
+    (path.startsWith("app/") ||
+      path.startsWith("server/routes/") ||
+      path.startsWith("mcp-server/src/")) &&
+    imports.some((target) => /modules\/[^/]+\/(?:application|domain|infrastructure)\//.test(target))
+  ) {
     report(file, "adapter must import a module through index.server only");
   }
 
@@ -145,7 +154,6 @@ for (const file of sourceFiles) {
   if (!ownsSerializableTransactions && /isolationLevel\s*:\s*["']Serializable["']/.test(source)) {
     report(file, "Serializable transactions must use the shared retrying transaction adapter");
   }
-
 }
 
 const visitingModules = new Set();
@@ -170,7 +178,12 @@ for (const name of moduleEdges.keys()) visitModule(name);
 
 for (const file of sourceFiles) {
   const path = toPosix(relative(root, file));
-  if (!path.startsWith("app/") && !path.startsWith("mcp-server/src/")) continue;
+  if (
+    !path.startsWith("app/") &&
+    !path.startsWith("server/routes/") &&
+    !path.startsWith("mcp-server/src/")
+  )
+    continue;
   if (path.startsWith("mcp-server/src/infrastructure/")) continue;
   const imports = importTargets(readFileSync(file, "utf8"));
   if (imports.includes("@prisma/client")) {
@@ -182,22 +195,22 @@ for (const file of sourceFiles) {
 }
 
 const protectedAdapters = [
-  "app/api/tasks/",
-  "app/api/ai/apply/",
-  "app/api/automation/approval/",
-  "app/api/onboarding/",
-  "app/api/intake/",
-  "app/api/workspaces/",
-  "app/api/health/",
-  "app/api/velocity/",
-  "app/api/integrations/discord/",
-  "app/api/mcp/",
-  "app/api/account/",
-  "app/api/delegations/",
-  "app/api/auth/",
-  "app/api/ai/",
-  "app/api/memory/",
-  "app/api/admin/",
+  "server/routes/tasks/",
+  "server/routes/ai/apply/",
+  "server/routes/automation/approval/",
+  "server/routes/onboarding/",
+  "server/routes/intake/",
+  "server/routes/workspaces/",
+  "server/routes/health/",
+  "server/routes/velocity/",
+  "server/routes/integrations/discord/",
+  "server/routes/mcp/",
+  "server/routes/account/",
+  "server/routes/delegations/",
+  "server/routes/auth/",
+  "server/routes/ai/",
+  "server/routes/memory/",
+  "server/routes/admin/",
 ];
 for (const file of sourceFiles) {
   const path = toPosix(relative(root, file));

@@ -1,8 +1,6 @@
-"use client";
-
-import { usePathname } from "next/navigation";
-import { SessionProvider } from "next-auth/react";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { SessionProvider } from "@/lib/auth-client";
+import { usePathname } from "@/lib/navigation";
 import { cn } from "../lib/cn";
 import { Sidebar } from "./components/sidebar";
 import { ToastProvider } from "./components/toast";

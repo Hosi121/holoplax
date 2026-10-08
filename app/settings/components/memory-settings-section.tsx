@@ -1,5 +1,3 @@
-"use client";
-
 import { type ReactNode, useEffect } from "react";
 import { useToast } from "../../components/toast";
 import { ConfirmDialog } from "../../components/ui/confirm-dialog";

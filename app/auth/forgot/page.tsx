@@ -1,8 +1,6 @@
-"use client";
-
-import Link from "next/link";
 import { useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { Link } from "@/lib/navigation";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");

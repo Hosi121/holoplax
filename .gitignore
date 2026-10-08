@@ -63,3 +63,6 @@ tfplan
 .tornado/
 __pycache__/
 *.py[cod]
+
+# Generated API route table
+server/route-table.generated.ts

@@ -1,18 +1,23 @@
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { compare, hashSync } from "bcryptjs";
-import type { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import DiscordProvider from "next-auth/providers/discord";
-import GitHubProvider from "next-auth/providers/github";
-import GoogleProvider from "next-auth/providers/google";
+import type { AuthConfig } from "@auth/core";
+import type { JWT } from "@auth/core/jwt";
+import { getToken } from "@auth/core/jwt";
+import CredentialsProvider from "@auth/core/providers/credentials";
+import DiscordProvider from "@auth/core/providers/discord";
+import GitHubProvider from "@auth/core/providers/github";
+import GoogleProvider from "@auth/core/providers/google";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import bcrypt from "bcryptjs";
+import { getRequest } from "../server/request-context";
+import { decodeSession, encodeSession } from "./auth-jwt";
 import prisma from "./prisma";
+import type { Session } from "./session";
 
 const providers = [];
 
 // A throwaway bcrypt hash used to equalize response time when a user/password
 // row is missing, so the credentials login path is not a username-enumeration
 // timing oracle (we always perform one bcrypt comparison).
-const DUMMY_PASSWORD_HASH = hashSync("holoplax-timing-equalizer", 10);
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("holoplax-timing-equalizer", 10);
 
 providers.push(
   CredentialsProvider({
@@ -22,8 +27,9 @@ providers.push(
       password: { label: "Password", type: "password" },
     },
     async authorize(credentials) {
-      const email = credentials?.email?.toLowerCase().trim();
-      const password = credentials?.password;
+      const email =
+        typeof credentials?.email === "string" ? credentials.email.toLowerCase().trim() : null;
+      const password = typeof credentials?.password === "string" ? credentials.password : null;
       if (!email || !password) return null;
       const user = await prisma.user.findUnique({
         where: { email },
@@ -44,7 +50,7 @@ providers.push(
         : null;
       // Always run one bcrypt comparison (against a dummy hash when no row
       // exists) so timing does not reveal whether the account exists.
-      const valid = await compare(password, passwordRow?.hash ?? DUMMY_PASSWORD_HASH);
+      const valid = await bcrypt.compare(password, passwordRow?.hash ?? DUMMY_PASSWORD_HASH);
       if (!user || user.disabledAt || !passwordRow || !user.emailVerified || !valid) {
         return null;
       }
@@ -89,7 +95,22 @@ if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) {
   );
 }
 
-export const authOptions: NextAuthOptions = {
+const secureCookies = (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "").startsWith("https:");
+export const sessionCookieName = `${secureCookies ? "__Secure-" : ""}next-auth.session-token`;
+export const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+export const authOptions: AuthConfig = {
+  secret: authSecret,
+  basePath: "/api/auth",
+  trustHost: true,
+  useSecureCookies: secureCookies,
+  cookies: {
+    sessionToken: {
+      name: sessionCookieName,
+      options: { httpOnly: true, sameSite: "lax", path: "/", secure: secureCookies },
+    },
+  },
+  jwt: { encode: encodeSession, decode: decodeSession },
   adapter: PrismaAdapter(prisma),
   providers,
   pages: {
@@ -98,7 +119,7 @@ export const authOptions: NextAuthOptions = {
   },
   session: { strategy: "jwt" },
   callbacks: {
-    jwt: async ({ token, user, trigger, session }) => {
+    jwt: async ({ token, user, trigger }) => {
       if (user) {
         token.sub = (user as { id?: string }).id ?? token.sub;
         token.role = (user as { role?: string }).role ?? "USER";
@@ -111,22 +132,18 @@ export const authOptions: NextAuthOptions = {
         const pwChangedAt = (user as { passwordChangedAt?: Date | null }).passwordChangedAt;
         token.pwAt = pwChangedAt ? new Date(pwChangedAt).getTime() : null;
       }
-      if (trigger === "update") {
-        const nextUser = session?.user as
-          | {
-              name?: string | null;
-              email?: string | null;
-              image?: string | null;
-              onboardingCompletedAt?: string | null;
-            }
-          | undefined;
-        if (nextUser) {
-          token.name = nextUser.name ?? token.name;
-          token.email = nextUser.email ?? token.email;
-          token.picture = nextUser.image ?? token.picture;
-          if (nextUser.onboardingCompletedAt) {
-            token.onboardingCompletedAt = nextUser.onboardingCompletedAt;
-          }
+      if (trigger === "update" && token.sub) {
+        // Session updates refresh persisted facts; never trust browser-supplied
+        // identity or onboarding flags as authorization data.
+        const record = await prisma.user.findUnique({
+          where: { id: token.sub },
+          select: { name: true, email: true, image: true, onboardingCompletedAt: true },
+        });
+        if (record) {
+          token.name = record.name;
+          token.email = record.email;
+          token.picture = record.image;
+          token.onboardingCompletedAt = record.onboardingCompletedAt;
         }
       }
       if (!token.onboardingCompletedAt && token.sub) {
@@ -169,7 +186,7 @@ export const authOptions: NextAuthOptions = {
           // Only auto-link to an existing local account whose email is itself
           // verified — otherwise someone who registered with another person's
           // email could be hijacked. For Google we also require the provider's
-          // verified-email signal. (NextAuth's GitHub provider only returns the
+          // verified-email signal. (Auth.js's GitHub provider only returns the
           // primary verified email, so the local-verified check covers it.)
           const providerEmailOk =
             account.provider === "github" ||
@@ -223,3 +240,29 @@ export const authOptions: NextAuthOptions = {
     }),
   },
 };
+
+export function sessionFromToken(token: JWT): Session {
+  return {
+    expires: new Date((token.exp ?? 0) * 1000).toISOString(),
+    user: {
+      id: token.sub,
+      name: token.name,
+      email: token.email,
+      image: token.picture,
+      role: typeof token.role === "string" ? token.role : "USER",
+      onboardingCompletedAt: token.onboardingCompletedAt as string | Date | null,
+      pwChangedAt: typeof token.pwAt === "number" ? token.pwAt : null,
+    },
+  };
+}
+
+export async function getSession(request: Request = getRequest()): Promise<Session | null> {
+  if (!authSecret) return null;
+  const token = await getToken({
+    req: request,
+    secret: authSecret,
+    cookieName: sessionCookieName,
+    decode: decodeSession,
+  });
+  return token?.sub ? sessionFromToken(token) : null;
+}

@@ -1,5 +1,3 @@
-"use client";
-
 import { Menu } from "@base-ui/react/menu";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../lib/cn";

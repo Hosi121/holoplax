@@ -7,7 +7,17 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json"]
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.json",
+      "**/*.mjs",
+      "!dist",
+      "!server/route-table.generated.ts",
+      "!mcp-server/dist"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -24,7 +34,9 @@
       },
       "correctness": {
         "noUnusedImports": "warn",
-        "noUnusedVariables": "warn"
+        "noUnusedVariables": "warn",
+        "useHookAtTopLevel": "error",
+        "useExhaustiveDependencies": "warn"
       },
       "style": {
         "noNonNullAssertion": "off",
@@ -36,7 +48,7 @@
         "useIterableCallbackReturn": "warn"
       },
       "performance": {
-        "noImgElement": "warn"
+        "noImgElement": "off"
       }
     }
   },

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   Activity,
   BarChart3,
@@ -10,7 +8,7 @@ import {
   TrendingDown,
   Zap,
 } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/lib/navigation";
 
 const iconMap: Record<string, LucideIcon> = {
   Activity,

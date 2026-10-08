@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "./auth";
+import { getSession } from "./auth";
 import prisma from "./prisma";
 
 export class AuthError extends Error {
@@ -22,7 +21,7 @@ const credentialsStale = (dbChangedAt: Date | null, sessionPwAt: unknown): boole
 };
 
 export async function requireAuth() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) {
     throw new AuthError();

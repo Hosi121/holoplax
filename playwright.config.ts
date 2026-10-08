@@ -24,7 +24,7 @@ export default defineConfig({
   webServer: {
     // Production output avoids dev-server compilation/HMR remounting forms in
     // the middle of an interaction and also verifies the deployable artifact.
-    command: "npm run build && npm run start -- --hostname 127.0.0.1",
+    command: process.env.E2E_BUILD_READY ? "npm run start" : "npm run build && npm run start",
     url: "http://localhost:3000/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

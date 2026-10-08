@@ -1,9 +1,8 @@
-import { cookies } from "next/headers";
+import { getRequestCookie } from "../server/request-context";
 import prisma from "./prisma";
 
 export async function resolveWorkspaceId(userId: string) {
-  const cookieStore = await cookies();
-  const preferred = cookieStore.get("workspaceId")?.value ?? null;
+  const preferred = getRequestCookie("workspaceId");
 
   if (preferred) {
     const membership = await prisma.workspaceMember.findUnique({

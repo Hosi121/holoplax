@@ -1,5 +1,3 @@
-"use client";
-
 import type { TaskDTO } from "../../../lib/types";
 import { LoadingButton } from "../../components/loading-button";
 import { Modal } from "../../components/ui/dialog";

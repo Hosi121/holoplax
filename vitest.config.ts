@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+import "./scripts/generate-routes.mjs";
 
 export default defineConfig({
   test: {

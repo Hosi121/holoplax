@@ -1,0 +1,8 @@
+{
+  "name": "@holoplax/migrations",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "prisma": "5.20.0"
+  }
+}

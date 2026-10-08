@@ -1,5 +1,3 @@
-"use client";
-
 import { Check, RefreshCw, Target } from "lucide-react";
 import { InlineError, Skeleton } from "./ui/feedback";
 import { useDailyFocus } from "./use-daily-focus";

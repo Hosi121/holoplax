@@ -23,7 +23,7 @@ export interface Config {
   // Stdio mode only: static user/workspace
   workspaceId: string | undefined;
   userId: string | undefined;
-  // HTTP mode only: NextAuth secret for JWT verification
+  // HTTP mode only: Session secret for JWT verification
   nextAuthSecret: string | undefined;
 }
 
@@ -46,7 +46,7 @@ export function getConfig(): Config {
     httpPort: parseInt(optionalEnv("MCP_PORT", "3001")!, 10),
     workspaceId: optionalEnv("MCP_WORKSPACE_ID"),
     userId: optionalEnv("MCP_USER_ID"),
-    nextAuthSecret: optionalEnv("NEXTAUTH_SECRET"),
+    nextAuthSecret: optionalEnv("AUTH_SECRET") ?? optionalEnv("NEXTAUTH_SECRET"),
   };
 
   return cachedConfig;

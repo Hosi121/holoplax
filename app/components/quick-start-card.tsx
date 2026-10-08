@@ -1,8 +1,6 @@
-"use client";
-
 import { BarChart3, ListTodo, X, Zap } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Link } from "@/lib/navigation";
 
 const STORAGE_KEY = "holoplax-quickstart-dismissed";
 

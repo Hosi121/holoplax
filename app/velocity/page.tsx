@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { Navigate } from "react-router";
 
 export default function VelocityPage() {
-  redirect("/review#completion-pace");
+  return <Navigate to="/review#completion-pace" replace />;
 }

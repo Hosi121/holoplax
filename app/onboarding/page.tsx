@@ -1,9 +1,7 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
+import { useSession } from "@/lib/auth-client";
+import { useRouter } from "@/lib/navigation";
 import { cn } from "../../lib/cn";
 import { STORY_POINTS } from "../../lib/points";
 import { InlineError } from "../components/ui/feedback";
