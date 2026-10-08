@@ -6,7 +6,8 @@
 Node サーバーが画面の配信、認証、API、永続ジョブのワーカーを担当する。
 開発時は同じ `localhost:3000` から内部の Vite（`5173`）へ画面を転送する。
 
-AWS の構成は [Terraform](../infra/terraform/README.md) が正本。
+移行先は Cloudflare。現在の API は Node 向けで、Workers 対応は [次の課題](issues.md#cloudflare移行)。
+CD は停止中。以下は [Terraform](../infra/terraform/README.md) に残る旧 AWS 配布構成。
 
 ```mermaid
 flowchart LR

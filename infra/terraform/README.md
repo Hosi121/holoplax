@@ -1,7 +1,8 @@
-# AWS 構成と配布
+# 旧 AWS 構成（CD停止中）
 
-`ap-northeast-3`（大阪）の staging / prod を Terraform で管理する。
-現在の配布先は ECS / Fargate。EC2 の user-data テンプレートは旧構成用。
+`ap-northeast-3`（大阪）の staging / prod 用に保存している Terraform 構成。
+配布先を Cloudflare へ移す方針で、AWS向け CD と staging 制御 workflow は停止・除去した。
+ECS / Fargate の構成は参照用に残す。EC2 の user-data テンプレートはさらに以前の構成用。
 
 ## 構成の正本
 
@@ -27,7 +28,6 @@ terraform -chdir=infra/terraform/envs/staging apply
 接続先や secret ARN は `terraform output` を参照する。
 AIキーの secret は作成だけでは使えず、有効な値の設定が必要。
 
-[CD workflow](../../.github/workflows/cd.yml) は `staging` → staging、`main` → prod。
-CI 通過後に ECR へ push し、専用 migration イメージの終了コードを確認してから
-Web / MCP サービスを更新・安定確認する。migration は旧タスク停止前に実行するため、
-[互換列の撤去条件](../../doc/issues.md#データと更新規則) を守る。
+旧 CD は migration を旧 ECS タスク停止前に実行していた。
+DB の [互換列の撤去条件](../../doc/issues.md#データと更新規則) は、配布方式を変更しても確認する。
+Cloudflare への移行課題は [課題](../../doc/issues.md#cloudflare移行) を参照。

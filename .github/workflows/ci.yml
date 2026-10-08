@@ -1,9 +1,21 @@
 name: CI
 
 on:
+  push:
+    branches: [main, staging]
   pull_request:
   workflow_dispatch:
   workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
 
 jobs:
   quality:
@@ -39,12 +51,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
-      - uses: hashicorp/setup-terraform@v3
-      - run: terraform fmt -check -recursive infra/terraform
-      - run: terraform -chdir=infra/terraform/envs/prod init -backend=false -input=false
-      - run: terraform -chdir=infra/terraform/envs/prod validate
-      - run: terraform -chdir=infra/terraform/envs/staging init -backend=false -input=false
-      - run: terraform -chdir=infra/terraform/envs/staging validate
       - run: npm ci --workspace server --workspace mcp-server --include-workspace-root
       - run: npx prisma generate
       - run: npx prisma migrate deploy

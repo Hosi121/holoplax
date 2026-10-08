@@ -49,6 +49,9 @@ LiteLLM を使うなら `docker compose up -d litellm`（ポート `4000`）を�
 Docker の配布先は [Dockerfile](Dockerfile) の `web` / `mcp` / `migrations` ターゲット。
 例: `docker build --target web -t holoplax-web .`。Bot の依存は通常の Web 開発に含めない。
 
+CI は [GitHub Actions](.github/workflows/ci.yml) で実行し、AWS の認証・Terraform 検証は含めない。
+CD は停止中。Cloudflare への移行は [次の実装課題](doc/issues.md#cloudflare移行) を参照。
+
 ## ドキュメント
 
 | 読みたいこと | 正本 |
@@ -60,7 +63,7 @@ Docker の配布先は [Dockerfile](Dockerfile) の `web` / `mcp` / `migrations`
 | メモリ・指標・AI提案 | [メモリ](doc/user-memory.md) |
 | Discord / Slack | [外部連携](doc/integrations.md) |
 | MCP の起動・接続 | [MCP](mcp-server/README.md) |
-| AWS 構成・配布 | [Terraform](infra/terraform/README.md) |
+| 旧 AWS 構成（CD停止中） | [Terraform](infra/terraform/README.md) |
 | 未解決の問題・未検証の範囲 | [課題](doc/issues.md) |
 | Next.js を外した理由と検証 | [移行記録](doc/vite-migration.md) |
 | 機密情報の漏洩時の対応 | [機密情報の扱い](doc/security.md) |
