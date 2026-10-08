@@ -41,7 +41,7 @@ Embed reply
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DISCORD_BOT_TOKEN` | Yes | Bot token from Discord Developer Portal |
-| `DISCORD_INTEGRATION_TOKEN` | Yes | Shared token (must match Next.js API) |
+| `DISCORD_INTEGRATION_TOKEN` | Yes | Shared token (must match Hono API) |
 | `DISCORD_WATCH_CHANNEL_IDS` | No | Comma-separated channel IDs to watch |
 | `DISCORD_WATCH_CHANNEL_ID` | No | Single channel ID (backwards compatibility) |
 | `DISCORD_INTEGRATION_URL` | No | Intake API URL (default: http://localhost:3000/api/integrations/discord) |
@@ -55,7 +55,7 @@ Embed reply
 | `DISCORD_CLIENT_ID` | Yes | Application client ID |
 | `DISCORD_GUILD_ID` | Yes* | Guild ID (*not required for global commands) |
 
-### Next.js Side
+### Hono Side
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DISCORD_INTEGRATION_TOKEN` | Yes | Shared token |
@@ -94,7 +94,7 @@ export OPENAI_API_KEY="your-openai-key"
 export DISCORD_CLIENT_ID="your-client-id"
 export DISCORD_GUILD_ID="your-guild-id"
 
-# Next.js API configuration
+# Hono API configuration
 export DISCORD_USER_ID="your-holoplax-user-id"
 export DISCORD_WORKSPACE_ID="your-workspace-id"
 ```
@@ -102,15 +102,15 @@ export DISCORD_WORKSPACE_ID="your-workspace-id"
 ### 4. Deploy Slash Commands
 ```bash
 # Guild-scoped (instant update)
-node scripts/deploy-discord-commands.js
+npm run discord:deploy
 
 # Global (takes up to 1 hour)
-node scripts/deploy-discord-commands.js --global
+npm run discord:deploy -- --global
 ```
 
 ### 5. Start the Bot
 ```bash
-node scripts/discord-bot.js
+npm run bot:discord
 ```
 
 ## Features

@@ -5,7 +5,7 @@
 flowchart LR
   User[User/Client] --> ALB[ALB (HTTP)]
   subgraph AWS[VPC (ap-northeast-3)]
-    ALB --> EC2[EC2 App (Next.js/Node + durable job poller)]
+    ALB --> EC2[EC2 App (Vite SPA + Hono/Node + durable job poller)]
     EC2 --> RDS[(RDS PostgreSQL)]
     EC2 --> S3[(S3 Avatar Bucket)]
     SM[Secrets Manager] --> EC2
@@ -17,7 +17,7 @@ flowchart LR
 ## Local Dev (docker-compose)
 ```mermaid
 flowchart LR
-  Dev[Developer] --> App[Next.js dev server]
+  Dev[Developer] --> App[Vite + Hono dev server]
   subgraph Docker[docker-compose]
     App --> PG[(Postgres 16)]
     App --> MinIO[(MinIO)]
@@ -113,10 +113,11 @@ flowchart LR
 
 ## Module boundaries
 
-- `app` and integration adapters import a module through `index.server`.
+- `server/routes` and integration adapters import a module through `index.server`.
+  Browser code in `app` imports only public types and browser-safe exports from `index.ts`.
 - Cross-module dependencies use only `index.ts` or `index.server.ts`; domain,
   application, and infrastructure directories are private to their module.
-- Domain and application layers do not import Prisma, Next.js, or
+- Domain and application layers do not import Prisma, Hono, or
   infrastructure code.
 - The architecture check rejects cross-module internal imports and module
   dependency cycles.
@@ -134,14 +135,14 @@ flowchart LR
   transaction adapter with bounded conflict retries.
 - AI provider calls are downstream of durable `TaskAutomationJob` records;
   successful task writes do not depend on provider availability. A Node
-  instrumentation hook starts a non-overlapping poller, heartbeat-protects
+  server bootstrap starts a non-overlapping poller, heartbeat-protects
   claims, recovers stale workers, and exposes queue degradation via health.
   Health classifies overdue PENDING and RUNNING jobs using independently
   configurable age thresholds; queue depth alone is not considered healthy.
 - Personal delegation follows the same durable boundary through
   `DelegationJob`, but owns its policy, commands, runner, and adapters in the
   `modules/delegation` layers. Domain and application code do not depend on
-  Prisma, Next.js, or the AI provider.
+  Prisma, Hono, or the AI provider.
 - Task list consumers follow the cursor until `hasMore` is false. Sprint views
   apply `sprintId` in the server query instead of loading workspace-wide DONE
   work and filtering it in the browser.

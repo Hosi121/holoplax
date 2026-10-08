@@ -3,8 +3,8 @@
 ## 概要
 - Slack から `/holotask` で Holoplax にタスクを作成する。
 - 2パターン:
-  - Slash Command を Next.js エンドポイント `/api/integrations/slack` に直接向ける
-  - Bolt ベースのローカル Bot (`scripts/slack-bot.js`) を起動し、そこからAPIに中継する
+  - Slash Command を Hono エンドポイント `/api/integrations/slack` に直接向ける
+  - Bolt ベースのローカル Bot (`bots/slack-bot.js`) を起動し、そこからAPIに中継する
 
 ## 環境変数
 - `SLACK_SIGNING_SECRET`（必須）: Slash Command 署名検証用
@@ -28,7 +28,7 @@
 1. 依存インストール（ネットワーク環境で実行）  
    `npm install @slack/bolt`
 2. `.env` に `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `DISCORD_INTEGRATION_TOKEN`, `SLACK_INTEGRATION_URL` を設定。
-3. 起動: `node scripts/slack-bot.js`（Socket Modeの場合は `SLACK_APP_TOKEN` も設定）
+3. 起動: `npm run bot:slack`（Socket Modeの場合は `SLACK_APP_TOKEN` も設定）
 4. Slackの `/holotask` コマンドがBotに届き、Holoplax APIへ中継してタスク作成。
 
 ## 備考

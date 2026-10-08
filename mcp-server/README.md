@@ -7,14 +7,15 @@ holoplax アプリケーション操作用の MCP (Model Context Protocol) サ�
 ### 1. 依存関係のインストール
 
 ```bash
-cd mcp-server
-npm install
+# リポジトリのルートで実行
+npm ci --workspace server --workspace mcp-server --include-workspace-root
+npx prisma generate
 ```
 
 ### 2. ビルド
 
 ```bash
-npm run build
+npm run build:mcp
 ```
 
 ### 3. 環境変数の設定
@@ -37,14 +38,14 @@ npm run build
 **HTTPモード専用：**
 | 変数名 | 必須 | 説明 |
 |--------|------|------|
-| `NEXTAUTH_SECRET` | No | 従来のセッションJWT認証も使う場合のみ、holoplaxと同じ値 |
+| `AUTH_SECRET` / `NEXTAUTH_SECRET` | No | 従来のセッションJWT認証も使う場合のみ、holoplaxと同じ値 |
 
 *モードに応じて必須
 
 ### 4. サーバーの起動
 
 ```bash
-npm start
+npm start --workspace mcp-server
 ```
 
 ## Claude Desktop での設定
@@ -80,7 +81,7 @@ HTTPモードでは、Holoplaxの設定画面で作成したMCP接続キーを�
 MCP_TRANSPORT=http \
 MCP_PORT=3001 \
 DATABASE_URL=postgresql://... \
-npm start
+npm start --workspace mcp-server
 ```
 
 Claude Desktop でリモートサーバーに接続：
@@ -263,7 +264,7 @@ Claude Desktop でリモートサーバーに接続：
 ### ウォッチモード
 
 ```bash
-npm run dev
+npm run dev --workspace mcp-server
 ```
 
 ### プロジェクト構成
