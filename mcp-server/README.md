@@ -1,297 +1,67 @@
-# holoplax MCP Server
+# Holoplax MCP サーバー
 
-holoplax アプリケーション操作用の MCP (Model Context Protocol) サーバーです。
+タスク・スプリント・インテーク・AI操作を MCP クライアントへ公開する別プロセス。
+Web と同じ application service と入力契約を使う。
 
-## セットアップ
+## 起動
 
-### 1. 依存関係のインストール
-
-```bash
-# リポジトリのルートで実行
-npm ci --workspace server --workspace mcp-server --include-workspace-root
-npx prisma generate
-```
-
-### 2. ビルド
+[ルートの開発準備](../README.md#開発) を済ませ、リポジトリ直下で実行する。
 
 ```bash
 npm run build:mcp
+MCP_TRANSPORT=http node --env-file=.env mcp-server/dist/index.js
 ```
 
-### 3. 環境変数の設定
+通常の `npm start --workspace mcp-server` は `.env` を読み込まないので、
+環境変数をプロセスへ渡す。HTTP の既定ポートは `3001`、DB確認は `GET /health`。
+Docker は `docker build --target mcp -t holoplax-mcp .`。
 
-以下の環境変数を設定してください：
+| 環境変数 | 用途 |
+| --- | --- |
+| `DATABASE_URL` | 全モードで必須 |
+| `MCP_TRANSPORT` | `stdio`（既定）または `http` |
+| `MCP_PORT` | HTTP ポート（既定 `3001`） |
+| `MCP_USER_ID` / `MCP_WORKSPACE_ID` | stdio で必須。実行者と対象を固定 |
+| `ENCRYPTION_KEY` | DB に保存した AI 認証情報を復号する場合に必要 |
+| `AUTH_SECRET`（旧 `NEXTAUTH_SECRET`） | 旧 JWT 認証を使う場合に必要 |
 
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `DATABASE_URL` | Yes | PostgreSQL接続URL |
-| `MCP_TRANSPORT` | No | トランスポート種別 (`stdio` or `http`、デフォルト: `stdio`) |
-| `MCP_PORT` | No | HTTPモード時のポート番号（デフォルト: `3001`） |
-| `ENCRYPTION_KEY` | No | AI設定の復号用キー（将来の拡張用） |
+## 接続
 
-**Stdioモード専用：**
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `MCP_WORKSPACE_ID` | Yes* | 操作対象のワークスペースID |
-| `MCP_USER_ID` | Yes* | 操作ユーザーのID |
+HTTP は Web の設定画面で発行した `mcp_` API キー（発行時だけ表示）を使う。
+キーの workspace、所属、期限、失効、ユーザー停止を確認する。
+クライアントの接続設定例:
 
-**HTTPモード専用：**
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `AUTH_SECRET` / `NEXTAUTH_SECRET` | No | 従来のセッションJWT認証も使う場合のみ、holoplaxと同じ値 |
-
-*モードに応じて必須
-
-### 4. サーバーの起動
-
-```bash
-npm start --workspace mcp-server
+```json
+{
+  "mcpServers": {
+    "holoplax": {
+      "url": "https://<mcp-host>/mcp",
+      "headers": { "Authorization": "Bearer mcp_<key>" }
+    }
+  }
+}
 ```
 
-## Claude Desktop での設定
-
-### ローカル実行（Stdioモード）
-
-`claude_desktop_config.json` に以下を追加：
+ローカル stdio は信頼できる実行環境で使い、プロセスの固定 ID で操作する。
+パスと ID を実際の値に置き換える。
 
 ```json
 {
   "mcpServers": {
     "holoplax": {
       "command": "node",
-      "args": ["/path/to/holoplax/mcp-server/dist/index.js"],
+      "args": ["/absolute/path/holoplax/mcp-server/dist/index.js"],
       "env": {
-        "DATABASE_URL": "postgresql://...",
-        "MCP_WORKSPACE_ID": "clxxxxxx",
-        "MCP_USER_ID": "clxxxxxx"
+        "DATABASE_URL": "postgresql://<user>:<password>@localhost:5433/holoplax",
+        "MCP_TRANSPORT": "stdio",
+        "MCP_USER_ID": "<user-id>",
+        "MCP_WORKSPACE_ID": "<workspace-id>"
       }
     }
   }
 }
 ```
 
-### リモートサーバー接続（HTTPモード）
-
-HTTPモードでは、Holoplaxの設定画面で作成したMCP接続キーを使って認証します。
-キーは作成時に一度だけ表示され、ワークスペース単位で権限が限定されます。
-
-サーバー側で MCP サーバーを HTTP モードで起動：
-
-```bash
-MCP_TRANSPORT=http \
-MCP_PORT=3001 \
-DATABASE_URL=postgresql://... \
-npm start --workspace mcp-server
-```
-
-Claude Desktop でリモートサーバーに接続：
-
-```json
-{
-  "mcpServers": {
-    "holoplax": {
-      "url": "https://mcp.holoplax.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer mcp_<設定画面で作成したキー>"
-      }
-    }
-  }
-}
-```
-
-**MCP接続キーの作成方法：**
-
-1. holoplaxにログイン
-2. 「設定」→「MCP接続キー」で名前を入力して作成
-3. 一度だけ表示されるキーをMCPクライアントへ設定
-
-**エンドポイント：**
-- `GET /health` - ヘルスチェック
-- `POST /mcp` - MCP プロトコルエンドポイント
-
-## 提供ツール一覧
-
-### タスク管理（5ツール）
-
-| ツール名 | 説明 |
-|---------|------|
-| `list_tasks` | タスク一覧取得（フィルタリング対応） |
-| `get_task` | 単一タスク取得 |
-| `create_task` | タスク作成 |
-| `update_task` | タスク更新 |
-| `delete_task` | タスク削除 |
-
-### スプリント管理（4ツール）
-
-| ツール名 | 説明 |
-|---------|------|
-| `list_sprints` | スプリント一覧取得 |
-| `get_current_sprint` | アクティブスプリント取得 |
-| `create_sprint` | スプリント開始 |
-| `close_sprint` | スプリント終了 |
-
-### インテーク処理（3ツール）
-
-| ツール名 | 説明 |
-|---------|------|
-| `list_intake` | インテークアイテム一覧 |
-| `create_memo` | メモ作成 |
-| `resolve_intake` | インテーク処理（dismiss/merge/create） |
-
-### AI機能（3ツール）
-
-| ツール名 | 説明 |
-|---------|------|
-| `ai_score` | タスクスコア・ポイント推定 |
-| `ai_split` | タスク分割提案 |
-| `ai_suggest` | タスク改善のAI提案 |
-
-## ツール詳細
-
-### list_tasks
-
-タスク一覧を取得します。様々なフィルタリングオプションをサポート。
-
-**パラメータ：**
-- `status`: タスクステータス配列 (`BACKLOG`, `SPRINT`, `DONE`)
-- `type`: タスクタイプ配列 (`EPIC`, `PBI`, `TASK`)
-- `urgency`: 緊急度 (`LOW`, `MEDIUM`, `HIGH`)
-- `risk`: リスク (`LOW`, `MEDIUM`, `HIGH`)
-- `tags`: タグ配列
-- `assigneeId`: 担当者ID
-- `dueBefore`: 期限（以前）
-- `dueAfter`: 期限（以降）
-- `minPoints`: 最小ポイント
-- `maxPoints`: 最大ポイント
-- `search`: 検索テキスト
-- `limit`: 取得件数（デフォルト200、最大500）
-- `cursor`: ページネーションカーソル
-
-### create_task
-
-新しいタスクを作成します。
-
-**必須パラメータ：**
-- `title`: タスクタイトル
-- `points`: ストーリーポイント（フィボナッチ数: 1,2,3,5,8,13,21,34）
-
-**オプションパラメータ：**
-- `description`: 説明
-- `definitionOfDone`: 完了条件
-- `urgency`: 緊急度（デフォルト: `MEDIUM`）
-- `risk`: リスク（デフォルト: `MEDIUM`）
-- `status`: ステータス（デフォルト: `BACKLOG`）
-- `type`: タイプ（デフォルト: `PBI`）
-- `parentId`: 親タスクID
-- `dueDate`: 期限（ISO 8601形式）
-- `assigneeId`: 担当者ID
-- `tags`: タグ配列
-- `dependencyIds`: 依存タスクID配列
-
-### update_task
-
-既存タスクを更新します。
-
-**必須パラメータ：**
-- `taskId`: 更新対象のタスクID
-
-その他のパラメータはすべてオプションで、`create_task` と同様です。
-
-### create_sprint
-
-新しいスプリントを開始します。アクティブなスプリントがある場合はエラーになるため、先に `close_sprint` を実行してください。
-
-**パラメータ：**
-- `name`: スプリント名（デフォルト: `Sprint-YYYY-MM-DD`）
-- `capacityPoints`: キャパシティポイント（デフォルト: 24）
-- `plannedEndAt`: 終了予定日
-
-### close_sprint
-
-現在のアクティブスプリントを終了します。完了ポイントはベロシティとして記録され、未完了タスクはバックログに戻ります。
-
-### resolve_intake
-
-インテークアイテムを処理します。
-
-**パラメータ：**
-- `intakeId`: インテークアイテムID
-- `action`: アクション
-  - `dismiss`: 却下
-  - `merge`: 既存タスクにマージ
-  - `create`: 新規タスク作成
-- `taskType`: 作成時のタスクタイプ（`create` 時のみ）
-- `targetTaskId`: マージ先タスクID（`merge` 時のみ）
-
-### ai_score
-
-タスクのスコアとストーリーポイントを推定します。
-
-**パラメータ：**
-- `title`: タスクタイトル（必須）
-- `description`: タスク説明
-- `taskId`: 関連タスクID
-
-**レスポンス：**
-- `points`: 推定ストーリーポイント
-- `urgency`: 推定緊急度
-- `risk`: 推定リスク
-- `score`: スコア（0-100）
-- `reason`: 推定理由
-- `suggestionId`: 提案ID
-
-### ai_split
-
-タスク分割の提案を取得します。
-
-**パラメータ：**
-- `title`: タスクタイトル（必須）
-- `description`: タスク説明
-- `points`: 現在のストーリーポイント（必須）
-- `taskId`: 関連タスクID
-
-**レスポンス：**
-- `suggestions`: 分割タスク配列
-  - `title`: タスクタイトル
-  - `points`: ストーリーポイント
-  - `urgency`: 緊急度
-  - `risk`: リスク
-  - `detail`: 詳細
-- `suggestionId`: 提案ID
-
-## 開発
-
-### ウォッチモード
-
-```bash
-npm run dev --workspace mcp-server
-```
-
-### プロジェクト構成
-
-```
-mcp-server/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── index.ts           # エントリーポイント
-│   ├── server.ts          # MCPサーバー本体
-│   ├── config.ts          # 環境変数・設定管理
-│   ├── context.ts         # 実行コンテキスト
-│   ├── tools/
-│   │   ├── index.ts       # ツール集約
-│   │   ├── tasks.ts       # タスク管理ツール
-│   │   ├── sprints.ts     # スプリント管理ツール
-│   │   ├── intake.ts      # インテーク処理ツール
-│   │   └── ai.ts          # AI機能ツール
-│   └── services/
-│       ├── tasks.ts       # タスクサービス
-│       ├── sprints.ts     # スプリントサービス
-│       ├── intake.ts      # インテークサービス
-│       └── ai.ts          # AIサービス
-└── README.md
-```
-
-## ライセンス
-
-Private
+公開ツール名・入力はクライアントの `tools/list` を正本とする。
+[tools/index.ts](src/tools/index.ts) が実行用 Zod schema から公開契約を生成するため、
+この文書では個々の引数を複製しない。設定は [config.ts](src/config.ts)、認証は [auth.ts](src/auth.ts) を参照。

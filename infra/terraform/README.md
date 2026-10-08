@@ -1,44 +1,33 @@
-# Holoplax AWS Terraform (Osaka)
+# AWS 構成と配布
 
-This Terraform set provisions a simple AWS stack for staging/prod in `ap-northeast-3`.
+`ap-northeast-3`（大阪）の staging / prod を Terraform で管理する。
+現在の配布先は ECS / Fargate。EC2 の user-data テンプレートは旧構成用。
 
-## What it creates
-- VPC with public + private subnets (no NAT to keep costs low)
-- ALB (HTTP) + EC2 app instance
-- RDS PostgreSQL (private)
-- S3 bucket for avatars (public read by default)
-- Secrets Manager entry for DB credentials
-- Secrets Manager entry for OpenAI API key (empty by default)
+## 構成の正本
 
-## Environments
-Each environment lives under `envs/{staging,prod}`.
+- [staging](envs/staging/main.tf) / [prod](envs/prod/main.tf): 環境別のリソースと接続。
+- [modules](modules): VPC、ALB、ECS、private RDS、S3、ECR、GitHub OIDC 等。
+- Secrets Manager: DB接続、認証・暗号化、AIキーを ECS へ渡す。
+- EventBridge + ECS scheduled task: [日次指標ジョブ](../../scripts/metrics/metrics_job.py) を起動。
 
-## Quick start
+staging は ACM / Route 53 も管理し HTTPS へ転送する。
+prod の HTTPS は `certificate_arn` / `enable_https_redirect` に従う。
+各環境の variables と `terraform.tfvars` でドメイン・証明書・一意の bucket 名を設定する。
+
+## 変更手順
+
+対象環境・AWS account を確認して plan をレビューする。staging の例:
+
 ```bash
-cd infra/terraform/envs/staging
-terraform init
-terraform plan
-terraform apply
+terraform -chdir=infra/terraform/envs/staging init
+terraform -chdir=infra/terraform/envs/staging plan
+terraform -chdir=infra/terraform/envs/staging apply
 ```
 
-## Important notes
-- Update `bucket_name` in each `terraform.tfvars` to a globally unique S3 bucket name.
-- This setup uses **HTTP only** (no TLS). Add ACM + HTTPS listener if you need HTTPS.
-- EC2 runs in a public subnet for simplicity. If you want a private subnet + NAT, we can add it.
-- DB credentials are stored in Secrets Manager; EC2 has permission to read the secret.
-- OpenAI key secret is created without a value. Set it manually in AWS console/CLI.
+接続先や secret ARN は `terraform output` を参照する。
+AIキーの secret は作成だけでは使えず、有効な値の設定が必要。
 
-## User data
-You can pass `user_data` to install Node/Docker and run the app. Example in `terraform.tfvars`:
-```hcl
-user_data = <<-EOT
-#!/bin/bash
-# install steps here
-EOT
-```
-
-## Outputs
-- `alb_dns_name`: access URL
-- `db_endpoint`: RDS endpoint
-- `db_secret_arn`: Secrets Manager ARN
-- `s3_bucket_name`: avatar bucket
+[CD workflow](../../.github/workflows/cd.yml) は `staging` → staging、`main` → prod。
+CI 通過後に ECR へ push し、専用 migration イメージの終了コードを確認してから
+Web / MCP サービスを更新・安定確認する。migration は旧タスク停止前に実行するため、
+[互換列の撤去条件](../../doc/issues.md#データと更新規則) を守る。

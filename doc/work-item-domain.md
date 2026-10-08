@@ -1,108 +1,50 @@
-# Work item lifecycle and planning model
+# タスクとスプリントの規則
 
-Status: accepted for incremental migration (2026-07-13)
+仕事の実行状態とスプリントの計画所属を分ける。両者を一つの `status` で扱うと、
+再開・分割・容量・ベロシティの判断が食い違うため、このモデルを採用した。
+テーブル名 `Task` は維持し、一括リネームのための移行は行わない。
 
-## Context
+## 正本と互換性
 
-The original `Task.status` encoded both planning placement (`BACKLOG` or
-`SPRINT`) and execution state (`DONE`). The mutable `Task.sprintId` was also
-used as both current membership and historical evidence. This made velocity,
-WIP, reopening, bulk completion, and task splitting disagree about the same
-work item.
+| 概念 | 正本 |
+| --- | --- |
+| 実行状態 | `Task.workflowState`: `READY` / `IN_PROGRESS` / `BLOCKED` / `DONE` / `CANCELED` |
+| 現在の計画所属 | `Task.sprintId`（active Sprint）と非除外の `SprintItem` |
+| 計画時の見積もり・タイトル・種別 | `SprintItem` のスナップショット |
+| 自動化の進行 | `automationStatus` |
+| 分割での役割・生成元 | `hierarchyRole` / `origin` |
+| 繰り返しの同一性 | `RoutineSeries` と現在の occurrence を持つ `RoutineRule` |
 
-`Task.automationState` similarly mixed an automation workflow with structural
-provenance (`SPLIT_PARENT` and `SPLIT_CHILD`). `RoutineRule` moved from one task
-row to the next, so occurrences had no stable series identity.
+API の旧 `BACKLOG` / `SPRINT` / `DONE` は境界で導出する。
+`workflowState = DONE` なら `DONE`、それ以外で active Sprint に所属すれば `SPRINT`、
+残りは `BACKLOG`。内部ロジックで旧値を正本にしない。
 
-## Decisions
+Prisma モデルから `Task.status` / `Task.automationState` は除去済み。
+DB にだけ残る互換列と同期 trigger は旧 ECS タスクとの併存用で、
+[撤去条件](issues.md#データと更新規則) を満たしてから削除する。
 
-1. `Task` remains the compatibility name for the core `WorkItem` aggregate.
-   Renaming the table is not valuable enough to justify a flag-day migration.
-2. Execution lifecycle is represented by `Task.workflowState`:
-   `READY`, `IN_PROGRESS`, `BLOCKED`, `DONE`, or `CANCELED`.
-3. Sprint commitment is represented by `SprintItem`, not by workflow state.
-   It snapshots the committed estimate, work-item kind, and title so closed
-   sprint reports do not change when the live task is edited or deleted.
-4. The legacy `Task.status` and `Task.sprintId` remain during migration as API
-   projections. New writes update them together with the new source of truth.
-5. A split parent is an informational container and is removed from sprint
-   commitment. Only its children contribute estimates after a split.
-6. Work breakdown follows these rules:
-   - `EPIC` has no parent and cannot be committed directly to a sprint.
-   - `PBI` may have an `EPIC` parent.
-   - `TASK` may have a `PBI` or `TASK` parent.
-   - A container with unfinished children cannot be completed.
-   - Only leaf work items may be committed, avoiding parent/child estimate
-     double-counting.
-7. Automation workflow and split provenance are separate concepts. Compatibility
-   values remain until every client reads the separated representation.
-8. Recurrence has a stable definition and occurrence identity. Completing an
-   occurrence creates a new work item without moving the series identity.
-   Deleting the occurrence that currently owns the active rule stops the
-   series; deleting an older occurrence does not.
-9. Workspace work survives creator lifecycle. Removing a workspace member also
-   removes active assignments in that workspace.
-10. Dependency cancellation does not satisfy a prerequisite. Removing a
-    dependency explicitly changes its edge from `REQUIRED` to `WAIVED`, keeping
-    the decision auditable and allowing the same edge to be reactivated.
-    `TaskDependencyEvent` permanently snapshots each required, waived, and
-    reactivated decision even after either live task is deleted.
-11. `SprintItem` is the current commitment snapshot; `SprintItemEvent` is its
-    append-only decision history. Recommit, reopen, completion, removal, and
-    carryover never erase earlier decisions. A carried item links to its prior
-    sprint item.
-12. Workflow events snapshot the task creation date, due date, estimate, and
-    creator needed by metrics. Historical metrics therefore do not join back to
-    a live task that may have been deleted. Deleting active work records a final
-    `CANCELED` transition before removing the task. Status events likewise
-    snapshot the permanent task key and title and survive task deletion.
-13. Task automation is requested by a durable, revision-deduplicated job in the
-    same transaction as the task mutation. Workers claim jobs atomically, retry
-    transient failures, heartbeat active claims, recover stale claims, and
-    require an explicit operator action to retry terminal failures. The Node
-    process starts the poller independently of user traffic, and health reports
-    pending/running/failed queue counts.
-14. Every state-dependent task update read and write runs in one serializable
-    transaction through the shared unit-of-work adapter. Serialization
-    conflicts are retried before being surfaced as an explicit conflict.
-15. Single and bulk task commands use the same application lifecycle planner.
-    The planner owns compatibility projection, workflow transition, and policy
-    evaluation; persistence code does not define alternate rules.
-16. Bulk status persistence applies the planner's projected status and workflow
-    state as one explicit execution plan. Reopening `CANCELED` or `DONE` work
-    through either the single or bulk command returns it to `READY`.
-17. Dependency edges carry their workspace scope and both endpoints are guarded
-    by composite foreign keys. Self-dependencies and cross-workspace edges are
-    rejected by the database as well as the application.
-18. Audit rows survive actor deletion through nullable attribution, while
-    Memory claims, questions, and metrics require exactly one user or workspace
-    scope. Sprint planned end dates cannot precede their start dates.
+## 更新時の規則
 
-## Compatibility projection
+- `EPIC` は親を持たず、直接スプリントに入れない。`PBI` の親は `EPIC`、`TASK` の親は `PBI` または `TASK`。
+- スプリントには末端の仕事だけを入れ、親子のポイントを二重計上しない。分割後は親を計画から外し、子だけを集計する。
+- 未完了の子、必須の依存、未完了のチェックリストがある仕事は完了できない。依存先のキャンセルは達成として扱わない。
+- 単体・一括操作は同じ planner を使う。旧 `status` による `DONE` / `CANCELED` の再開は `READY` に戻す。
+- workspace 内の ACTIVE Sprint は DB 制約で一件だけ。予定終了日は開始日以降とし、容量の確認と保存、開始・終了・持ち越しは原子的に行う。
+- ベロシティは Sprint 終了時の投影として作り、手入力しない。計画・実績の履歴は後日の Task 編集で変えない。
+- 依存の解除は削除ではなく `REQUIRED` → `WAIVED` として記録する。再有効化も履歴に残す。自己依存と workspace をまたぐ依存は DB でも拒否する。
+- 繰り返しの完了は同じ series の次回 Task を作る。現在の active occurrence の削除は series を停止し、過去 occurrence の削除では停止しない。
+- メンバーを外すとその workspace の割り当ても外す。仕事は作成者の削除後も残り、workspace owner の削除は拒否する。
 
-Until clients migrate from `Task.status`:
+## 消してはいけない履歴
 
-- `DONE` projects `workflowState = DONE`.
-- `SPRINT` projects an active, non-removed `SprintItem`.
-- `BACKLOG` projects a non-done task without active sprint commitment.
+`TaskStatusEvent` / `TaskWorkflowEvent` は不変の task key、タイトル、集計に必要な日時・
+見積もり・作成者を保持する。Task 削除後の振り返りと指標は live Task への join に依存しない。
+進行中の仕事を削除する前には `CANCELED` 遷移を記録する。
 
-The API may continue accepting these three values, but domain logic must use
-workflow state and sprint commitment internally.
+`SprintItemEvent` は追加・再コミット・再開・完了・除外・持ち越しの判断を追記する。
+持ち越し先は以前の SprintItem に結び付ける。`TaskDependencyEvent` も両端の Task 削除後に残す。
+監査ログは actor が削除されても残る。
 
-## Migration order
-
-1. Fix known behavioral inconsistencies without a schema dependency.
-2. Add and backfill `workflowState`, workflow events, and `SprintItem`.
-3. Dual-write compatibility fields and new records.
-4. Move reporting, capacity, and metrics reads to the new records.
-5. Expose workflow controls to clients.
-6. Separate automation provenance and recurring series.
-7. Remove compatibility fields only after production backfill verification.
-8. Validate compatibility-era database checks and retain immutable history for
-   sprint and workflow reporting.
-
-## Non-goals
-
-- Replacing Prisma or introducing distributed services.
-- Event sourcing every field mutation.
-- Removing the compatibility API in the same deployment as the data migration.
+保存形式は [Prisma schema](../prisma/schema.prisma)、遷移と計画判断は
+[workflow](../modules/tasks/domain/task-workflow.ts) / [lifecycle planner](../modules/tasks/application/task-lifecycle.ts)、
+スプリントの判断は [sprint policy](../modules/sprints/domain/sprint-policy.ts) を参照。

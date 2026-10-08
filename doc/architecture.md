@@ -1,148 +1,50 @@
-# Architecture
+# 構成と開発上の境界
 
-## Production (AWS / EC2)
+## 実行構成
+
+ブラウザは Vite でビルドした SPA を使い、Hono の `/api/*` を呼ぶ。
+Node サーバーが画面の配信、認証、API、永続ジョブのワーカーを担当する。
+開発時は同じ `localhost:3000` から内部の Vite（`5173`）へ画面を転送する。
+
+AWS の構成は [Terraform](../infra/terraform/README.md) が正本。
+
 ```mermaid
 flowchart LR
-  User[User/Client] --> ALB[ALB (HTTP)]
-  subgraph AWS[VPC (ap-northeast-3)]
-    ALB --> EC2[EC2 App (Vite SPA + Hono/Node + durable job poller)]
-    EC2 --> RDS[(RDS PostgreSQL)]
-    EC2 --> S3[(S3 Avatar Bucket)]
-    SM[Secrets Manager] --> EC2
-    EC2 --> Metrics[Daily Metrics Job (uv + python, cron)]
-    Metrics --> RDS
-  end
+  Browser[ブラウザ] --> ALB[ALB]
+  ALB --> Web[ECS / Fargate: Web + ワーカー]
+  Web --> DB[(RDS PostgreSQL)]
+  Web --> S3[(S3)]
+  Secrets[Secrets Manager] --> Web
+  MCP[MCP サーバー] --> DB
+  Schedule[EventBridge] --> Metrics[ECS: 日次指標ジョブ]
+  Metrics --> DB
 ```
 
-## Local Dev (docker-compose)
-```mermaid
-flowchart LR
-  Dev[Developer] --> App[Vite + Hono dev server]
-  subgraph Docker[docker-compose]
-    App --> PG[(Postgres 16)]
-    App --> MinIO[(MinIO)]
-  end
-```
+ローカルでは RDS / S3 の代わりに Docker Compose の PostgreSQL / MinIO を使う。
+MCP と Bot は Web とは別プロセス。配布依存は npm workspace と Docker ターゲットで分ける。
 
-## Processing Flows
+## コードの正本
 
-### Plan/Execute/Review Navigation
-```mermaid
-flowchart LR
-  Home[/] --> Backlog[/backlog (Plan)]
-  Backlog --> Sprint[/sprint (Execute)]
-  Sprint --> Review[/review (Review)]
-  Review --> Backlog
-```
+| 場所 | 役割 |
+| --- | --- |
+| [app/main.tsx](../app/main.tsx) | React Router の画面一覧と認証付き遷移。`/` は `/delegate` へ移動 |
+| [server](../server) | Hono の起動、リクエスト文脈、API。`routes/**/route.ts` からルート表を生成 |
+| [modules](../modules) | 機能ごとの domain / application / infrastructure |
+| [lib/contracts](../lib/contracts) | Web と MCP が共有する入力契約 |
+| [prisma/schema.prisma](../prisma/schema.prisma) | 保存形式と参照関係 |
+| [scripts/check-architecture.mjs](../scripts/check-architecture.mjs) | モジュール間の参照、循環、直接書き込みの検査 |
 
-### Work lifecycle and sprint planning
-```mermaid
-flowchart LR
-  User[User] --> App[App/API]
-  App --> Task[WorkItem / Task]
-  App --> Workflow[TaskWorkflowEvent]
-  Task --> Status[TaskStatusEvent snapshot]
-  Task --> Workflow
-  Task --> Item[SprintItem snapshot]
-  Item --> ItemEvent[SprintItemEvent history]
-  Item --> Sprint[Sprint]
-  Workflow --> Audit[AuditLog]
-  Task --> Dep[TaskDependency]
-  Dep --> Waiver[Required / Waived]
-  Waiver --> DepEvent[TaskDependencyEvent]
-  Task --> Series[RoutineSeries]
-  Series --> Rule[Active RoutineRule]
-```
+API ファイルを追加した場合は開発サーバーを再起動する。
+ビルド・型チェック・`test:run` ではルート表を再生成する。
 
-`Task.status` and `Task.sprintId` are compatibility projections. Execution
-state comes from `workflowState`; capacity and historical reporting come from
-`SprintItem`. See [work-item-domain.md](./work-item-domain.md).
+## 守る境界
 
-### Daily Metrics -> Memory Update
-```mermaid
-flowchart LR
-  Cron[EC2 cron] --> Job[Metrics Job (uv + python)]
-  Job --> Read[Query TaskWorkflowEvent snapshots]
-  Read --> Metric[MemoryMetric (window)]
-  Metric --> Claim[MemoryClaim (EMA)]
-```
+- モジュール外からは `index.ts` / `index.server.ts` の公開口を使う。ブラウザは server 側や Prisma を参照しない。
+- domain / application は Prisma、Hono、infrastructure に依存しない。
+- タスクの単体・一括操作は同じ lifecycle planner を使い、状態に依存する読み書きを共通の Serializable transaction と有限回の再試行で行う。
+- 状態・依存・スプリントの履歴は専用の保存口を通す。規則は [ドメイン](work-item-domain.md) に集約する。
+- AI 呼び出しは永続ジョブの記録後に行う。常駐ワーカーは所有権、heartbeat、再試行、滞留回復を扱い、失敗・滞留はヘルスチェックへ反映する。
+- 一覧の取得は `hasMore` がなくなるまでカーソルを進める。スプリント画面はサーバーで `sprintId` を絞る。
 
-### AI Collaboration Flow
-```mermaid
-flowchart LR
-  Intake[IntakeItem] --> Task[Task]
-  Task --> Job[TaskAutomationJob]
-  Job --> Worker[Retryable automation worker]
-  Worker --> Suggest[AiSuggestion]
-  Worker --> Prep[AiPrepOutput]
-  Suggest --> Apply[AI Apply]
-  Prep --> Approval[Approval/Apply]
-  Apply --> TaskUpdate[Task Update]
-  Approval --> TaskUpdate
-  TaskUpdate --> Log[AuditLog]
-```
-
-### Personal delegation flow
-```mermaid
-flowchart LR
-  Request[Personal request] --> Policy[Deterministic safety policy]
-  Policy -->|safe| Queue[DelegationJob]
-  Policy -->|external or destructive| Approval[Needs approval]
-  Policy -->|sensitive| Revise[Remove sensitive data]
-  Approval -->|prepare only| Queue
-  Queue --> Worker[Durable delegation worker]
-  Worker --> Generate[AI artifact generation]
-  Generate --> Verify[Independent AI verification]
-  Verify -->|pass| Done[Saved result]
-  Verify -->|insufficient| Input[Needs input]
-```
-
-The current executor is deliberately artifact-only. It cannot send, publish,
-delete, modify files, or claim that an external operation happened. Those
-capabilities must be added as scoped execution-port adapters with their own
-authorization and idempotency rules. See
-[personal-delegation.md](./personal-delegation.md).
-
-### Focus Queue Computation
-```mermaid
-flowchart LR
-  Tasks[Tasks + Dependencies] --> Score[Priority Score]
-  Metrics[MemoryMetric] --> Score
-  Score --> Focus[FocusQueue (Top 3)]
-```
-
-## Module boundaries
-
-- `server/routes` and integration adapters import a module through `index.server`.
-  Browser code in `app` imports only public types and browser-safe exports from `index.ts`.
-- Cross-module dependencies use only `index.ts` or `index.server.ts`; domain,
-  application, and infrastructure directories are private to their module.
-- Domain and application layers do not import Prisma, Hono, or
-  infrastructure code.
-- The architecture check rejects cross-module internal imports and module
-  dependency cycles.
-- General `Task` writes are statically restricted to the Tasks infrastructure.
-  Cross-aggregate operations that must share a Sprint, Intake, AI, or Workspace
-  transaction use the narrow shared consistency adapter; new direct table
-  writers fail the architecture check.
-- Lifecycle decisions are planned in the Tasks application layer and reused by
-  single-item and bulk commands. Persistence adapters supply facts and apply
-  the resulting plan.
-- Task status history is written only through one shared snapshot adapter;
-  dependency state and decision events are written only through the Task
-  aggregate writer. The architecture check rejects bypasses.
-- Task state-dependent reads and writes use one process-wide serializable
-  transaction adapter with bounded conflict retries.
-- AI provider calls are downstream of durable `TaskAutomationJob` records;
-  successful task writes do not depend on provider availability. A Node
-  server bootstrap starts a non-overlapping poller, heartbeat-protects
-  claims, recovers stale workers, and exposes queue degradation via health.
-  Health classifies overdue PENDING and RUNNING jobs using independently
-  configurable age thresholds; queue depth alone is not considered healthy.
-- Personal delegation follows the same durable boundary through
-  `DelegationJob`, but owns its policy, commands, runner, and adapters in the
-  `modules/delegation` layers. Domain and application code do not depend on
-  Prisma, Hono, or the AI provider.
-- Task list consumers follow the cursor until `hasMore` is false. Sprint views
-  apply `sprintId` in the server query instead of loading workspace-wide DONE
-  work and filtering it in the browser.
+認証の互換性は [移行記録](vite-migration.md)、委譲と学習の仕様は
+[委譲](personal-delegation.md) / [メモリ](user-memory.md) を参照。

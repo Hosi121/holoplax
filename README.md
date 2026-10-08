@@ -1,159 +1,66 @@
 # Holoplax
 
-個人の仕事を安全に任せられる実行AIと、バックログから振り返りまでをつなぐタスク管理ツール。
+個人の仕事をAIに任せ、バックログ・スプリント・振り返りをつなぐタスク管理ツール。
+現在の実行AIは、文章の成果物を生成して検証する範囲を扱う。
 
-## 主な機能
+画面は Vite / React / React Router、API は Hono / Node.js、認証は Auth.js Core。
+データは PostgreSQL / Prisma、画像は S3 互換ストレージに保存する。
 
-- **バックログ / カンバン / スプリント** — タスク管理の基本ビュー
-- **自分専用の実行AI** — 自然文の依頼から成果物を作り、完了条件に照らして検証
-- **AI 提案** — タスク分割、ストーリーポイント推定、優先度スコアリング
-- **自動化エンジン** — 閾値ベースでタスク分割・委譲を自動提案（段階的に自律度が上がる）
-- **フォーカスキュー** — 今やるべきタスクを3件に絞って提示
-- **ベロシティ追跡** — スプリントごとの実績を可視化
-- **インテーク（受信箱）** — メモや外部連携からのタスク取り込み
-- **MCP サーバー** — Claude Desktop 等から直接タスク操作が可能
-- **Discord / Slack 連携** — チャットからタスク作成・インテーク投入
-- **ワークスペース** — チーム単位でのマルチテナント管理
-- **メモリシステム** — ユーザーの傾向を学習し、AI 提案を改善
+## 開発
 
-## スタック
-
-| レイヤー | 技術 |
-|---------|------|
-| フロントエンド | Vite / React 19 / React Router / Tailwind CSS |
-| バックエンド | Hono / Node.js 24 / Zod バリデーション |
-| DB | PostgreSQL 16（Prisma ORM） |
-| ストレージ | MinIO（S3 互換） |
-| 認証 | Auth.js Core（パスワード / Google / GitHub / Discord） |
-| AI | LiteLLM ゲートウェイ（OpenAI / Anthropic / Gemini） |
-| MCP | 独自 MCP サーバー（API キー認証） |
-| テスト | Vitest / Biome（lint + format） |
-
-## セットアップ
-
-### 1. 環境変数
+Node.js 24 と Docker を使う。新規環境では、既存のマイグレーション履歴と
+MinIO イメージに [起動を妨げる問題](doc/issues.md#起動と検証) が残っている。
 
 ```bash
 cp .env.example .env
-# AUTH_SECRET と ENCRYPTION_KEY を生成して設定（旧 NEXTAUTH_SECRET も使用可能）:
-# openssl rand -hex 32
-```
-
-### 2. インフラ起動
-
-```bash
-docker compose up -d db minio    # DB + オブジェクトストレージ
-docker compose up -d litellm     # AI ゲートウェイ（任意）
-```
-
-### 3. 依存関係
-
-```bash
 npm ci --workspace server --workspace mcp-server --include-workspace-root
 npx prisma generate
 ```
 
-### 4. DB マイグレーション + シード
+`.env` の `AUTH_SECRET` と `ENCRYPTION_KEY` に、それぞれ `openssl rand -hex 32` で
+生成した値を設定する。接続先の一覧は [.env.example](.env.example) を参照。
+`APP_URL` は通常 `http://localhost:3000`。旧 `NEXTAUTH_SECRET` / `NEXTAUTH_URL` も受け付ける。
 
 ```bash
+docker compose up -d db minio
 npx prisma migrate dev
-npx prisma db seed               # 開発用アカウント作成
-```
-
-### 5. 開発サーバー起動
-
-```bash
 npm run dev
 ```
 
-既存のマイグレーション履歴と MinIO イメージには、新規環境の起動を妨げる問題がある。
-詳細は [移行記録](doc/vite-migration.md#残る制約) を参照。
+Web / API は `localhost:3000`、DB は `localhost:5433`、MinIO は `localhost:9000`
+（管理画面は `9001`）。開発用アカウントが必要な場合だけ `npx prisma db seed` を実行する。
 
-### アクセス先
-
-| サービス | URL |
-|---------|-----|
-| Web | http://localhost:3000 |
-| PostgreSQL | localhost:5433 |
-| MinIO (S3) | http://localhost:9000 |
-| MinIO Console | http://localhost:9001 |
-| LiteLLM | http://localhost:4000 |
+AI は `AI_*` → `LITELLM_*` → `OPENAI_*` の順で設定を参照する。
+LiteLLM を使うなら `docker compose up -d litellm`（ポート `4000`）を実行し、
+[モデル設定](litellm.config.yaml) と `AI_MODEL` を合わせる。直接 OpenAI に接続する場合は
+`.env` のゲートウェイ向け設定を外す。
 
 ## コマンド
 
-```bash
-npm run dev          # 開発サーバー
-npm run build        # 画面 + Node サーバーのプロダクションビルド
-npm run typecheck    # Web / API / MCP の型チェック
-npm run build:mcp    # MCP サーバーのビルド
-npm run test:run     # テスト実行
-npm run lint         # Biome lint
-npm run check        # lint + format 自動修正
-```
+| 用途 | リポジトリ直下で実行 |
+| --- | --- |
+| lint・境界チェック | `npm run lint` |
+| 型チェック | `npm run typecheck` |
+| ユニットテスト | `npm run test:run` |
+| E2E（DB・MinIO が必要） | `npm run test:e2e` |
+| 本番ビルド・起動 | `npm run build` → `npm run start` |
+| MCP ビルド | `npm run build:mcp` |
 
-## AI ゲートウェイ設定
+Docker の配布先は [Dockerfile](Dockerfile) の `web` / `mcp` / `migrations` ターゲット。
+例: `docker build --target web -t holoplax-web .`。Bot の依存は通常の Web 開発に含めない。
 
-`AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` が最優先。未設定なら `LITELLM_*` → `OPENAI_*` の順でフォールバックする。
+## ドキュメント
 
-LiteLLM を使う場合は `litellm.config.yaml` の `model_list` にモデルを追加し、`AI_MODEL` を一致させる。
-
-## MCP サーバー
-
-Claude Desktop 等の MCP クライアントから、タスク作成・スプリント管理・AI 提案の実行が可能。
-
-1. Web UI の設定画面で API キーを発行
-2. MCP クライアントにエンドポイントとキーを設定
-
-提供ツール: tasks / sprints / intake / ai
-
-## プロジェクト構成
-
-```
-app/              # Vite + React の画面
-  delegate/       # 個人向け実行AIワークスペース
-  backlog/        # バックログビュー
-  kanban/         # カンバンビュー
-  sprint/         # スプリントビュー
-  velocity/       # ベロシティチャート
-  admin/          # 管理画面（ユーザー / AI / 監査ログ）
-  settings/       # ユーザー設定
-server/
-  routes/         # API ルート（REST、従来の /api URL を維持）
-lib/
-  contracts/      # Zod スキーマ（入力バリデーション）
-  http/           # エラーハンドリング / バリデーションヘルパー
-  integrations/   # Discord / Slack 連携
-modules/
-  delegation/     # 委譲ポリシー / ユースケース / 永続キュー / AIアダプター
-mcp-server/       # MCP サーバー（独立 Node.js プロセス）
-prisma/           # スキーマ + マイグレーション
-bots/             # Discord / Slack SDK を持つ任意の npm workspace
-packages/runtime/ # API と MCP が共有する実行依存
-packages/migrations/ # 独立した Prisma CLI の配布依存
-scripts/          # ビルド / シード / メンテナンス
-```
-
-## 開発と配布
-
-Node.js 24 を使用する。`npm run dev` は http://localhost:3000 で画面と API を提供する。
-Vite の開発サーバーは内部で 5173 番ポートを使い、画面だけをコンパイルする。
-API は `server/routes/**/route.ts` の GET / POST 等からビルド時にルート表を生成する。
-新しい API ファイルを追加した場合は開発サーバーを再起動する。
-
-認証設定は `AUTH_SECRET` / `APP_URL` を推奨する。既存の `NEXTAUTH_SECRET` /
-`NEXTAUTH_URL` も互換設定として受け付ける。OAuth callback の `/api/auth/callback/*`、
-既存のユーザー・連携アカウントテーブル、セッション Cookie と暗号化形式を維持する。
-
-Bot も使う場合はインストールコマンドに `--workspace bots` を加え、
-`npm run bot:discord` / `npm run bot:slack` で起動する。
-
-```bash
-docker build --target web -t holoplax-web .
-docker build --target mcp -t holoplax-mcp .
-docker build --target migrations -t holoplax-migrations .
-```
-
-Web / MCP のイメージには各サーバーが必要とする実行依存だけを入れる。
-Prisma Client は含め、マイグレーション CLI は専用イメージに分離する。
-CI の E2E は `E2E_BUILD_READY=1` でビルド済み成果物を使用する。
-詳細と検証上の制約は [移行記録](doc/vite-migration.md) を参照。
+| 読みたいこと | 正本 |
+| --- | --- |
+| 目的と製品方針 | [要件](doc/requirements.md) |
+| 実行構成・モジュール境界 | [構成](doc/architecture.md) |
+| タスク・スプリント・履歴の規則 | [ドメイン](doc/work-item-domain.md) |
+| 実行AIの権限と完了判定 | [委譲](doc/personal-delegation.md) |
+| メモリ・指標・AI提案 | [メモリ](doc/user-memory.md) |
+| Discord / Slack | [外部連携](doc/integrations.md) |
+| MCP の起動・接続 | [MCP](mcp-server/README.md) |
+| AWS 構成・配布 | [Terraform](infra/terraform/README.md) |
+| 未解決の問題・未検証の範囲 | [課題](doc/issues.md) |
+| Next.js を外した理由と検証 | [移行記録](doc/vite-migration.md) |
+| 機密情報の漏洩時の対応 | [機密情報の扱い](doc/security.md) |
