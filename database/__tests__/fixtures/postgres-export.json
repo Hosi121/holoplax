@@ -1,0 +1,92 @@
+{
+  "format": "holoplax-postgres-v1",
+  "tables": {
+    "Task": [
+      {
+        "id": "source-task",
+        "risk": "MEDIUM",
+        "tags": ["a", "秘密"],
+        "type": "PBI",
+        "title": "Original",
+        "origin": "MANUAL",
+        "points": 3,
+        "userId": "source-user",
+        "dueDate": null,
+        "urgency": "MEDIUM",
+        "parentId": null,
+        "sprintId": null,
+        "checklist": null,
+        "createdAt": "2026-10-08T18:23:45.678Z",
+        "updatedAt": "2026-10-08T18:23:45.678Z",
+        "assigneeId": null,
+        "description": "",
+        "workspaceId": "source-workspace",
+        "hierarchyRole": "STANDARD",
+        "workflowState": "READY",
+        "routineSeriesId": null,
+        "automationStatus": "NONE",
+        "definitionOfDone": ""
+      }
+    ],
+    "User": [
+      {
+        "id": "source-user",
+        "name": "記憶",
+        "role": "USER",
+        "email": "o'brien@example.test",
+        "image": null,
+        "createdAt": "2026-10-08T18:23:45.678Z",
+        "updatedAt": "2026-10-08T18:23:45.678Z",
+        "disabledAt": null,
+        "emailVerified": null,
+        "passwordChangedAt": null,
+        "onboardingCompletedAt": null
+      }
+    ],
+    "Sprint": [],
+    "Account": [],
+    "AiUsage": [],
+    "Session": [],
+    "AuditLog": [],
+    "AiPricing": [],
+    "McpApiKey": [],
+    "Workspace": [
+      {
+        "id": "source-workspace",
+        "name": "Legacy",
+        "ownerId": "source-user",
+        "createdAt": "2026-10-08T18:23:45.678Z",
+        "updatedAt": "2026-10-08T18:23:45.678Z"
+      }
+    ],
+    "IntakeItem": [],
+    "SprintItem": [],
+    "MemoryClaim": [],
+    "RoutineRule": [],
+    "TaskComment": [],
+    "AiPrepOutput": [],
+    "AiSuggestion": [],
+    "MemoryMetric": [],
+    "UserPassword": [],
+    "DelegationJob": [],
+    "RoutineSeries": [],
+    "VelocityEntry": [],
+    "MemoryQuestion": [],
+    "TaskDependency": [],
+    "SprintItemEvent": [],
+    "TaskStatusEvent": [],
+    "WorkspaceInvite": [],
+    "WorkspaceMember": [],
+    "MemoryDefinition": [],
+    "AiProviderSetting": [],
+    "TaskAutomationJob": [],
+    "TaskWorkflowEvent": [],
+    "VerificationToken": [],
+    "PasswordResetToken": [],
+    "TaskDependencyEvent": [],
+    "AiSuggestionReaction": [],
+    "UserAutomationSetting": [],
+    "AutomationStageHistory": [],
+    "EmailVerificationToken": []
+  }
+}
