@@ -1,5 +1,6 @@
 import { CheckSquare, Filter, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { apiFetch } from "@/lib/api-client";
 import { Link } from "@/lib/navigation";
 import { fetchAllTasks } from "@/lib/task-client";
@@ -12,9 +13,11 @@ import {
   TASK_HIERARCHY_ROLE,
   TASK_STATUS,
   TASK_TYPE,
+  TASK_WORKFLOW_STATE,
   type TaskDTO,
   type TaskStatus,
   type TaskType,
+  type TaskWorkflowState,
 } from "../../lib/types";
 import { NAV_LABELS, TASK_TYPE_LABELS } from "../../lib/ui-language";
 import { EmptyState } from "../components/empty-state";
@@ -27,6 +30,7 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Modal } from "../components/ui/dialog";
 import { InlineError, PageSkeleton } from "../components/ui/feedback";
 import { useWorkspaceId } from "../components/use-workspace-id";
+import { TaskBoard } from "./components/task-board";
 import { TaskPrepModal } from "./components/task-prep-modal";
 import { useAiSuggestions } from "./hooks/use-ai-suggestions";
 import { useBulkOperations } from "./hooks/use-bulk-operations";
@@ -67,6 +71,8 @@ export default function BacklogPage() {
   const splitThreshold = 8;
   const { workspaceId, ready } = useWorkspaceId();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const boardView = searchParams.get("display") === "board";
   const [items, setItems] = useState<TaskDTO[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -106,15 +112,6 @@ export default function BacklogPage() {
   }, toast.error);
 
   // Fetch functions need to be defined before useAiSuggestions
-  const fetchTasksByStatus = useCallback(async (statuses: TaskStatus[], searchParams?: string) => {
-    const params = new URLSearchParams(searchParams);
-    for (const status of statuses) params.append("status", status);
-    for (const workflowState of ["READY", "IN_PROGRESS", "BLOCKED"]) {
-      params.append("workflowState", workflowState);
-    }
-    return fetchAllTasks(params);
-  }, []);
-
   const fetchTasks = useCallback(async () => {
     if (!ready) return;
     if (!workspaceId) {
@@ -125,22 +122,21 @@ export default function BacklogPage() {
     setTasksLoading(true);
     setTasksError(null);
     try {
-      const searchParams = buildQueryParams();
-      const [backlogTasks, sprintTasks] = await Promise.all([
-        fetchTasksByStatus([TASK_STATUS.BACKLOG], searchParams),
-        fetchTasksByStatus([TASK_STATUS.SPRINT], searchParams),
-      ]);
-      const mergedMap = new Map<string, TaskDTO>();
-      [...backlogTasks, ...sprintTasks].forEach((task) => {
-        mergedMap.set(task.id, task);
-      });
-      setItems(Array.from(mergedMap.values()));
+      const params = new URLSearchParams(buildQueryParams());
+      params.append("status", TASK_STATUS.BACKLOG);
+      params.append("status", TASK_STATUS.SPRINT);
+      if (boardView) params.append("status", TASK_STATUS.DONE);
+      else {
+        for (const state of ["READY", "IN_PROGRESS", "BLOCKED"])
+          params.append("workflowState", state);
+      }
+      setItems(await fetchAllTasks(params));
     } catch {
       setTasksError("やることを読み込めませんでした。通信状態を確認してください。");
     } finally {
       setTasksLoading(false);
     }
-  }, [ready, workspaceId, fetchTasksByStatus, buildQueryParams]);
+  }, [ready, workspaceId, boardView, buildQueryParams]);
 
   // AI Suggestions hook
   const {
@@ -409,6 +405,31 @@ export default function BacklogPage() {
   const isBlocked = (item: TaskDTO) =>
     (item.dependencies ?? []).some((dep) => dep.workflowState !== "DONE");
 
+  const changeWorkflowState = async (id: string, workflowState: TaskWorkflowState) => {
+    const task = items.find((item) => item.id === id);
+    if (!task || task.workflowState === workflowState) return;
+    if (workflowState === TASK_WORKFLOW_STATE.DONE) {
+      if (isBlocked(task)) return toast.warning("依存タスクが未完了のため移動できません。");
+      if (task.checklist?.some((item) => !item.done))
+        return toast.warning("チェックリストが未完了のため完了にできません。");
+    }
+    try {
+      const res = await apiFetch(`/api/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflowState }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error?.message ?? "移動に失敗しました。");
+        return;
+      }
+      await fetchTasks();
+    } catch {
+      toast.error("移動に失敗しました。通信状態を確認してください。");
+    }
+  };
+
   const addItem = async () => {
     if (!form.title.trim()) return;
     const statusValue = view === "sprint" ? TASK_STATUS.SPRINT : TASK_STATUS.BACKLOG;
@@ -631,32 +652,53 @@ export default function BacklogPage() {
             <p className="text-xs text-[var(--text-muted)]">{NAV_LABELS.backlog}</p>
             <h1 className="text-3xl font-semibold text-[var(--text-primary)]">やること</h1>
             <p className="text-sm text-[var(--text-secondary)]">
-              これから取り組む候補を整理し、次のスプリントを計画します。
+              {boardView
+                ? "タスクの進み具合を確認して更新します。"
+                : "これから取り組む候補を整理し、次のスプリントを計画します。"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 border border-[var(--border)] bg-[var(--surface)] p-1 text-xs text-[var(--text-secondary)]">
-              <button
-                onClick={() => setView("product")}
-                className={`px-3 py-1 transition ${
-                  view === "product"
-                    ? "bg-[var(--accent)]/10 text-[var(--accent)]"
-                    : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
-                }`}
-              >
-                やること候補
-              </button>
-              <button
-                onClick={() => setView("sprint")}
-                className={`px-3 py-1 transition ${
-                  view === "sprint"
-                    ? "bg-[var(--accent)]/10 text-[var(--accent)]"
-                    : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
-                }`}
-              >
-                スプリント
-              </button>
-            </div>
+            <select
+              aria-label="表示方法"
+              value={boardView ? "board" : "list"}
+              onChange={(event) => {
+                clearSelection();
+                setSearchParams((params) => {
+                  const next = new URLSearchParams(params);
+                  if (event.target.value === "board") next.set("display", "board");
+                  else next.delete("display");
+                  return next;
+                });
+              }}
+              className="border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)]"
+            >
+              <option value="list">一覧</option>
+              <option value="board">ボード</option>
+            </select>
+            {!boardView && (
+              <div className="flex items-center gap-2 border border-[var(--border)] bg-[var(--surface)] p-1 text-xs text-[var(--text-secondary)]">
+                <button
+                  onClick={() => setView("product")}
+                  className={`px-3 py-1 transition ${
+                    view === "product"
+                      ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                      : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
+                  }`}
+                >
+                  やること候補
+                </button>
+                <button
+                  onClick={() => setView("sprint")}
+                  className={`px-3 py-1 transition ${
+                    view === "sprint"
+                      ? "bg-[var(--accent)]/10 text-[var(--accent)]"
+                      : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
+                  }`}
+                >
+                  スプリント
+                </button>
+              </div>
+            )}
             <Link
               href="/sprint"
               className="border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-secondary)] transition hover:border-[var(--accent)]/60 hover:text-[var(--accent)]"
@@ -867,110 +909,113 @@ export default function BacklogPage() {
         )}
 
         {/* Bulk Operations Toolbar */}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            onClick={toggleSelectionMode}
-            className={`flex items-center gap-2 border px-3 py-2 text-sm transition ${
-              isSelectionMode
-                ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)]/60"
-            }`}
-          >
-            <CheckSquare className="size-4" />
-            {isSelectionMode ? "選択モード終了" : "一括選択"}
-          </button>
+        {!boardView && (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={toggleSelectionMode}
+              className={`flex items-center gap-2 border px-3 py-2 text-sm transition ${
+                isSelectionMode
+                  ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                  : "border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)]/60"
+              }`}
+            >
+              <CheckSquare className="size-4" />
+              {isSelectionMode ? "選択モード終了" : "一括選択"}
+            </button>
 
-          {isSelectionMode && (
-            <>
-              <span className="text-sm text-[var(--text-muted)]">{selectedCount}件選択中</span>
-              <button
-                onClick={() => selectAll(visibleItems.map((i) => i.id))}
-                className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
-              >
-                すべて選択
-              </button>
-              <button
-                onClick={clearSelection}
-                className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
-              >
-                選択解除
-              </button>
+            {isSelectionMode && (
+              <>
+                <span className="text-sm text-[var(--text-muted)]">{selectedCount}件選択中</span>
+                <button
+                  onClick={() => selectAll(visibleItems.map((i) => i.id))}
+                  className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
+                >
+                  すべて選択
+                </button>
+                <button
+                  onClick={clearSelection}
+                  className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
+                >
+                  選択解除
+                </button>
 
-              {selectedCount > 0 && (
-                <div className="flex flex-wrap items-center gap-2 border-l border-[var(--border)] pl-3">
-                  <select
-                    disabled={bulkLoading}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        void bulkUpdateStatus(e.target.value as TaskStatus);
-                        e.target.value = "";
-                      }
-                    }}
-                    className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
-                    defaultValue=""
-                  >
-                    <option value="" disabled>
-                      ステータス変更
-                    </option>
-                    <option value="BACKLOG">やること</option>
-                    <option value="SPRINT">スプリント</option>
-                    <option value="DONE">完了</option>
-                  </select>
-
-                  <select
-                    disabled={bulkLoading}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        void bulkUpdatePoints(Number(e.target.value));
-                        e.target.value = "";
-                      }
-                    }}
-                    className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
-                    defaultValue=""
-                  >
-                    <option value="" disabled>
-                      ポイント変更
-                    </option>
-                    {STORY_POINTS.map((pt) => (
-                      <option key={pt} value={pt}>
-                        {pt} pt
+                {selectedCount > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 border-l border-[var(--border)] pl-3">
+                    <select
+                      disabled={bulkLoading}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          void bulkUpdateStatus(e.target.value as TaskStatus);
+                          e.target.value = "";
+                        }
+                      }}
+                      className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>
+                        ステータス変更
                       </option>
-                    ))}
-                  </select>
+                      <option value="BACKLOG">やること</option>
+                      <option value="SPRINT">スプリント</option>
+                      <option value="DONE">完了</option>
+                    </select>
 
-                  <ConfirmDialog
-                    title={`${selectedCount}件を削除しますか？`}
-                    description="削除したタスクは元に戻せません。選択内容を確認してから実行してください。"
-                    confirmLabel="削除する"
-                    onConfirm={bulkDelete}
-                    trigger={
-                      <button
-                        type="button"
-                        disabled={bulkLoading}
-                        className="flex items-center gap-1 border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:opacity-50"
-                      >
-                        <Trash2 className="size-4" />
-                        削除
-                      </button>
-                    }
-                  />
+                    <select
+                      disabled={bulkLoading}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          void bulkUpdatePoints(Number(e.target.value));
+                          e.target.value = "";
+                        }
+                      }}
+                      className="border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>
+                        ポイント変更
+                      </option>
+                      {STORY_POINTS.map((pt) => (
+                        <option key={pt} value={pt}>
+                          {pt} pt
+                        </option>
+                      ))}
+                    </select>
 
-                  {bulkLoading && (
-                    <span className="text-sm text-[var(--text-muted)]">処理中...</span>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                    <ConfirmDialog
+                      title={`${selectedCount}件を削除しますか？`}
+                      description="削除したタスクは元に戻せません。選択内容を確認してから実行してください。"
+                      confirmLabel="削除する"
+                      onConfirm={bulkDelete}
+                      trigger={
+                        <button
+                          type="button"
+                          disabled={bulkLoading}
+                          className="flex items-center gap-1 border border-rose-200 bg-rose-50 px-2 py-1 text-sm text-rose-700 hover:border-rose-300 disabled:opacity-50"
+                        >
+                          <Trash2 className="size-4" />
+                          削除
+                        </button>
+                      }
+                    />
+
+                    {bulkLoading && (
+                      <span className="text-sm text-[var(--text-muted)]">処理中...</span>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </header>
 
       {tasksError ? <InlineError message={tasksError} onRetry={() => void fetchTasks()} /> : null}
       {tasksLoading && !items.length ? <PageSkeleton /> : null}
 
-      <FocusPanel />
+      {!boardView && <FocusPanel />}
 
-      {items.filter((item) => item.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING).length ? (
+      {!boardView &&
+      items.filter((item) => item.automationStatus === AUTOMATION_STATUS.SPLIT_PENDING).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">AIの分割案</h2>
@@ -1032,102 +1077,112 @@ export default function BacklogPage() {
         </section>
       ) : null}
 
-      <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-        <div className="grid gap-5">
-          {!tasksLoading && !visibleItems.length ? (
-            <EmptyState
-              icon="Inbox"
-              title={view === "product" ? "やること候補はありません" : "スプリントは空です"}
-              description={
-                view === "product"
-                  ? "最初のタスクを追加して、次に取り組むことを整理しましょう。"
-                  : "やること候補から、今回進めるタスクを選びましょう。"
-              }
-              actionLabel={view === "product" ? "タスクを追加" : "やること候補を見る"}
-              onAction={view === "product" ? openAddModal : () => setView("product")}
-            />
-          ) : null}
-          {taskTypeOrder.map((type) => {
-            const bucket = groupedByType[type];
-            if (!bucket.length) return null;
-            return (
-              <div key={type} className="grid gap-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                    {TASK_TYPE_LABELS[type]}
-                  </h2>
-                  <span className="text-xs text-[var(--text-muted)]">{bucket.length} 件</span>
+      {boardView ? (
+        <TaskBoard
+          items={items}
+          members={members}
+          isBlocked={isBlocked}
+          onMove={changeWorkflowState}
+        />
+      ) : (
+        <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+          <div className="grid gap-5">
+            {!tasksLoading && !visibleItems.length ? (
+              <EmptyState
+                icon="Inbox"
+                title={view === "product" ? "やること候補はありません" : "スプリントは空です"}
+                description={
+                  view === "product"
+                    ? "最初のタスクを追加して、次に取り組むことを整理しましょう。"
+                    : "やること候補から、今回進めるタスクを選びましょう。"
+                }
+                actionLabel={view === "product" ? "タスクを追加" : "やること候補を見る"}
+                onAction={view === "product" ? openAddModal : () => setView("product")}
+              />
+            ) : null}
+            {taskTypeOrder.map((type) => {
+              const bucket = groupedByType[type];
+              if (!bucket.length) return null;
+              return (
+                <div key={type} className="grid gap-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                      {TASK_TYPE_LABELS[type]}
+                    </h2>
+                    <span className="text-xs text-[var(--text-muted)]">{bucket.length} 件</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {bucket.map((item) => {
+                      const aiConfig: AiSuggestionConfig = {
+                        splitThreshold,
+                        suggestLoadingId,
+                        scoreLoadingId,
+                        splitLoadingId,
+                        suggestion: suggestionMap[item.id]
+                          ? { text: suggestionMap[item.id].text }
+                          : undefined,
+                        score: scoreMap[item.id],
+                        splits: splitMap[item.id],
+                        proactiveSuggestion: proactiveSuggestionsMap.get(item.id),
+                        onGetSuggestion: () => getSuggestion(item.title, item.description, item.id),
+                        onEstimateScore: () => estimateScoreForTask(item),
+                        onRequestSplit: () => requestSplit(item),
+                        onApplySplit: () => applySplit(item, view),
+                        onApplyTipSuggestion: () => applyTipSuggestion(item.id),
+                        onApplyScoreSuggestion: () => applyScoreSuggestion(item.id),
+                        onDismissTip: () => dismissTip(item.id),
+                        onDismissScore: () => dismissScore(item.id),
+                        onDismissSplit: () => rejectSplit(item.id),
+                        onOpenPrepModal: () => openPrepModal(item),
+                      };
+                      return (
+                        <div key={item.id} className="relative">
+                          {isSelectionMode && (
+                            <label className="absolute left-2 top-2 z-10 flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(item.id)}
+                                onChange={() => toggleSelection(item.id)}
+                                className="size-4 rounded border-[var(--border)] text-[var(--accent)]"
+                              />
+                            </label>
+                          )}
+                          <TaskCard
+                            item={item}
+                            variant="backlog"
+                            parentTask={item.parentId ? taskById.get(item.parentId) : undefined}
+                            childCount={childCount.get(item.id) ?? 0}
+                            members={members.map((m) => ({
+                              id: m.id,
+                              name: m.name,
+                            }))}
+                            isBlocked={isBlocked(item)}
+                            aiConfig={aiConfig}
+                            onMoveToSprint={
+                              view === "product" ? () => moveToSprint(item.id) : undefined
+                            }
+                            onMoveToBacklog={
+                              view === "sprint" ? () => moveToBacklog(item.id) : undefined
+                            }
+                            onDelete={() => deleteItem(item.id)}
+                            onEdit={() => openEdit(item)}
+                            onToggleChecklistItem={(checklistId) =>
+                              toggleChecklistItem(item.id, checklistId)
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {bucket.map((item) => {
-                    const aiConfig: AiSuggestionConfig = {
-                      splitThreshold,
-                      suggestLoadingId,
-                      scoreLoadingId,
-                      splitLoadingId,
-                      suggestion: suggestionMap[item.id]
-                        ? { text: suggestionMap[item.id].text }
-                        : undefined,
-                      score: scoreMap[item.id],
-                      splits: splitMap[item.id],
-                      proactiveSuggestion: proactiveSuggestionsMap.get(item.id),
-                      onGetSuggestion: () => getSuggestion(item.title, item.description, item.id),
-                      onEstimateScore: () => estimateScoreForTask(item),
-                      onRequestSplit: () => requestSplit(item),
-                      onApplySplit: () => applySplit(item, view),
-                      onApplyTipSuggestion: () => applyTipSuggestion(item.id),
-                      onApplyScoreSuggestion: () => applyScoreSuggestion(item.id),
-                      onDismissTip: () => dismissTip(item.id),
-                      onDismissScore: () => dismissScore(item.id),
-                      onDismissSplit: () => rejectSplit(item.id),
-                      onOpenPrepModal: () => openPrepModal(item),
-                    };
-                    return (
-                      <div key={item.id} className="relative">
-                        {isSelectionMode && (
-                          <label className="absolute left-2 top-2 z-10 flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(item.id)}
-                              onChange={() => toggleSelection(item.id)}
-                              className="size-4 rounded border-[var(--border)] text-[var(--accent)]"
-                            />
-                          </label>
-                        )}
-                        <TaskCard
-                          item={item}
-                          variant="backlog"
-                          parentTask={item.parentId ? taskById.get(item.parentId) : undefined}
-                          childCount={childCount.get(item.id) ?? 0}
-                          members={members.map((m) => ({
-                            id: m.id,
-                            name: m.name,
-                          }))}
-                          isBlocked={isBlocked(item)}
-                          aiConfig={aiConfig}
-                          onMoveToSprint={
-                            view === "product" ? () => moveToSprint(item.id) : undefined
-                          }
-                          onMoveToBacklog={
-                            view === "sprint" ? () => moveToBacklog(item.id) : undefined
-                          }
-                          onDelete={() => deleteItem(item.id)}
-                          onEdit={() => openEdit(item)}
-                          onToggleChecklistItem={(checklistId) =>
-                            toggleChecklistItem(item.id, checklistId)
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-      {items.filter((item) => item.hierarchyRole === TASK_HIERARCHY_ROLE.SPLIT_PARENT).length ? (
+      {!boardView &&
+      items.filter((item) => item.hierarchyRole === TASK_HIERARCHY_ROLE.SPLIT_PARENT).length ? (
         <section className="border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">

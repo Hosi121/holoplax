@@ -87,10 +87,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hideSidebar =
-    pathname.startsWith("/auth") ||
-    pathname.startsWith("/onboarding") ||
-    pathname.startsWith("/workspaces/invite");
+  const hideSidebar = pathname.startsWith("/auth") || pathname.startsWith("/workspaces/invite");
 
   return (
     <div

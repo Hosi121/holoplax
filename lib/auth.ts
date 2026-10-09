@@ -42,7 +42,6 @@ export function getAuthOptions(): AuthConfig {
             role: true,
             disabledAt: true,
             emailVerified: true,
-            onboardingCompletedAt: true,
             passwordChangedAt: true,
           },
         });
@@ -62,7 +61,6 @@ export function getAuthOptions(): AuthConfig {
           image: user.image,
           role: user.role,
           disabledAt: user.disabledAt,
-          onboardingCompletedAt: user.onboardingCompletedAt,
           passwordChangedAt: user.passwordChangedAt,
         };
       },
@@ -119,31 +117,21 @@ export function getAuthOptions(): AuthConfig {
           token.email = user.email ?? token.email;
           token.picture = user.image ?? token.picture;
           token.disabledAt = (user as { disabledAt?: Date | null }).disabledAt ?? null;
-          token.onboardingCompletedAt =
-            (user as { onboardingCompletedAt?: Date | null }).onboardingCompletedAt ?? null;
           const pwChangedAt = (user as { passwordChangedAt?: Date | null }).passwordChangedAt;
           token.pwAt = pwChangedAt ? new Date(pwChangedAt).getTime() : null;
         }
         if (trigger === "update" && token.sub) {
           // Session updates refresh persisted facts; never trust browser-supplied
-          // identity or onboarding flags as authorization data.
+          // identity as authorization data.
           const record = await db.user.findUnique({
             where: { id: token.sub },
-            select: { name: true, email: true, image: true, onboardingCompletedAt: true },
+            select: { name: true, email: true, image: true },
           });
           if (record) {
             token.name = record.name;
             token.email = record.email;
             token.picture = record.image;
-            token.onboardingCompletedAt = record.onboardingCompletedAt;
           }
-        }
-        if (!token.onboardingCompletedAt && token.sub) {
-          const record = await db.user.findUnique({
-            where: { id: token.sub },
-            select: { onboardingCompletedAt: true },
-          });
-          token.onboardingCompletedAt = record?.onboardingCompletedAt ?? null;
         }
         return token;
       },
@@ -225,8 +213,6 @@ export function getAuthOptions(): AuthConfig {
           name: token.name,
           email: token.email,
           image: token.picture as string | null | undefined,
-          onboardingCompletedAt: (token as { onboardingCompletedAt?: Date | null })
-            .onboardingCompletedAt,
           pwChangedAt: (token as { pwAt?: number | null }).pwAt ?? null,
         },
       }),
@@ -243,7 +229,6 @@ export function sessionFromToken(token: JWT): Session {
       email: token.email,
       image: token.picture,
       role: typeof token.role === "string" ? token.role : "USER",
-      onboardingCompletedAt: token.onboardingCompletedAt as string | Date | null,
       pwChangedAt: typeof token.pwAt === "number" ? token.pwAt : null,
     },
   };

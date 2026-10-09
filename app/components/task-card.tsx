@@ -1,5 +1,6 @@
 import { BarChart2, Lightbulb, Pencil, Scissors, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { cn } from "../../lib/cn";
 import {
   AUTOMATION_STATUS,
   SEVERITY_LABELS,
@@ -216,7 +217,7 @@ export function TaskCard({
       } ${isCompact ? "bg-slate-50/70 text-slate-600" : ""} ${className}`}
     >
       {/* Header */}
-      <div className={`flex items-${isKanban ? "start" : "center"} justify-between gap-2`}>
+      <div className={cn("flex gap-2", isKanban ? "flex-col" : "items-center justify-between")}>
         <div className="flex items-center gap-2 min-w-0">
           <p
             className={`font-semibold break-words ${isCompact ? "text-slate-700" : "text-slate-900"}`}
@@ -232,7 +233,7 @@ export function TaskCard({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs shrink-0">
+        <div className={cn("flex items-center gap-2 text-xs shrink-0", isKanban && "flex-wrap")}>
           {showType && (
             <span
               className={`border border-slate-200 bg-white px-2 py-1 ${isCompact ? "text-slate-500" : "text-slate-600"}`}

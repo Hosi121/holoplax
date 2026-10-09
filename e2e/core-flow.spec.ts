@@ -22,7 +22,7 @@ test("health reports a reachable database", async ({ request }) => {
   }
 });
 
-test("a new user can register, onboard, and see the first task", async ({ page, baseURL }) => {
+test("a new user can start immediately, manage tasks, and use MCP", async ({ page, baseURL }) => {
   const email = `e2e-${Date.now()}@example.test`;
   const signin = await page.goto("/auth/signin");
   expect(signin?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
@@ -33,20 +33,55 @@ test("a new user can register, onboard, and see the first task", async ({ page, 
   await page.getByPlaceholder("••••••••").fill("e2e-password-123");
   await page.getByRole("button", { name: "登録して続行" }).click();
 
-  await expect(page.getByRole("heading", { name: "Holoplaxを使い始める" })).toBeVisible();
-  await page.getByPlaceholder("例: 新サービス開発").fill("E2E Workspace");
-  await page.getByRole("button", { name: "次へ" }).click();
-  await page.getByRole("button", { name: "次へ" }).click();
-  await page.getByPlaceholder("やること 1（任意）").fill("最初のE2Eタスク");
-  const onboardingCompleted = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/onboarding",
-  );
-  await page.getByRole("button", { name: "利用を開始" }).click();
-  expect((await onboardingCompleted).status()).toBe(200);
+  await expect(page).toHaveURL(/\/backlog$/);
+  await expect(page.getByRole("heading", { name: "やること", exact: true })).toBeVisible();
+  const current = await (await page.request.get("/api/workspaces/current")).json();
+  expect(current.currentWorkspaceId).toBeTruthy();
+  expect(current.workspaces).toHaveLength(1);
+  expect(current.workspaces[0]).toMatchObject({ name: "Personal workspace", role: "owner" });
+  expect(
+    (await (await page.request.get("/api/workspaces/current")).json()).currentWorkspaceId,
+  ).toBe(current.currentWorkspaceId);
+  expect((await page.request.get("/api/onboarding")).status()).toBe(404);
 
-  await expect(page).toHaveURL(/\/delegate/);
+  const mutate = (url: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) =>
+    page.evaluate(
+      async ({ url, method, body }) => {
+        const csrfToken = document.cookie
+          .split(";")
+          .map((cookie) => cookie.trim())
+          .find((cookie) => cookie.startsWith("csrf_token="))
+          ?.slice("csrf_token=".length);
+        const response = await fetch(url, {
+          method,
+          headers: {
+            ...(body ? { "Content-Type": "application/json" } : {}),
+            ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        return { status: response.status, data: await response.json() };
+      },
+      { url, method, body },
+    );
+
+  expect(
+    (
+      await mutate("/api/tasks", "POST", {
+        title: "最初のE2Eタスク",
+        points: 3,
+        urgency: "MEDIUM",
+        risk: "MEDIUM",
+        status: "BACKLOG",
+        type: "TASK",
+      })
+    ).status,
+  ).toBe(200);
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(/\/backlog$/);
+  await expect(page.getByText("最初のE2Eタスク", { exact: true })).toBeVisible();
+
+  await page.goto("/delegate");
   await expect(page.getByRole("heading", { name: "面倒な仕事を、そのまま任せる" })).toBeVisible();
 
   await page
@@ -90,27 +125,6 @@ test("a new user can register, onboard, and see the first task", async ({ page, 
   );
   expect(task).toBeTruthy();
 
-  const mutate = (url: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) =>
-    page.evaluate(
-      async ({ url, method, body }) => {
-        const csrfToken = document.cookie
-          .split(";")
-          .map((cookie) => cookie.trim())
-          .find((cookie) => cookie.startsWith("csrf_token="))
-          ?.slice("csrf_token=".length);
-        const response = await fetch(url, {
-          method,
-          headers: {
-            ...(body ? { "Content-Type": "application/json" } : {}),
-            ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
-          },
-          body: body ? JSON.stringify(body) : undefined,
-        });
-        return { status: response.status, data: await response.json() };
-      },
-      { url, method, body },
-    );
-
   expect((await mutate("/api/sprints/current", "POST", { capacityPoints: 5 })).status).toBe(200);
   const candidateBody = (title: string) => ({
     title,
@@ -137,13 +151,48 @@ test("a new user can register, onboard, and see the first task", async ({ page, 
   expect([400, 409]).toContain(commitmentStatuses.find((status) => status !== 200));
   const executionTask = candidates[commitments.findIndex(({ status }) => status === 200)];
 
-  expect(
-    (await mutate(`/api/tasks/${executionTask.id}`, "PATCH", { workflowState: "IN_PROGRESS" }))
-      .status,
-  ).toBe(200);
-  expect(
-    (await mutate(`/api/tasks/${executionTask.id}`, "PATCH", { workflowState: "DONE" })).status,
-  ).toBe(200);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/kanban");
+  await expect(page).toHaveURL(/\/backlog\?display=board$/);
+  const board = page.getByRole("region", { name: "進捗ボード", exact: true });
+  await expect(board.getByText("最初のE2Eタスク", { exact: true })).toBeVisible();
+  await expect(board.getByText("並行候補A", { exact: true })).toBeVisible();
+  await expect(board.getByText("並行候補B", { exact: true })).toBeVisible();
+  const executionCard = board.locator("article").filter({ hasText: executionTask.title });
+  for (const [label, state] of [
+    ["進行中", "IN_PROGRESS"],
+    ["完了", "DONE"],
+  ]) {
+    const moved = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        new URL(response.url()).pathname === `/api/tasks/${executionTask.id}`,
+    );
+    if (state === "IN_PROGRESS") {
+      await executionCard
+        .locator('[draggable="true"]')
+        .dragTo(board.getByRole("region", { name: label, exact: true }));
+    } else {
+      await executionCard.getByRole("button", { name: "進み具合を変更" }).click();
+      await page.getByRole("menuitem", { name: `${label}へ移動`, exact: true }).click();
+    }
+    expect((await moved).status()).toBe(200);
+    await expect(
+      board
+        .getByRole("region", { name: label, exact: true })
+        .getByText(executionTask.title, { exact: true }),
+    ).toBeVisible();
+    const saved = await (
+      await page.request.get("/api/tasks?status=BACKLOG&status=SPRINT&status=DONE")
+    ).json();
+    expect(
+      saved.tasks.find((task: { id: string }) => task.id === executionTask.id).workflowState,
+    ).toBe(state);
+  }
+  await page.screenshot({ path: test.info().outputPath("task-board.png"), fullPage: true });
+  await page.getByRole("combobox", { name: "表示方法" }).selectOption("list");
+  await expect(page).toHaveURL(/\/backlog$/);
+  await expect(board).toHaveCount(0);
 
   const currentSprint = await page.request.get("/api/sprints/current");
   await expect(currentSprint.json()).resolves.toMatchObject({
@@ -226,7 +275,9 @@ test("a new user can register, onboard, and see the first task", async ({ page, 
     }),
   );
   try {
-    expect((await mcp.listTools()).tools.map((tool) => tool.name)).toContain("list_tasks");
+    expect((await mcp.listTools()).tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["list_tasks", "ai_score", "ai_split"]),
+    );
     const result = await mcp.callTool({ name: "list_tasks", arguments: { status: ["BACKLOG"] } });
     expect(result.isError).not.toBe(true);
     expect(JSON.stringify(result.content)).toContain("最初のE2Eタスク");

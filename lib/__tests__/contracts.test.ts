@@ -19,7 +19,6 @@ import { AutomationUpdateSchema } from "../contracts/automation";
 import { CommentCreateSchema, CommentUpdateSchema } from "../contracts/comment";
 import { IntakeMemoSchema } from "../contracts/intake";
 import { McpKeyCreateSchema } from "../contracts/mcp";
-import { OnboardingSchema } from "../contracts/onboarding";
 import { SprintStartSchema } from "../contracts/sprint";
 import {
   ALLOWED_AVATAR_MIME_TYPES,
@@ -1088,73 +1087,5 @@ describe("AutomationUpdateSchema", () => {
     const result = AutomationUpdateSchema.safeParse({ low: 35, high: 70, secret: "x" });
     expect(result.success).toBe(true);
     expect(result.data).not.toHaveProperty("secret");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// OnboardingSchema — required fields, length caps, Fibonacci points
-// ---------------------------------------------------------------------------
-
-describe("OnboardingSchema", () => {
-  const minValid = { workspaceName: "My Team", goalTitle: "Launch v1" };
-
-  it("requires only workspaceName so onboarding can stay progressive", () => {
-    expect(OnboardingSchema.safeParse({}).success).toBe(false);
-    expect(OnboardingSchema.safeParse({ workspaceName: "Team" }).success).toBe(true);
-    expect(OnboardingSchema.safeParse({ goalTitle: "Goal" }).success).toBe(false);
-  });
-
-  it("accepts minimal valid input", () => {
-    expect(OnboardingSchema.safeParse(minValid).success).toBe(true);
-  });
-
-  it("rejects workspaceName exceeding 100 characters", () => {
-    expect(
-      OnboardingSchema.safeParse({ ...minValid, workspaceName: "w".repeat(101) }).success,
-    ).toBe(false);
-    expect(
-      OnboardingSchema.safeParse({ ...minValid, workspaceName: "w".repeat(100) }).success,
-    ).toBe(true);
-  });
-
-  it("rejects goalTitle exceeding 500 characters", () => {
-    expect(OnboardingSchema.safeParse({ ...minValid, goalTitle: "g".repeat(501) }).success).toBe(
-      false,
-    );
-    expect(OnboardingSchema.safeParse({ ...minValid, goalTitle: "g".repeat(500) }).success).toBe(
-      true,
-    );
-  });
-
-  it("rejects focusTasks array longer than 10 items", () => {
-    const tooMany = Array.from({ length: 11 }, (_, i) => `task ${i}`);
-    expect(OnboardingSchema.safeParse({ ...minValid, focusTasks: tooMany }).success).toBe(false);
-    const maxAllowed = Array.from({ length: 10 }, (_, i) => `task ${i}`);
-    expect(OnboardingSchema.safeParse({ ...minValid, focusTasks: maxAllowed }).success).toBe(true);
-  });
-
-  it("rejects non-Fibonacci points", () => {
-    for (const pts of [0, 4, 6, 7, 9, 10, 15, 100, -1]) {
-      expect(
-        OnboardingSchema.safeParse({ ...minValid, points: pts }).success,
-        `should reject points=${pts}`,
-      ).toBe(false);
-    }
-  });
-
-  it("accepts valid Fibonacci points", () => {
-    for (const pts of STORY_POINTS) {
-      expect(
-        OnboardingSchema.safeParse({ ...minValid, points: pts }).success,
-        `should accept points=${pts}`,
-      ).toBe(true);
-    }
-  });
-
-  it("strips unknown fields", () => {
-    const result = OnboardingSchema.safeParse({ ...minValid, userId: "u_1", admin: true });
-    expect(result.success).toBe(true);
-    expect(result.data).not.toHaveProperty("userId");
-    expect(result.data).not.toHaveProperty("admin");
   });
 });

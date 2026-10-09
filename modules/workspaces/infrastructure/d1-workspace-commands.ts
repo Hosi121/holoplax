@@ -168,10 +168,6 @@ export const d1WorkspaceCommandPort: WorkspaceCommandPort = {
           update: { role: invite.role },
           create: { workspaceId: invite.workspaceId, userId, role: invite.role },
         });
-        await tx.user.updateMany({
-          where: { id: userId, onboardingCompletedAt: null },
-          data: { onboardingCompletedAt: new Date() },
-        });
         await tx.auditLog.create({
           data: {
             actorId: userId,

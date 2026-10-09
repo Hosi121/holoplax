@@ -1,10 +1,11 @@
 import bcrypt from "bcryptjs";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { resolveWorkspaceId } from "../../lib/workspace-context";
 import { d1AiOperationsPort } from "../../modules/ai/infrastructure/d1-ai-operations";
 import { d1DelegationQueuePort } from "../../modules/delegation/infrastructure/d1-delegation-queue";
 import { d1IdentityPort } from "../../modules/identity/infrastructure/d1-identity";
-import { d1CompleteOnboardingCommandPort } from "../../modules/onboarding/infrastructure/d1-complete-onboarding-command";
 import { persistNewTask } from "../../modules/tasks/infrastructure/d1-task-writer";
+import { requestContext } from "../../server/request-context";
 import { withRuntime } from "../../server/runtime";
 import { createTestDatabase, testEvent } from "../test-runtime";
 
@@ -26,7 +27,7 @@ async function seed() {
   });
   return { user, workspace };
 }
-test("registration and repeat onboarding atomically persist passwords and owner membership", async () =>
+test("registration and concurrent first access persist one personal workspace and owner membership", async () =>
   run(async () => {
     const user = await d1IdentityPort.register({
       email: "new@example.test",
@@ -36,23 +37,42 @@ test("registration and repeat onboarding atomically persist passwords and owner 
       where: { userId: user.id },
     });
     expect(await bcrypt.compare("password-1234", password.hash)).toBe(true);
-    const result = await d1CompleteOnboardingCommandPort.execute(user.id, { workspaceName: "New" });
-    expect(result.created).toBe(true);
-    if (!result.created) throw new Error("Expected new workspace");
+    const resolve = () =>
+      requestContext.run(new Request("https://app.example.test/api/workspaces/current"), () =>
+        resolveWorkspaceId(user.id),
+      );
+    const workspaceIds = await Promise.all([resolve(), resolve(), resolve()]);
+    expect(new Set(workspaceIds).size).toBe(1);
+    const workspaceId = workspaceIds[0];
+    expect(workspaceId).toBeTruthy();
     expect(
       await runtime.db.workspaceMember.findUniqueOrThrow({
-        where: { workspaceId_userId: { workspaceId: result.workspaceId, userId: user.id } },
+        where: { workspaceId_userId: { workspaceId: workspaceId!, userId: user.id } },
       }),
     ).toMatchObject({ role: "owner" });
-    expect(
-      (await d1CompleteOnboardingCommandPort.execute(user.id, { workspaceName: "Duplicate" }))
-        .created,
-    ).toBe(false);
+    expect(await resolve()).toBe(workspaceId);
     expect(await runtime.db.workspace.count()).toBe(1);
     await expect(
       d1IdentityPort.register({ email: "new@example.test", password: "other-password" }),
     ).rejects.toThrow("email already registered");
     expect(await runtime.db.userPassword.count()).toBe(1);
+  }));
+test("automatic workspace resolution preserves membership and rejects another user's preferred workspace", async () =>
+  run(async () => {
+    const { user, workspace } = await seed();
+    await runtime.db.workspaceMember.create({
+      data: { userId: user.id, workspaceId: workspace.id, role: "member" },
+    });
+    const other = await runtime.db.user.create({ data: { email: "other@example.test" } });
+    const foreign = await runtime.db.workspace.create({
+      data: { name: "Foreign", ownerId: other.id },
+    });
+    const request = new Request("https://app.example.test/", {
+      headers: { cookie: `workspaceId=${foreign.id}` },
+    });
+    expect(await requestContext.run(request, () => resolveWorkspaceId(user.id))).toBe(workspace.id);
+    expect(await requestContext.run(request, () => resolveWorkspaceId("missing-user"))).toBeNull();
+    expect(await runtime.db.workspace.count()).toBe(2);
   }));
 test("routine rules and dependencies share a commit, and deleting a task retains immutable history", async () => {
   const { user, workspace } = await seed();

@@ -37,10 +37,24 @@ describe("HTTP routing and guards", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("enforces onboarding before protected pages", async () => {
+  it("serves protected pages immediately for a signed-in user", async () => {
     mocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
-    const response = await createApp().request("/delegate");
-    expect(response.headers.get("location")).toBe("/onboarding");
+    mocks.fetchAsset.mockResolvedValue(new Response("<html></html>"));
+    const response = await createApp().request("/backlog");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it.each([
+    ["/", "/backlog"],
+    ["/onboarding", "/backlog"],
+    ["/kanban", "/backlog?display=board"],
+    ["/velocity", "/review#completion-pace"],
+  ])("redirects the legacy page %s to %s", async (path, target) => {
+    mocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    const response = await createApp().request(path);
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(target);
   });
 
   it("adds security headers to full Responses without replacing their cookies", async () => {

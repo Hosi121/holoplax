@@ -6,7 +6,6 @@ export type Session = {
     email?: string | null;
     image?: string | null;
     role?: string;
-    onboardingCompletedAt?: string | Date | null;
     pwChangedAt?: number | null;
   };
 };

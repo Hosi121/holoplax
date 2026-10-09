@@ -1,12 +1,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
-import { useSession } from "@/lib/auth-client";
 import { Link, useSearchParams } from "@/lib/navigation";
 
 function InviteContent() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
-  const { update } = useSession();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
 
   useEffect(() => {
@@ -21,14 +19,13 @@ function InviteContent() {
         body: JSON.stringify({ token }),
       });
       if (res.ok) {
-        await update({ user: { onboardingCompletedAt: new Date().toISOString() } });
         setStatus("success");
       } else {
         setStatus("error");
       }
     };
     void accept();
-  }, [token, update]);
+  }, [token]);
 
   return (
     <div className="border border-slate-200 bg-white p-8 text-center shadow-sm">

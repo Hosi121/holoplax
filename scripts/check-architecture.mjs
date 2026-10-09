@@ -202,7 +202,6 @@ const protectedAdapters = [
   "server/routes/tasks/",
   "server/routes/ai/apply/",
   "server/routes/automation/approval/",
-  "server/routes/onboarding/",
   "server/routes/intake/",
   "server/routes/workspaces/",
   "server/routes/health/",

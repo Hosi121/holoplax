@@ -1,4 +1,5 @@
 import { requireAuth } from "../../../../lib/api-auth";
+import { requireWorkspaceAuth } from "../../../../lib/api-guards";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { WorkspaceCurrentSchema } from "../../../../lib/contracts/workspace";
@@ -20,13 +21,10 @@ export async function GET() {
       },
     },
     async () => {
-      const { userId } = await requireAuth();
+      const { userId, workspaceId: currentWorkspaceId } = await requireWorkspaceAuth();
       const workspaces = await listWorkspaces(userId);
 
       const preferred = getRequestCookie("workspaceId");
-      const hasPreferred = preferred ? workspaces.some(({ id }) => id === preferred) : false;
-      const currentWorkspaceId = hasPreferred ? preferred : (workspaces[0]?.id ?? null);
-
       const response = ok({ currentWorkspaceId, workspaces });
       if (currentWorkspaceId && currentWorkspaceId !== preferred) {
         setResponseCookie(response, "workspaceId", currentWorkspaceId, {

@@ -20,13 +20,9 @@ const protectedPages = [
   { path: "/automation", Component: lazy(() => import("./automation/page")) },
   { path: "/backlog", Component: lazy(() => import("./backlog/page")) },
   { path: "/delegate", Component: lazy(() => import("./delegate/page")) },
-  { path: "/kanban", Component: lazy(() => import("./kanban/page")) },
-  { path: "/onboarding", Component: lazy(() => import("./onboarding/page")) },
-  { path: "/", Component: lazy(() => import("./page")) },
   { path: "/review", Component: lazy(() => import("./review/page")) },
   { path: "/settings", Component: lazy(() => import("./settings/page")) },
   { path: "/sprint", Component: lazy(() => import("./sprint/page")) },
-  { path: "/velocity", Component: lazy(() => import("./velocity/page")) },
   { path: "/workspaces/invite", Component: lazy(() => import("./workspaces/invite/page")) },
   { path: "/workspaces", Component: lazy(() => import("./workspaces/page")) },
 ];
@@ -47,12 +43,6 @@ function Protected() {
         replace
       />
     );
-  if (
-    !data.user.onboardingCompletedAt &&
-    location.pathname !== "/onboarding" &&
-    location.pathname !== "/workspaces/invite"
-  )
-    return <Navigate to="/onboarding" replace />;
   return <Outlet />;
 }
 
@@ -99,6 +89,10 @@ function App() {
               <Route key={path} path={path} element={<Component />} />
             ))}
             <Route element={<Protected />}>
+              <Route path="/" element={<Navigate to="/backlog" replace />} />
+              <Route path="/onboarding" element={<Navigate to="/backlog" replace />} />
+              <Route path="/kanban" element={<Navigate to="/backlog?display=board" replace />} />
+              <Route path="/velocity" element={<Navigate to="/review#completion-pace" replace />} />
               {protectedPages.map(({ path, Component }) => (
                 <Route key={path} path={path} element={<Component />} />
               ))}

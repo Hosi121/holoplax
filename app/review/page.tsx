@@ -17,7 +17,6 @@ import { EmptyState } from "../components/empty-state";
 import { FocusQueue } from "../components/focus-queue";
 import { HelpTooltip } from "../components/help-tooltip";
 import { InboxWidget } from "../components/inbox-widget";
-import { QuickStartCard } from "../components/quick-start-card";
 
 const formatPercent = (value: number) => `${Math.round(value)}%`;
 const formatDays = (value: number) => `${value.toFixed(1)} 日`;
@@ -271,8 +270,6 @@ function ReviewContent({ snapshot }: { snapshot: ReviewSnapshot }) {
           </div>
         </div>
       </header>
-
-      <QuickStartCard />
 
       <section className="grid gap-4 lg:grid-cols-5">
         {kpis.map((kpi) => (

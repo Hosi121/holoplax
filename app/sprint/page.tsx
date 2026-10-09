@@ -158,7 +158,7 @@ export default function SprintPage() {
               残り {remaining} pt
             </span>
             <Link
-              href="/kanban"
+              href="/backlog?display=board"
               className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:border-[#2323eb]/60 hover:text-[#2323eb]"
             >
               進捗ボード

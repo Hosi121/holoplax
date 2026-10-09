@@ -115,13 +115,8 @@ export function createApp() {
           return context.redirect(
             `/auth/signin?callbackUrl=${encodeURIComponent(pathname + new URL(request.url).search)}`,
           );
-        if (
-          !session.user?.onboardingCompletedAt &&
-          pathname !== "/onboarding" &&
-          pathname !== "/workspaces/invite"
-        )
-          return context.redirect("/onboarding");
-        if (pathname === "/") return context.redirect("/delegate");
+        if (pathname === "/" || pathname === "/onboarding") return context.redirect("/backlog");
+        if (pathname === "/kanban") return context.redirect("/backlog?display=board");
         if (pathname === "/velocity") return context.redirect("/review#completion-pace");
       }
     }
