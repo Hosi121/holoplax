@@ -1,7 +1,7 @@
-import type { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
+import type { Db } from "../../database/models";
 import { ApplicationError } from "../../modules/shared/application/application-error";
-import { splitTaskIntoChildren } from "../../modules/tasks/infrastructure/prisma-task-split";
+import { splitTaskIntoChildren } from "../../modules/tasks/infrastructure/d1-task-split";
 
 const createTx = (options: {
   claimed?: number;
@@ -62,7 +62,7 @@ const createTx = (options: {
       create: vi.fn().mockResolvedValue({ id: "sprint-event" }),
       createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
-  } as unknown as Prisma.TransactionClient;
+  } as unknown as Db.TransactionClient;
   return { tx, create };
 };
 

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { runtimeEnv } from "./runtime";
 
 export const requestContext = new AsyncLocalStorage<Request>();
 
@@ -28,7 +29,7 @@ export function setResponseCookie(
   const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${options.path ?? "/"}`];
   if (options.sameSite) parts.push(`SameSite=${options.sameSite}`);
   if (options.httpOnly) parts.push("HttpOnly");
-  if ((process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? getRequest().url).startsWith("https:"))
+  if ((runtimeEnv.APP_URL ?? runtimeEnv.NEXTAUTH_URL ?? getRequest().url).startsWith("https:"))
     parts.push("Secure");
   response.headers.append("Set-Cookie", parts.join("; "));
 }

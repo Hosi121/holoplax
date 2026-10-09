@@ -50,12 +50,4 @@ export type IntakeCommandPort = {
     actor: Pick<IntakeActor, "userId">,
     input: ResolveIntakeInput,
   ): Promise<{ status: "DISMISSED" } | { taskId: string }>;
-  captureDiscord(input: {
-    userId: string;
-    title: string;
-    body: string;
-    author: string;
-    channel: string;
-    payload: Record<string, unknown>;
-  }): Promise<{ itemId: string }>;
 };

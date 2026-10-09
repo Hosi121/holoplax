@@ -5,11 +5,11 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
 }));
 
-vi.mock("../prisma", () => ({
+vi.mock("../db", () => ({
   default: { task: { findMany: mocks.findMany, findFirst: mocks.findFirst } },
 }));
 
-import { getTask, listTasks } from "../../modules/tasks/infrastructure/prisma-task-query";
+import { getTask, listTasks } from "../../modules/tasks/infrastructure/d1-task-query";
 
 describe("task query boundary", () => {
   beforeEach(() => {
@@ -18,7 +18,7 @@ describe("task query boundary", () => {
     mocks.findFirst.mockResolvedValue(null);
   });
 
-  it("normalizes non-finite pagination before it reaches Prisma", async () => {
+  it("normalizes non-finite pagination before it reaches Db", async () => {
     await listTasks("workspace-1", { limit: Number.NaN, page: Number.NaN });
 
     expect(mocks.findMany).toHaveBeenCalledWith(

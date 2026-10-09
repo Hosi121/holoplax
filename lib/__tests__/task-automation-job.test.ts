@@ -20,15 +20,15 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
-  default: { ...mocks.db, $transaction: mocks.transaction },
+vi.mock("../db", () => ({
+  default: { ...mocks.db, command: mocks.transaction },
 }));
 
 vi.mock("../logger", () => ({
   logger: { error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
 
-vi.mock("../../modules/tasks/infrastructure/prisma-task-automation", () => ({
+vi.mock("../../modules/tasks/infrastructure/d1-task-automation", () => ({
   applyAutomationForTask: mocks.applyAutomation,
 }));
 
@@ -36,7 +36,7 @@ import {
   enqueueTaskAutomation,
   processTaskAutomationJobs,
   retryFailedTaskAutomationJobs,
-} from "../../modules/tasks/infrastructure/prisma-task-automation-jobs";
+} from "../../modules/tasks/infrastructure/d1-task-automation-jobs";
 
 describe("durable task automation jobs", () => {
   beforeEach(() => {

@@ -7,8 +7,11 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": ["../*"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../worker-configuration.d.ts", "../database/platform.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

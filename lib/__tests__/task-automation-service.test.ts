@@ -15,8 +15,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
-  default: { ...mocks.db, $transaction: mocks.transaction },
+vi.mock("../db", () => ({
+  default: { ...mocks.db, command: mocks.transaction },
 }));
 
 vi.mock("../../modules/ai/index.server", () => ({
@@ -27,7 +27,7 @@ vi.mock("../ai-suggestions", () => ({
   generateSplitSuggestions: mocks.generateSplit,
 }));
 
-import { applyAutomationForTask } from "../../modules/tasks/infrastructure/prisma-task-automation";
+import { applyAutomationForTask } from "../../modules/tasks/infrastructure/d1-task-automation";
 
 const currentTask = (points: number) => ({
   id: "task-1",

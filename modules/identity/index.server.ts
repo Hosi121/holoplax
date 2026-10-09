@@ -1,7 +1,7 @@
 import { createIdentityCommands } from "./application/identity-commands";
-import { prismaIdentityPort } from "./infrastructure/prisma-identity";
+import { d1IdentityPort } from "./infrastructure/d1-identity";
 
-const commands = createIdentityCommands(prismaIdentityPort);
+const commands = createIdentityCommands(d1IdentityPort);
 export const getAccount = commands.getAccount;
 export const updateAccount = commands.updateAccount;
 export const changeAccountPassword = commands.changePassword;

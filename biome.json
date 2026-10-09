@@ -16,7 +16,8 @@
       "**/*.mjs",
       "!dist",
       "!server/route-table.generated.ts",
-      "!mcp-server/dist"
+      "!mcp-server/dist",
+      "!worker-configuration.d.ts"
     ]
   },
   "formatter": {

@@ -25,6 +25,4 @@ export const createIntakeCommands = (
     }
     return port.resolve(actor, input);
   },
-  captureDiscord: (input: Parameters<IntakeCommandPort["captureDiscord"]>[0]) =>
-    port.captureDiscord(input),
 });

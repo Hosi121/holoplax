@@ -1,14 +1,23 @@
-import { PrismaClient } from "@prisma/client";
+import { join } from "node:path";
 import bcrypt from "bcryptjs";
+import { getPlatformProxy } from "wrangler";
+import { createDatabase } from "../database/client.ts";
 
-const prisma = new PrismaClient();
+const platform = await getPlatformProxy({
+  remoteBindings: false,
+  ...(process.env.HOLOPLAX_LOCAL_CONFIG ? { configPath: process.env.HOLOPLAX_LOCAL_CONFIG } : {}),
+  ...(process.env.HOLOPLAX_LOCAL_STATE
+    ? { persist: { path: join(process.env.HOLOPLAX_LOCAL_STATE, "v3") } }
+    : {}),
+});
+const db = createDatabase(platform.env.DB);
 
 const main = async () => {
   // Refuse to run against production — this seeds known-credential accounts
   // (including an ADMIN) and must never touch a real database.
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" || platform.env.ENVIRONMENT === "production") {
     console.error("seed-dev refuses to run with NODE_ENV=production");
-    process.exit(1);
+    throw new Error("Development seed refused");
   }
 
   const adminEmail = process.env.ADMIN_EMAIL ?? "admin@holoplax.local";
@@ -16,7 +25,7 @@ const main = async () => {
   const testEmail = process.env.TEST_EMAIL ?? "test@holoplax.local";
   const testPassword = process.env.TEST_PASSWORD ?? "test1234";
 
-  const adminUser = await prisma.user.upsert({
+  const adminUser = await db.user.upsert({
     where: { email: adminEmail },
     update: {
       role: "ADMIN",
@@ -33,7 +42,7 @@ const main = async () => {
     },
   });
 
-  const testUser = await prisma.user.upsert({
+  const testUser = await db.user.upsert({
     where: { email: testEmail },
     update: {
       role: "USER",
@@ -52,7 +61,7 @@ const main = async () => {
 
   const ensurePassword = async (userId, password) => {
     const hashed = await bcrypt.hash(password, 10);
-    await prisma.userPassword.upsert({
+    await db.userPassword.upsert({
       where: { userId },
       update: { hash: hashed },
       create: { userId, hash: hashed },
@@ -62,17 +71,21 @@ const main = async () => {
   await ensurePassword(adminUser.id, adminPassword);
   await ensurePassword(testUser.id, testPassword);
 
-  const workspace = await prisma.workspace.upsert({
+  const workspace = await db.workspace.upsert({
     where: { id: `${testUser.id}-personal` },
     update: {},
     create: {
       id: `${testUser.id}-personal`,
       name: "Holoplax Studio",
       ownerId: testUser.id,
-      members: { create: { userId: testUser.id, role: "owner" } },
     },
   });
-  await prisma.workspaceMember.upsert({
+  await db.workspaceMember.upsert({
+    where: { workspaceId_userId: { workspaceId: workspace.id, userId: testUser.id } },
+    update: { role: "owner" },
+    create: { workspaceId: workspace.id, userId: testUser.id, role: "owner" },
+  });
+  await db.workspaceMember.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: adminUser.id } },
     update: { role: "admin" },
     create: { workspaceId: workspace.id, userId: adminUser.id, role: "admin" },
@@ -87,13 +100,13 @@ const main = async () => {
     "スプリント完了レビューのテンプレ作成",
   ];
   // Keep the development seed repeatable without deleting unrelated user data.
-  const previousSeedTasks = await prisma.task.findMany({
+  const previousSeedTasks = await db.task.findMany({
     where: { workspaceId: workspace.id, title: { in: seedTaskTitles } },
     select: { id: true },
   });
   const previousSeedTaskIds = previousSeedTasks.map(({ id }) => id);
   if (previousSeedTaskIds.length) {
-    await prisma.taskDependencyEvent.deleteMany({
+    await db.taskDependencyEvent.deleteMany({
       where: {
         OR: [
           { taskKey: { in: previousSeedTaskIds } },
@@ -101,16 +114,16 @@ const main = async () => {
         ],
       },
     });
-    await prisma.taskStatusEvent.deleteMany({ where: { taskKey: { in: previousSeedTaskIds } } });
+    await db.taskStatusEvent.deleteMany({ where: { taskKey: { in: previousSeedTaskIds } } });
   }
-  await prisma.task.deleteMany({
+  await db.task.deleteMany({
     where: { workspaceId: workspace.id, title: { in: seedTaskTitles } },
   });
-  await prisma.sprint.deleteMany({
+  await db.sprint.deleteMany({
     where: { workspaceId: workspace.id, name: "Sprint-Launch" },
   });
 
-  const sprint = await prisma.sprint.create({
+  const sprint = await db.sprint.create({
     data: {
       name: "Sprint-Launch",
       status: "ACTIVE",
@@ -121,7 +134,7 @@ const main = async () => {
     },
   });
 
-  const heroCopy = await prisma.task.create({
+  const heroCopy = await db.task.create({
     data: {
       title: "LPのヒーローコピー確定",
       description: "価値訴求を3案出し、社内レビューで決定。",
@@ -137,7 +150,7 @@ const main = async () => {
       workspaceId: workspace.id,
     },
   });
-  const onboarding = await prisma.task.create({
+  const onboarding = await db.task.create({
     data: {
       title: "オンボーディングの質問設計",
       description: "初回セットアップの質問項目と順序を決める。",
@@ -153,7 +166,7 @@ const main = async () => {
       workspaceId: workspace.id,
     },
   });
-  const velocityCopy = await prisma.task.create({
+  const velocityCopy = await db.task.create({
     data: {
       title: "ベロシティ可視化の文言調整",
       description: "KPIカードの説明文と単位を見直す。",
@@ -170,7 +183,7 @@ const main = async () => {
       workspaceId: workspace.id,
     },
   });
-  const inboxSpec = await prisma.task.create({
+  const inboxSpec = await db.task.create({
     data: {
       title: "インボックス取り込みの仕様ドラフト",
       description: "メモ/カレンダーから取り込む粒度を定義。",
@@ -185,10 +198,10 @@ const main = async () => {
       workspaceId: workspace.id,
     },
   });
-  const notifyDesign = await prisma.task.create({
+  const notifyDesign = await db.task.create({
     data: {
       title: "通知設計のたたき台",
-      description: "Slack/メールの通知条件を整理して下書き。",
+      description: "メールの通知条件を整理して下書き。",
       points: 5,
       urgency: "LOW",
       risk: "MEDIUM",
@@ -200,7 +213,7 @@ const main = async () => {
       workspaceId: workspace.id,
     },
   });
-  const reviewTemplate = await prisma.task.create({
+  const reviewTemplate = await db.task.create({
     data: {
       title: "スプリント完了レビューのテンプレ作成",
       description: "振り返りの質問項目を整える。",
@@ -215,7 +228,7 @@ const main = async () => {
       workspaceId: workspace.id,
     },
   });
-  await prisma.taskDependency.createMany({
+  await db.taskDependency.createMany({
     data: [
       { taskId: onboarding.id, dependsOnId: heroCopy.id, workspaceId: workspace.id },
       { taskId: reviewTemplate.id, dependsOnId: velocityCopy.id, workspaceId: workspace.id },
@@ -223,7 +236,7 @@ const main = async () => {
     ],
     skipDuplicates: true,
   });
-  await prisma.sprintItem.createMany({
+  await db.sprintItem.createMany({
     data: [
       {
         sprintId: sprint.id,
@@ -254,7 +267,7 @@ const main = async () => {
     ],
     skipDuplicates: true,
   });
-  await prisma.taskDependencyEvent.createMany({
+  await db.taskDependencyEvent.createMany({
     data: [
       { taskId: onboarding.id, dependsOnId: heroCopy.id },
       { taskId: reviewTemplate.id, dependsOnId: velocityCopy.id },
@@ -271,7 +284,7 @@ const main = async () => {
     })),
     skipDuplicates: true,
   });
-  await prisma.taskStatusEvent.createMany({
+  await db.taskStatusEvent.createMany({
     data: [
       { task: heroCopy, status: "SPRINT" },
       { task: onboarding, status: "SPRINT" },
@@ -291,9 +304,9 @@ const main = async () => {
     })),
   });
 
-  const existingVelocity = await prisma.velocityEntry.count({ where: { userId: testUser.id } });
+  const existingVelocity = await db.velocityEntry.count({ where: { userId: testUser.id } });
   if (existingVelocity === 0) {
-    await prisma.velocityEntry.createMany({
+    await db.velocityEntry.createMany({
       data: [
         {
           name: "Sprint-08",
@@ -334,11 +347,11 @@ const main = async () => {
     });
   }
 
-  const existingAutomation = await prisma.userAutomationSetting.findFirst({
+  const existingAutomation = await db.userAutomationSetting.findFirst({
     where: { userId: testUser.id, workspaceId: workspace.id },
   });
   if (!existingAutomation) {
-    await prisma.userAutomationSetting.create({
+    await db.userAutomationSetting.create({
       data: { low: 35, high: 70, userId: testUser.id, workspaceId: workspace.id },
     });
   }
@@ -349,8 +362,8 @@ const main = async () => {
 main()
   .catch((error) => {
     console.error(error);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await platform.dispose();
   });

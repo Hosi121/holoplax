@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   queryRaw: vi.fn(),
 }));
 
-vi.mock("../prisma", () => ({
+vi.mock("../db", () => ({
   default: {
     sprint: { findFirst: mocks.sprintFindFirst },
     task: { count: mocks.taskCount },
@@ -18,11 +18,11 @@ vi.mock("../prisma", () => ({
     velocityEntry: { findMany: mocks.velocityFindMany },
     taskStatusEvent: { findMany: mocks.statusFindMany },
     userAutomationSetting: { findUnique: mocks.automationFindUnique },
-    $queryRaw: mocks.queryRaw,
+    query: mocks.queryRaw,
   },
 }));
 
-import { prismaReviewQueryPort } from "../../modules/review/infrastructure/prisma-review-query";
+import { d1ReviewQueryPort } from "../../modules/review/infrastructure/d1-review-query";
 
 describe("review query", () => {
   beforeEach(() => {
@@ -37,7 +37,7 @@ describe("review query", () => {
   });
 
   it("excludes canceled work from active backlog KPIs", async () => {
-    await prismaReviewQueryPort.load("user-1", "workspace-1", new Date());
+    await d1ReviewQueryPort.load("user-1", "workspace-1", new Date());
 
     for (const call of mocks.taskCount.mock.calls) {
       expect(call[0].where).toMatchObject({

@@ -1,0 +1,119 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "holoplax",
+  "main": "server/worker.ts",
+  "compatibility_date": "2026-10-06",
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "holoplax",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "AVATARS",
+      "bucket_name": "holoplax-avatars"
+    }
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
+  "secrets": {
+    "required": [
+      "AUTH_SECRET",
+      "ENCRYPTION_KEY"
+    ]
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "JOBS",
+        "queue": "holoplax-jobs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "holoplax-jobs",
+        "max_batch_size": 1,
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "APP_URL": "http://localhost:3000"
+  },
+  "triggers": {
+    "crons": [
+      "* * * * *",
+      "0 0 * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "dev": {
+    "port": 3000
+  },
+  "ratelimits": [
+    {
+      "name": "RATE_LIMIT_3",
+      "namespace_id": "1003",
+      "simple": {
+        "limit": 3,
+        "period": 60
+      }
+    },
+    {
+      "name": "RATE_LIMIT_5",
+      "namespace_id": "1005",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    },
+    {
+      "name": "RATE_LIMIT_20",
+      "namespace_id": "1020",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    },
+    {
+      "name": "RATE_LIMIT_30",
+      "namespace_id": "1030",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    },
+    {
+      "name": "RATE_LIMIT_100",
+      "namespace_id": "1100",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    },
+    {
+      "name": "RATE_LIMIT_120",
+      "namespace_id": "1120",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ]
+}

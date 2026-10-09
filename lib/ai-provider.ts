@@ -1,7 +1,8 @@
+import { runtimeEnv } from "../server/runtime";
 import { type AiUsageContext, recordAiUsage } from "./ai-usage";
+import db from "./db";
 import { safeDecrypt } from "./encryption";
 import { logger } from "./logger";
-import prisma from "./prisma";
 
 type AiProviderConfig = {
   model: string;
@@ -19,17 +20,17 @@ export type AiChatResult = {
 const DEFAULT_MODEL = "gpt-4o-mini";
 
 // Per-scope spend cap over a rolling 30-day window. 0/unset disables the cap.
-const AI_COST_LIMIT_USD = Number(process.env.AI_MONTHLY_COST_LIMIT_USD ?? "0") || 0;
+const costLimit = () => Number(runtimeEnv.AI_MONTHLY_COST_LIMIT_USD ?? "0") || 0;
 // Abort a hung provider call rather than holding the request open indefinitely.
-const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS ?? "20000") || 20000;
+const requestTimeout = () => Number(runtimeEnv.AI_REQUEST_TIMEOUT_MS ?? "20000") || 20000;
 
 /**
  * Returns true when the caller's workspace (or user, if no workspace) has spent
- * at least AI_COST_LIMIT_USD over the last 30 days. Callers treat a null result
+ * at least costLimit() over the last 30 days. Callers treat a null result
  * from requestAiChat as "no AI available" and fall back to heuristics.
  */
 async function isOverAiBudget(context?: AiUsageContext): Promise<boolean> {
-  if (AI_COST_LIMIT_USD <= 0) return false;
+  if (costLimit() <= 0) return false;
   const scope = context?.workspaceId
     ? { workspaceId: context.workspaceId }
     : context?.userId
@@ -38,11 +39,11 @@ async function isOverAiBudget(context?: AiUsageContext): Promise<boolean> {
   if (!scope) return false;
   const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   try {
-    const agg = await prisma.aiUsage.aggregate({
+    const agg = await db.aiUsage.aggregate({
       _sum: { costUsd: true },
       where: { ...scope, createdAt: { gte: windowStart } },
     });
-    return (agg._sum.costUsd ?? 0) >= AI_COST_LIMIT_USD;
+    return (agg._sum.costUsd ?? 0) >= costLimit();
   } catch {
     // On a metering failure, fail open (don't block the product on a DB hiccup).
     return false;
@@ -92,33 +93,26 @@ const normalizeBaseUrl = (baseUrl?: string | null) => {
 };
 
 const readEnvConfig = (): AiProviderConfig | null => {
-  const apiKey =
-    process.env.AI_API_KEY ?? process.env.LITELLM_API_KEY ?? process.env.OPENAI_API_KEY;
+  const apiKey = runtimeEnv.AI_API_KEY ?? runtimeEnv.LITELLM_API_KEY ?? runtimeEnv.OPENAI_API_KEY;
   if (!apiKey) return null;
   return {
     model:
-      process.env.AI_MODEL ??
-      process.env.LITELLM_MODEL ??
-      process.env.OPENAI_MODEL ??
-      DEFAULT_MODEL,
+      runtimeEnv.AI_MODEL ?? runtimeEnv.LITELLM_MODEL ?? runtimeEnv.OPENAI_MODEL ?? DEFAULT_MODEL,
     apiKey,
     baseUrl:
-      process.env.AI_BASE_URL ??
-      process.env.LITELLM_BASE_URL ??
-      process.env.OPENAI_BASE_URL ??
-      null,
+      runtimeEnv.AI_BASE_URL ?? runtimeEnv.LITELLM_BASE_URL ?? runtimeEnv.OPENAI_BASE_URL ?? null,
   };
 };
 
 async function resolveAiProvider(): Promise<AiProviderConfig | null> {
-  const setting = await prisma.aiProviderSetting.findUnique({
+  const setting = await db.aiProviderSetting.findUnique({
     where: { id: 1 },
     select: { model: true, apiKey: true, baseUrl: true, enabled: true },
   });
   if (setting) {
     if (!setting.enabled || !setting.apiKey || !setting.model) return null;
     // Decrypt API key if encrypted, otherwise use as-is (legacy or env)
-    const decryptedApiKey = safeDecrypt(setting.apiKey);
+    const decryptedApiKey = await safeDecrypt(setting.apiKey);
     if (!decryptedApiKey) {
       logger.error("Failed to decrypt AI API key");
       return null;
@@ -138,7 +132,7 @@ const fetchOpenAiChat = async (
 ): Promise<AiChatResult | null> => {
   const url = `${normalizeBaseUrl(config.baseUrl)}/chat/completions`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), requestTimeout());
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -197,7 +191,7 @@ export async function requestAiChat(params: {
     userTag: params.context?.userId ?? params.context?.workspaceId ?? undefined,
   });
   if (result && params.context) {
-    void recordAiUsage({
+    await recordAiUsage({
       provider: result.provider,
       model: result.model,
       usage: result.usage,

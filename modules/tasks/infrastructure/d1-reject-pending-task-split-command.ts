@@ -1,0 +1,30 @@
+import db from "../../../lib/db";
+
+export function rejectPendingTaskSplit(
+  actor: { userId: string; workspaceId: string },
+  taskId: string,
+) {
+  return db.command(async (tx) => {
+    const task = await tx.task.findFirst({
+      where: { id: taskId, workspaceId: actor.workspaceId },
+      select: { hierarchyRole: true },
+    });
+    if (!task) return false;
+    const claimed = await tx.task.updateMany({
+      where: { id: taskId, workspaceId: actor.workspaceId, automationStatus: "SPLIT_PENDING" },
+      data: {
+        automationStatus: "SPLIT_REJECTED",
+      },
+    });
+    if (!claimed.count) return false;
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.userId,
+        action: "AUTOMATION_SPLIT_REJECT",
+        targetWorkspaceId: actor.workspaceId,
+        metadata: { taskId },
+      },
+    });
+    return true;
+  });
+}

@@ -33,13 +33,13 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
+vi.mock("../db", () => ({
   default: {
     sprint: {
       findMany: mocks.sprintFindMany,
     },
     sprintItem: { groupBy: mocks.sprintItemGroupBy },
-    $transaction: mocks.transaction,
+    command: mocks.transaction,
   },
 }));
 

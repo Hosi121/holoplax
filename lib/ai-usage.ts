@@ -1,5 +1,5 @@
 import { calculateAiUsageCost, loadAiPricingTable } from "./ai-pricing";
-import prisma from "./prisma";
+import db from "./db";
 
 export type OpenAiUsage = {
   prompt_tokens?: number;
@@ -27,23 +27,6 @@ type AiUsageMetadata = {
 
 const toNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
-
-const PRICING_CACHE_TTL_MS = 60_000;
-let pricingCache: {
-  table: Awaited<ReturnType<typeof loadAiPricingTable>>["table"];
-  source: Awaited<ReturnType<typeof loadAiPricingTable>>["source"];
-  expiresAt: number;
-} | null = null;
-
-const loadPricingTableCached = async () => {
-  const now = Date.now();
-  if (pricingCache && pricingCache.expiresAt > now) {
-    return pricingCache;
-  }
-  const fresh = await loadAiPricingTable();
-  pricingCache = { ...fresh, expiresAt: now + PRICING_CACHE_TTL_MS };
-  return pricingCache;
-};
 
 function buildAiUsageMetadata(
   provider: string,
@@ -91,7 +74,7 @@ export async function recordAiUsage(params: {
   if (!usageMeta) return;
 
   try {
-    const { table } = await loadPricingTableCached();
+    const { table } = await loadAiPricingTable();
     const { costUsd } = calculateAiUsageCost({
       pricingTable: table,
       provider: usageMeta.provider,
@@ -100,7 +83,7 @@ export async function recordAiUsage(params: {
       completionTokens: usageMeta.completionTokens,
     });
 
-    await prisma.aiUsage.create({
+    await db.aiUsage.create({
       data: {
         action: params.context.action,
         provider: usageMeta.provider,

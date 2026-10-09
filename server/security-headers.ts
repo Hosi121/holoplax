@@ -1,35 +1,14 @@
-const storageOrigins = [process.env.MINIO_ENDPOINT, process.env.MINIO_PUBLIC_URL]
-  .flatMap((value) => {
-    if (!value) return [];
-    try {
-      const url = new URL(value);
-      return url.protocol === "http:" || url.protocol === "https:" ? [url.origin] : [];
-    } catch {
-      return [];
-    }
-  })
-  .filter((value, index, values) => values.indexOf(value) === index);
-const storageSources = storageOrigins.length ? ` ${storageOrigins.join(" ")}` : "";
-const usesInsecureLocalStorage = storageOrigins.some((origin) => origin.startsWith("http://"));
-
 const cspDirectives = [
   "default-src 'self'",
-  process.env.HOLOPLAX_DEV
-    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-    : "script-src 'self'",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: https:${storageSources}`,
+  "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  // Avatar uploads use a short-lived pre-signed URL. Production targets S3
-  // over HTTPS; localhost permits the development MinIO endpoint.
-  `connect-src 'self' https:${storageSources}${process.env.HOLOPLAX_DEV ? " ws://localhost:5173 ws://127.0.0.1:5173" : ""}`,
+  "connect-src 'self' https:",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "object-src 'none'",
   "base-uri 'self'",
-  ...(process.env.NODE_ENV === "production" && !usesInsecureLocalStorage
-    ? ["upgrade-insecure-requests"]
-    : []),
 ].join("; ");
 
 export const securityHeaders = [
@@ -64,3 +43,17 @@ export const securityHeaders = [
     value: cspDirectives,
   },
 ];
+
+export function getSecurityHeaders(development: boolean) {
+  return securityHeaders.map((header) =>
+    development && header.key === "Content-Security-Policy"
+      ? {
+          ...header,
+          value: header.value.replace(
+            "connect-src 'self' https:",
+            "connect-src 'self' https: ws://127.0.0.1:5173 ws://localhost:5173",
+          ),
+        }
+      : header,
+  );
+}

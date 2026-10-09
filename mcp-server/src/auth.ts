@@ -1,3 +1,4 @@
+import { runtimeEnv } from "../../server/runtime.js";
 /**
  * Authentication for MCP server
  * Supports both API keys (mcp_*) and NextAuth.js JWT tokens
@@ -5,7 +6,7 @@
 
 import { createHash } from "crypto";
 import { jwtDecrypt } from "jose";
-import prisma from "./infrastructure/prisma.js";
+import db from "./infrastructure/d1.js";
 
 // NextAuth.js uses HKDF to derive encryption key
 async function getDerivedEncryptionKey(secret: string): Promise<Uint8Array> {
@@ -64,11 +65,11 @@ function hashApiKey(key: string): string {
 async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
   const keyHash = hashApiKey(apiKey);
 
-  const keyRecord = await prisma.mcpApiKey.findUnique({
+  const keyRecord = await db.mcpApiKey.findUnique({
     where: { keyHash },
     include: {
       user: {
-        select: { id: true, email: true, name: true, disabledAt: true },
+        select: { id: true, email: true, name: true, disabledAt: true, passwordChangedAt: true },
       },
     },
   });
@@ -88,7 +89,7 @@ async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
   if (keyRecord.user.disabledAt) {
     return { success: false, error: "User account is disabled" };
   }
-  const membership = await prisma.workspaceMember.findUnique({
+  const membership = await db.workspaceMember.findUnique({
     where: {
       workspaceId_userId: {
         workspaceId: keyRecord.workspaceId,
@@ -101,8 +102,8 @@ async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
     return { success: false, error: "API key owner no longer has access to the workspace" };
   }
 
-  // Update last used timestamp (fire and forget)
-  prisma.mcpApiKey
+  // Record use before returning; no promise escapes the Worker event.
+  await db.mcpApiKey
     .update({
       where: { id: keyRecord.id },
       data: { lastUsedAt: new Date() },
@@ -126,7 +127,7 @@ async function verifyApiKey(apiKey: string): Promise<AuthResponse> {
  * Verify NextAuth.js JWT token (legacy support)
  */
 async function verifyJwtToken(token: string): Promise<AuthResponse> {
-  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  const secret = runtimeEnv.AUTH_SECRET ?? runtimeEnv.NEXTAUTH_SECRET;
   if (!secret) {
     return { success: false, error: "AUTH_SECRET not configured" };
   }
@@ -142,9 +143,9 @@ async function verifyJwtToken(token: string): Promise<AuthResponse> {
       return { success: false, error: "Invalid token: missing user ID" };
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await db.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, disabledAt: true },
+      select: { id: true, email: true, name: true, disabledAt: true, passwordChangedAt: true },
     });
 
     if (!user) {
@@ -153,6 +154,13 @@ async function verifyJwtToken(token: string): Promise<AuthResponse> {
 
     if (user.disabledAt) {
       return { success: false, error: "User account is disabled" };
+    }
+
+    if (
+      user.passwordChangedAt &&
+      user.passwordChangedAt.getTime() > (typeof payload.pwAt === "number" ? payload.pwAt : 0)
+    ) {
+      return { success: false, error: "Credentials changed" };
     }
 
     // Resolve workspace
@@ -165,7 +173,7 @@ async function verifyJwtToken(token: string): Promise<AuthResponse> {
     if (workspaceId) {
       resolvedWorkspaceId = workspaceId;
     } else {
-      const membership = await prisma.workspaceMember.findFirst({
+      const membership = await db.workspaceMember.findFirst({
         where: { userId },
         orderBy: { createdAt: "asc" },
         select: { workspaceId: true },
@@ -178,7 +186,7 @@ async function verifyJwtToken(token: string): Promise<AuthResponse> {
       resolvedWorkspaceId = membership.workspaceId;
     }
 
-    const hasAccess = await prisma.workspaceMember.findFirst({
+    const hasAccess = await db.workspaceMember.findFirst({
       where: { userId, workspaceId: resolvedWorkspaceId },
     });
 

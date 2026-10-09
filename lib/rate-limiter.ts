@@ -1,15 +1,9 @@
-/**
- * In-memory rate limiter for API endpoints
- *
- * For production with multiple instances, consider using:
- * - Redis-based rate limiting (e.g., @upstash/ratelimit)
- * - AWS WAF rate limiting
- */
+import { getRuntime } from "../server/runtime";
 
-type RateLimitEntry = {
-  count: number;
-  resetAt: number;
-};
+/**
+ * Native Cloudflare rate limit policy for API endpoints
+ *
+ */
 
 type RateLimitConfig = {
   /** Maximum requests allowed in the window */
@@ -37,104 +31,6 @@ export const RATE_LIMIT_CONFIGS = {
   // Admin endpoints
   admin: { limit: 30, windowMs: 60 * 1000 }, // 30 requests per minute
 } as const;
-
-class RateLimiter {
-  private store = new Map<string, RateLimitEntry>();
-  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
-
-  constructor() {
-    // Clean up expired entries every 5 minutes
-    this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
-  }
-
-  /**
-   * Check if a request should be rate limited
-   * @returns Object with allowed status and rate limit info
-   */
-  check(
-    key: string,
-    config: RateLimitConfig,
-  ): {
-    allowed: boolean;
-    remaining: number;
-    resetAt: number;
-    limit: number;
-  } {
-    const now = Date.now();
-    const entry = this.store.get(key);
-
-    // No existing entry or window expired
-    if (!entry || entry.resetAt <= now) {
-      const resetAt = now + config.windowMs;
-      this.store.set(key, { count: 1, resetAt });
-      return {
-        allowed: true,
-        remaining: config.limit - 1,
-        resetAt,
-        limit: config.limit,
-      };
-    }
-
-    // Window still active
-    if (entry.count >= config.limit) {
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt: entry.resetAt,
-        limit: config.limit,
-      };
-    }
-
-    // Increment counter
-    entry.count += 1;
-    return {
-      allowed: true,
-      remaining: config.limit - entry.count,
-      resetAt: entry.resetAt,
-      limit: config.limit,
-    };
-  }
-
-  /**
-   * Get the key for rate limiting based on IP and optional user ID
-   */
-  static getKey(ip: string, endpoint: string, userId?: string): string {
-    const base = userId ? `user:${userId}` : `ip:${ip}`;
-    return `${base}:${endpoint}`;
-  }
-
-  /**
-   * Clean up expired entries
-   */
-  private cleanup(): void {
-    const now = Date.now();
-    for (const [key, entry] of this.store.entries()) {
-      if (entry.resetAt <= now) {
-        this.store.delete(key);
-      }
-    }
-  }
-
-  /**
-   * Clear all entries (useful for testing)
-   */
-  clear(): void {
-    this.store.clear();
-  }
-
-  /**
-   * Stop the cleanup interval
-   */
-  destroy(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
-    }
-  }
-}
-
-// Singleton instance
-export const rateLimiter = new RateLimiter();
 
 /**
  * Determine the rate limit config based on the pathname
@@ -190,4 +86,19 @@ export function getRateLimitHeaders(result: {
     "X-RateLimit-Remaining": String(result.remaining),
     "X-RateLimit-Reset": String(Math.ceil(result.resetAt / 1000)),
   };
+}
+
+export async function checkRateLimit(pathname: string, key: string) {
+  const config = getRateLimitConfig(pathname);
+  const env = getRuntime().env;
+  const bindings: Record<number, RateLimit> = {
+    3: env.RATE_LIMIT_3,
+    5: env.RATE_LIMIT_5,
+    20: env.RATE_LIMIT_20,
+    30: env.RATE_LIMIT_30,
+    100: env.RATE_LIMIT_100,
+    120: env.RATE_LIMIT_120,
+  };
+  const result = await bindings[config.limit].limit({ key });
+  return { allowed: result.success, limit: config.limit, resetAt: Date.now() + config.windowMs };
 }

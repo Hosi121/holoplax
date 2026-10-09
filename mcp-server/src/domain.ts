@@ -1,7 +1,7 @@
 import { SprintStatus } from "../../modules/sprints/index.js";
 import { RoutineCadence, Severity, TaskStatus, TaskType } from "../../modules/tasks/index.js";
 
-// Prisma is the source of truth for enum values. Keeping these aliases in one
+// Db is the source of truth for enum values. Keeping these aliases in one
 // module prevents MCP input schemas and services from drifting from the DB.
 export { RoutineCadence, Severity, SprintStatus, TaskStatus, TaskType };
 export const SEVERITY = Severity;

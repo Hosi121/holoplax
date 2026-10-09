@@ -1,9 +1,9 @@
 import { retryFailedTaskAutomation, runPendingTaskAutomation } from "../tasks/index.server";
 import { createAdminOperations } from "./application/admin-operations";
-import { prismaAdminOperationsPort } from "./infrastructure/prisma-admin-operations";
+import { d1AdminOperationsPort } from "./infrastructure/d1-admin-operations";
 
 const operations = createAdminOperations(
-  prismaAdminOperationsPort,
+  d1AdminOperationsPort,
   runPendingTaskAutomation,
   retryFailedTaskAutomation,
 );

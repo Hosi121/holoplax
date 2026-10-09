@@ -1,18 +1,18 @@
-import type { Task } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Task } from "../../database/models";
 
 const mocks = vi.hoisted(() => ({
   persistNewTask: vi.fn(),
 }));
 
-vi.mock("../../modules/tasks/infrastructure/prisma-task-writer", () => ({
+vi.mock("../../modules/tasks/infrastructure/d1-task-writer", () => ({
   persistNewTask: mocks.persistNewTask,
 }));
 
 import {
   createNextRoutineOccurrence,
   syncRoutineRule,
-} from "../../modules/tasks/infrastructure/prisma-task-write";
+} from "../../modules/tasks/infrastructure/d1-task-write";
 
 const task = {
   id: "task-1",

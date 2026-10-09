@@ -1,8 +1,8 @@
 import { createTask } from "../tasks/index.server";
 import { createCompleteOnboardingCommand } from "./application/complete-onboarding-command";
-import { prismaCompleteOnboardingCommandPort } from "./infrastructure/prisma-complete-onboarding-command";
+import { d1CompleteOnboardingCommandPort } from "./infrastructure/d1-complete-onboarding-command";
 
 export const completeOnboarding = createCompleteOnboardingCommand(
-  prismaCompleteOnboardingCommandPort,
+  d1CompleteOnboardingCommandPort,
   createTask,
 );

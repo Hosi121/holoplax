@@ -1,4 +1,4 @@
-import type { Severity, TaskStatus, TaskType, TaskWorkflowState } from "@prisma/client";
+import type { Severity, TaskStatus, TaskType, TaskWorkflowState } from "../../database/models";
 import { SEVERITY, TASK_STATUS, TASK_TYPE, TASK_WORKFLOW_STATE } from "../types";
 
 export const isTaskStatus = (value: unknown): value is TaskStatus =>

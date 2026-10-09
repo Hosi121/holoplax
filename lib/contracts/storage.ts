@@ -7,7 +7,7 @@ const nonEmptyString = (message: string) =>
 /**
  * MIME types permitted for avatar uploads.
  * Only web-safe image formats are allowed.  Any other contentType will cause
- * the S3 pre-signed URL request to be rejected before it reaches the storage
+ * the signed R2 upload request to be rejected before it reaches the storage
  * layer, preventing upload of HTML, JavaScript, SVG-with-script, or other
  * potentially dangerous file types.
  */
@@ -36,7 +36,7 @@ export const AvatarUploadSchema = z
           message: `contentType must be one of: ${ALLOWED_AVATAR_MIME_TYPES.join(", ")}`,
         },
       ),
-    /** File size in bytes; used to lock the Content-Length in the pre-signed PUT URL. */
+    /** File size in bytes; used to lock the Content-Length in the signed PUT URL. */
     size: z
       .number()
       .int("size must be an integer")

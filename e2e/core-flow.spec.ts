@@ -1,37 +1,32 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { expect, test } from "@playwright/test";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-let createdUserEmail: string | null = null;
-
-test.afterEach(async () => {
-  if (!createdUserEmail) return;
-  const user = await prisma.user.findUnique({
-    where: { email: createdUserEmail },
-    select: { id: true },
-  });
-  if (user) {
-    await prisma.workspace.deleteMany({ where: { ownerId: user.id } });
-    await prisma.user.delete({ where: { id: user.id } });
-  }
-  createdUserEmail = null;
-});
-
-test.afterAll(() => prisma.$disconnect());
 
 test("health reports a reachable database", async ({ request }) => {
   const response = await request.get("/api/health");
   expect(response.ok()).toBe(true);
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response.headers()["cache-control"]).toBe("no-store");
   await expect(response.json()).resolves.toMatchObject({
     status: "healthy",
     database: "reachable",
   });
+  const providers = await (await request.get("/api/auth/providers")).json();
+  expect(providers).not.toHaveProperty("discord");
+  for (const url of [
+    "/api/integrations/discord",
+    "/api/integrations/discord/task",
+    "/api/integrations/slack",
+  ]) {
+    expect((await request.get(url)).status()).toBe(404);
+  }
 });
 
-test("a new user can register, onboard, and see the first task", async ({ page }) => {
+test("a new user can register, onboard, and see the first task", async ({ page, baseURL }) => {
   const email = `e2e-${Date.now()}@example.test`;
-  createdUserEmail = email;
-  await page.goto("/auth/signin");
+  const signin = await page.goto("/auth/signin");
+  expect(signin?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect((await page.context().cookies()).some(({ name }) => name === "csrf_token")).toBe(true);
   await page.getByRole("button", { name: "新規登録" }).click();
   await page.getByPlaceholder("名前").fill("E2E User");
   await page.getByPlaceholder("you@example.com").fill(email);
@@ -95,7 +90,7 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   );
   expect(task).toBeTruthy();
 
-  const mutate = (url: string, method: "POST" | "PATCH", body?: unknown) =>
+  const mutate = (url: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) =>
     page.evaluate(
       async ({ url, method, body }) => {
         const csrfToken = document.cookie
@@ -170,7 +165,9 @@ test("a new user can register, onboard, and see the first task", async ({ page }
     response.url().includes("/api/storage/avatar"),
   );
   const objectUpload = page.waitForResponse(
-    (response) => response.request().method() === "PUT" && response.url().includes(":9000/"),
+    (response) =>
+      response.request().method() === "PUT" &&
+      response.url().includes("/api/storage/avatar/upload"),
   );
   await page.locator('input[type="file"]').setInputFiles({
     name: "avatar.png",
@@ -182,6 +179,36 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   });
   expect((await uploadPreparation).status()).toBe(200);
   expect((await objectUpload).status()).toBe(200);
+  const { uploadUrl, publicUrl } = await (await uploadPreparation).json();
+  const publicImage = await page.request.get(publicUrl);
+  expect(publicImage.status()).toBe(200);
+  expect(publicImage.headers()["content-type"]).toBe("image/png");
+  const image = await publicImage.body();
+  expect(
+    (
+      await page.request.put(uploadUrl, { headers: { "content-type": "image/png" }, data: image })
+    ).status(),
+  ).toBe(409);
+  expect(
+    (
+      await page.request.put(uploadUrl, { headers: { "content-type": "text/html" }, data: image })
+    ).status(),
+  ).toBe(400);
+  const tampered = new URL(uploadUrl);
+  tampered.searchParams.set("token", "invalid");
+  expect((await page.request.put(tampered.href, { data: image })).status()).toBe(403);
+  const invalidUpload = await mutate("/api/storage/avatar", "POST", {
+    filename: "bad.svg",
+    contentType: "image/svg+xml",
+    size: 10,
+  });
+  expect(invalidUpload.status).toBe(400);
+  const oversize = await mutate("/api/storage/avatar", "POST", {
+    filename: "large.png",
+    contentType: "image/png",
+    size: 5 * 1024 * 1024 + 1,
+  });
+  expect(oversize.status).toBe(400);
   const saveAccount = page.getByRole("button", { name: "変更を保存" });
   await expect(saveAccount).toBeEnabled();
   await saveAccount.click();
@@ -191,6 +218,29 @@ test("a new user can register, onboard, and see the first task", async ({ page }
   await expect(page.getByText("このキーは一度だけ表示されます")).toBeVisible();
   await expect(page.locator("code").filter({ hasText: "mcp_" })).toBeVisible();
 
+  const apiKey = (await page.locator("code").filter({ hasText: "mcp_" }).textContent())!.trim();
+  const mcp = new Client({ name: "holoplax-e2e", version: "1.0.0" });
+  await mcp.connect(
+    new StreamableHTTPClientTransport(new URL("/mcp", baseURL), {
+      requestInit: { headers: { Authorization: `Bearer ${apiKey}` } },
+    }),
+  );
+  try {
+    expect((await mcp.listTools()).tools.map((tool) => tool.name)).toContain("list_tasks");
+    const result = await mcp.callTool({ name: "list_tasks", arguments: { status: ["BACKLOG"] } });
+    expect(result.isError).not.toBe(true);
+    expect(JSON.stringify(result.content)).toContain("最初のE2Eタスク");
+    const keys = await (await page.request.get("/api/mcp/keys")).json();
+    expect((await mutate(`/api/mcp/keys?id=${keys.keys[0].id}`, "DELETE")).status).toBe(200);
+    await expect(mcp.listTools()).rejects.toThrow();
+  } finally {
+    await mcp.close();
+  }
+  expect(
+    (
+      await page.request.post("/mcp", { data: { jsonrpc: "2.0", id: 1, method: "tools/list" } })
+    ).status(),
+  ).toBe(401);
   await page.goto("/velocity");
   await expect(page).toHaveURL(/\/review#completion-pace$/);
   await expect(page.getByRole("heading", { name: "今回の進み方を振り返る" })).toBeVisible();

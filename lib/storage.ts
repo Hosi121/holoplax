@@ -1,97 +1,97 @@
-import {
-  CreateBucketCommand,
-  HeadBucketCommand,
-  PutBucketPolicyCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { type JWTPayload, jwtVerify, SignJWT } from "jose";
+import { webStream } from "../server/platform-stream";
+import { getRuntime } from "../server/runtime";
+import { getBaseUrl } from "./base-url";
+import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from "./contracts/storage";
 
-const minioEndpoint = process.env.MINIO_ENDPOINT;
-const region = process.env.AWS_REGION ?? process.env.MINIO_REGION ?? "us-east-1";
-const bucket =
-  process.env.S3_BUCKET_AVATARS ?? process.env.MINIO_BUCKET_AVATARS ?? "holoplax-avatars";
-const publicEndpoint =
-  process.env.S3_PUBLIC_URL ??
-  process.env.MINIO_PUBLIC_URL ??
-  minioEndpoint ??
-  `https://${bucket}.s3.${region}.amazonaws.com`;
-
-export const getPublicObjectUrl = (key: string) => {
-  const base = publicEndpoint.replace(/\/$/, "");
-  return minioEndpoint ? `${base}/${bucket}/${key}` : `${base}/${key}`;
-};
-
-const getClient = () => {
-  if (!minioEndpoint) {
-    // In AWS, use the SDK's default credential chain (ECS task role, IRSA,
-    // environment, or local AWS profile) rather than blank static credentials.
-    return new S3Client({ region });
-  }
-  return new S3Client({
-    region,
-    endpoint: minioEndpoint,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: process.env.MINIO_ROOT_USER ?? "minioadmin",
-      secretAccessKey: process.env.MINIO_ROOT_PASSWORD ?? "minioadmin",
-    },
-  });
-};
-
-export async function ensureAvatarBucket() {
-  const client = getClient();
-  try {
-    await client.send(new HeadBucketCommand({ Bucket: bucket }));
-  } catch {
-    if (!minioEndpoint) throw new Error(`avatar bucket is unavailable: ${bucket}`);
-    await client.send(new CreateBucketCommand({ Bucket: bucket }));
-  }
-
-  // AWS buckets are provisioned and configured by Terraform. Runtime policy
-  // mutation is needed only for the local MinIO development environment.
-  if (!minioEndpoint) return;
-
-  const policy = {
-    Version: "2012-10-17",
-    Statement: [
-      {
-        Sid: "PublicRead",
-        Effect: "Allow",
-        Principal: "*",
-        Action: ["s3:GetObject"],
-        Resource: [`arn:aws:s3:::${bucket}/*`],
-      },
-    ],
-  };
-
-  try {
-    await client.send(
-      new PutBucketPolicyCommand({
-        Bucket: bucket,
-        Policy: JSON.stringify(policy),
-      }),
-    );
-  } catch {
-    // ignore if policy cannot be set
-  }
+const secret = () => new TextEncoder().encode(getRuntime().env.AUTH_SECRET);
+export function getPublicObjectUrl(key: string): string {
+  return new URL(`/avatars/${key.split("/").map(encodeURIComponent).join("/")}`, getBaseUrl()).href;
 }
-
-export async function createAvatarUploadUrl(params: {
+export async function createAvatarUploadUrl(input: {
   key: string;
   contentType: string;
   contentLength: number;
-}) {
-  const client = getClient();
-  const command = new PutObjectCommand({
-    Bucket: bucket,
-    Key: params.key,
-    ContentType: params.contentType,
-    // Signing the Content-Length prevents uploading a file of a different
-    // size than the one the client declared — S3/MinIO will reject the PUT
-    // if the actual body length doesn't match.
-    ContentLength: params.contentLength,
+}): Promise<string> {
+  const token = await new SignJWT(input)
+    .setProtectedHeader({ alg: "HS256" })
+    .setAudience("avatar-upload")
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(secret());
+  const url = new URL("/api/storage/avatar/upload", getBaseUrl());
+  url.searchParams.set("token", token);
+  return url.href;
+}
+export async function uploadAvatar(request: Request): Promise<Response> {
+  let claim: JWTPayload;
+  try {
+    claim = (
+      await jwtVerify(new URL(request.url).searchParams.get("token") ?? "", secret(), {
+        audience: "avatar-upload",
+        algorithms: ["HS256"],
+      })
+    ).payload;
+  } catch {
+    return Response.json(
+      { error: { code: "STORAGE_INVALID_UPLOAD", message: "invalid or expired upload" } },
+      { status: 403 },
+    );
+  }
+  const { key, contentType, contentLength } = claim;
+  if (
+    typeof key !== "string" ||
+    !/^avatars\/[^/]+\/[^/]+$/.test(key) ||
+    typeof contentType !== "string" ||
+    !(ALLOWED_AVATAR_MIME_TYPES as readonly string[]).includes(contentType) ||
+    typeof contentLength !== "number" ||
+    !Number.isInteger(contentLength) ||
+    contentLength < 1 ||
+    contentLength > MAX_AVATAR_BYTES
+  )
+    return new Response("Invalid upload", { status: 403 });
+  if (request.headers.get("content-type") !== contentType)
+    return new Response("Unexpected content type", { status: 400 });
+  const declared = request.headers.get("content-length");
+  if (declared !== null && Number(declared) !== contentLength)
+    return new Response("Unexpected content length", { status: 400 });
+  if (!request.body) return new Response("Missing upload body", { status: 400 });
+  // A single avatar is bounded to 5 MiB. Stop reading as soon as the signed limit is exceeded.
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > contentLength) {
+      await reader.cancel();
+      return new Response("Upload too large", { status: 413 });
+    }
+    chunks.push(value);
+  }
+  if (size !== contentLength) return new Response("Unexpected content length", { status: 400 });
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const object = await getRuntime().env.AVATARS.put(key, body, {
+    httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" },
+    onlyIf: { etagDoesNotMatch: "*" },
   });
-  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 5 });
-  return uploadUrl;
+  return new Response(null, { status: object ? 200 : 409 });
+}
+export async function downloadAvatar(key: string): Promise<Response> {
+  if (!/^avatars\/[^/]+\/[^/]+$/.test(key)) return new Response("Not found", { status: 404 });
+  const object = await getRuntime().env.AVATARS.get(key);
+  if (!object) return new Response("Not found", { status: 404 });
+  const headers = new Headers({
+    "Content-Type": object.httpMetadata?.contentType ?? "application/octet-stream",
+    "Cache-Control": "public, max-age=31536000, immutable",
+    ETag: object.httpEtag,
+    "X-Content-Type-Options": "nosniff",
+  });
+  return new Response(webStream(object.body), { headers });
 }

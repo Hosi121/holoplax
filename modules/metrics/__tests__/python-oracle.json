@@ -1,0 +1,188 @@
+{
+  "source_sha256": "70b978c8d811bd7f99b7a6e08ef865e9feaa842ad809aad989c0ba04a1130088",
+  "source_commit": "272ee3d",
+  "runtime": "3.12.3",
+  "now": 1791471600000.0,
+  "cases": [
+    {
+      "name": "empty14",
+      "tasks": [],
+      "window": 14,
+      "expected": [0, null, null]
+    },
+    {
+      "name": "empty30",
+      "tasks": [],
+      "window": 30,
+      "expected": [0, null, null]
+    },
+    {
+      "name": "boundaries14",
+      "tasks": [
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791471600000.0,
+          "doneAt": 1791558000000.0,
+          "dueDate": 1791558000000.0
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791039600000.0,
+          "doneAt": 1791385200000.0,
+          "dueDate": 1791298800000.0
+        },
+        {
+          "workflowState": "READY",
+          "createdAt": 1791126000000.0,
+          "doneAt": 1791385200000.0,
+          "dueDate": null
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1788015600000.0,
+          "doneAt": 1788879600000.0,
+          "dueDate": null
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1788015600000.0,
+          "doneAt": 1788879599136.0,
+          "dueDate": null
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791212400000.0,
+          "doneAt": null,
+          "dueDate": null
+        }
+      ],
+      "window": 14,
+      "expected": [2, 216000000.0, 0.5]
+    },
+    {
+      "name": "boundaries30",
+      "tasks": [
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791471600000.0,
+          "doneAt": 1791558000000.0,
+          "dueDate": 1791558000000.0
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791039600000.0,
+          "doneAt": 1791385200000.0,
+          "dueDate": 1791298800000.0
+        },
+        {
+          "workflowState": "READY",
+          "createdAt": 1791126000000.0,
+          "doneAt": 1791385200000.0,
+          "dueDate": null
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1788015600000.0,
+          "doneAt": 1788879600000.0,
+          "dueDate": null
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1788015600000.0,
+          "doneAt": 1788879599136.0,
+          "dueDate": null
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791212400000.0,
+          "doneAt": null,
+          "dueDate": null
+        }
+      ],
+      "window": 30,
+      "expected": [3, 345600000.0, 0.5]
+    },
+    {
+      "name": "even-median14",
+      "tasks": [
+        {
+          "workflowState": "DONE",
+          "createdAt": 1790953200000.0,
+          "doneAt": 1791385200000.0,
+          "dueDate": 1791471600000.0
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791039600000.0,
+          "doneAt": 1791298800000.0,
+          "dueDate": 1791212400000.0
+        }
+      ],
+      "window": 14,
+      "expected": [2, 345600000.0, 0.5]
+    },
+    {
+      "name": "even-median30",
+      "tasks": [
+        {
+          "workflowState": "DONE",
+          "createdAt": 1790953200000.0,
+          "doneAt": 1791385200000.0,
+          "dueDate": 1791471600000.0
+        },
+        {
+          "workflowState": "DONE",
+          "createdAt": 1791039600000.0,
+          "doneAt": 1791298800000.0,
+          "dueDate": 1791212400000.0
+        }
+      ],
+      "window": 30,
+      "expected": [2, 345600000.0, 0.5]
+    }
+  ],
+  "flows": [
+    {
+      "args": [null, 0, 0],
+      "expected": null
+    },
+    {
+      "args": [0, 0, 1],
+      "expected": null
+    },
+    {
+      "args": [-1, 0, 2],
+      "expected": null
+    },
+    {
+      "args": [86400000, 1.5, 4],
+      "expected": 2.35
+    },
+    {
+      "args": [864000000, 100, 2],
+      "expected": 0
+    }
+  ],
+  "decay": [
+    {
+      "days": -1,
+      "expected": 0.5
+    },
+    {
+      "days": 0,
+      "expected": 0.5
+    },
+    {
+      "days": 1,
+      "expected": 0.5
+    },
+    {
+      "days": 14,
+      "expected": 0.04830484698938042
+    },
+    {
+      "days": 30,
+      "expected": 0.022840031565754093
+    }
+  ]
+}

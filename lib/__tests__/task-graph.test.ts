@@ -4,7 +4,7 @@ import {
   graphHasCycleFrom,
   hasIncompleteChecklist,
   syncTaskDependencies,
-} from "../../modules/tasks/infrastructure/prisma-task-write";
+} from "../../modules/tasks/infrastructure/d1-task-write";
 
 describe("task graph invariants", () => {
   it("detects direct and transitive cycles", () => {

@@ -1,11 +1,11 @@
 import { getRequestCookie } from "../server/request-context";
-import prisma from "./prisma";
+import db from "./db";
 
 export async function resolveWorkspaceId(userId: string) {
   const preferred = getRequestCookie("workspaceId");
 
   if (preferred) {
-    const membership = await prisma.workspaceMember.findUnique({
+    const membership = await db.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId: preferred, userId } },
       select: { workspaceId: true },
     });
@@ -14,7 +14,7 @@ export async function resolveWorkspaceId(userId: string) {
     }
   }
 
-  const fallback = await prisma.workspaceMember.findFirst({
+  const fallback = await db.workspaceMember.findFirst({
     where: { userId },
     orderBy: { createdAt: "asc" },
     select: { workspaceId: true },
@@ -24,7 +24,7 @@ export async function resolveWorkspaceId(userId: string) {
   }
 
   // 初回ユーザー用に個人ワークスペースを自動作成する
-  const createdId = await prisma.$transaction(async (tx) => {
+  const createdId = await db.command(async (tx) => {
     const user = await tx.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -42,10 +42,10 @@ export async function resolveWorkspaceId(userId: string) {
       data: {
         name: "Personal workspace",
         ownerId: userId,
-        members: { create: { userId, role: "owner" } },
       },
       select: { id: true },
     });
+    await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId, role: "owner" } });
     return workspace.id;
   });
 

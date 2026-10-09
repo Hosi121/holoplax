@@ -1,8 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getSession: vi.fn(), closeSprint: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  closeSprint: vi.fn(),
+  fetchAsset: vi.fn(),
+}));
+vi.mock("./runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./runtime")>()),
+  getRuntime: () => ({ env: { ASSETS: { fetch: mocks.fetchAsset } } }),
+}));
 vi.mock("../lib/auth", () => ({ getSession: mocks.getSession, authOptions: {} }));
-vi.mock("../lib/prisma", () => ({ default: {} }));
+vi.mock("../lib/rate-limiter", () => ({
+  checkRateLimit: async () => ({ allowed: true, limit: 100, resetAt: Date.now() + 60000 }),
+}));
+vi.mock("../lib/db", () => ({ default: {} }));
 vi.mock("../lib/api-guards", () => ({
   requireWorkspaceAuth: async () => ({ userId: "user-1", workspaceId: "workspace-1" }),
 }));
@@ -32,6 +43,21 @@ describe("HTTP routing and guards", () => {
     expect(response.headers.get("location")).toBe("/onboarding");
   });
 
+  it("adds security headers to full Responses without replacing their cookies", async () => {
+    const headers = new Headers({ "content-type": "text/html" });
+    headers.append("set-cookie", "auth.session=value; HttpOnly; Path=/");
+    headers.append("set-cookie", "auth.csrf=token; HttpOnly; Path=/");
+    mocks.fetchAsset.mockResolvedValue(new Response("<html></html>", { headers }));
+    const response = await createApp().request("/auth/signin");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("x-request-id")).toBeTruthy();
+    const cookies = response.headers.getSetCookie();
+    expect(cookies).toContain("auth.session=value; HttpOnly; Path=/");
+    expect(cookies).toContain("auth.csrf=token; HttpOnly; Path=/");
+    expect(cookies.filter((cookie) => cookie.startsWith("csrf_token="))).toHaveLength(1);
+  });
+
   it("checks CSRF before executing a mutation", async () => {
     const response = await createApp().request("/api/tasks", { method: "POST", body: "{}" });
     expect(response.status).toBe(403);
@@ -53,6 +79,9 @@ describe("HTTP routing and guards", () => {
       headers: { cookie: "csrf_token=abc", "x-csrf-token": "abc" },
     });
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-ratelimit-limit")).toBe("100");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(mocks.closeSprint).toHaveBeenCalledWith({
       userId: "user-1",
       workspaceId: "workspace-1",

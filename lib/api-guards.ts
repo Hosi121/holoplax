@@ -1,7 +1,7 @@
-import type { WorkspaceRole } from "@prisma/client";
+import type { WorkspaceRole } from "../database/models";
 import { requireAuth } from "./api-auth";
+import db from "./db";
 import { AppError } from "./http/errors";
-import prisma from "./prisma";
 import { resolveWorkspaceId } from "./workspace-context";
 
 type WorkspaceAuthOptionsRequired = {
@@ -59,7 +59,7 @@ const requireWorkspaceRole = async (
   userId: string,
   roles: WorkspaceRole[],
 ) => {
-  const membership = await prisma.workspaceMember.findUnique({
+  const membership = await db.workspaceMember.findUnique({
     where: { workspaceId_userId: { workspaceId, userId } },
     select: { role: true },
   });

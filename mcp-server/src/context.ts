@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "async_hooks";
-import { getConfig } from "./config.js";
 
 /**
  * Execution context for MCP operations
@@ -25,15 +24,7 @@ export function getContext(): ExecutionContext {
     return asyncContext;
   }
 
-  // Fallback to config-based context (stdio mode)
-  const config = getConfig();
-  if (!config.workspaceId || !config.userId) {
-    throw new Error("No execution context available. In HTTP mode, authentication is required.");
-  }
-  return {
-    workspaceId: config.workspaceId,
-    userId: config.userId,
-  };
+  throw new Error("No authenticated MCP context is available");
 }
 
 /**

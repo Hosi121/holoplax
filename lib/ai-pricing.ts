@@ -1,4 +1,5 @@
-import prisma from "./prisma";
+import { runtimeEnv } from "../server/runtime";
+import db from "./db";
 
 export type AiPricingTable = Record<string, Record<string, { input: number; output: number }>>;
 export type AiPricingSource = "db" | "env" | "default";
@@ -64,7 +65,7 @@ export async function loadAiPricingTable(): Promise<{
     outputUsdPerM: number;
   }> = [];
   try {
-    rows = await prisma.aiPricing.findMany({
+    rows = await db.aiPricing.findMany({
       select: {
         provider: true,
         model: true,
@@ -89,7 +90,7 @@ export async function loadAiPricingTable(): Promise<{
     return { table, source: "db" };
   }
 
-  const envTable = parsePricingJson(process.env.AI_PRICING_JSON ?? "");
+  const envTable = parsePricingJson(runtimeEnv.AI_PRICING_JSON ?? "");
   if (envTable) {
     return {
       table: mergePricingTables(DEFAULT_PRICING_USD_PER_M, envTable),

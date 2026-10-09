@@ -3,9 +3,9 @@ import {
   checkSprintCapacity,
   findActiveSprint,
   sumSprintPoints,
-} from "../../modules/tasks/infrastructure/prisma-sprint-capacity";
+} from "../../modules/tasks/infrastructure/d1-sprint-capacity";
 
-// Minimal fake of the Prisma delegates the helpers touch.
+// Minimal fake of the Db delegates the helpers touch.
 const makeClient = (opts: {
   activeSprint?: { id: string; capacityPoints: number } | null;
   committed?: number;
@@ -14,7 +14,7 @@ const makeClient = (opts: {
   const sprintItemAggregate = vi
     .fn()
     .mockResolvedValue({ _sum: { committedPoints: opts.committed ?? 0 } });
-  // Structural stand-in for the Prisma transaction client the helpers touch.
+  // Structural stand-in for the Db transaction client the helpers touch.
   const client = {
     sprint: { findFirst: sprintFindFirst },
     sprintItem: { aggregate: sprintItemAggregate },

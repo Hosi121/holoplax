@@ -1,139 +1,62 @@
-import crypto from "crypto";
+import { runtimeEnv } from "../server/runtime";
 import { logger } from "./logger";
 
-/**
- * AES-256-GCM encryption utilities for sensitive data
- *
- * Environment variable required:
- * ENCRYPTION_KEY - 64 character hex string (32 bytes)
- *
- * Generate with: openssl rand -hex 32
- */
-
-const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16; // 128 bits
-const AUTH_TAG_LENGTH = 16; // 128 bits
-
-/**
- * Get the encryption key from environment
- * @throws Error if key is not configured or invalid
- */
-function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY;
-  if (!key) {
-    throw new Error(
-      "ENCRYPTION_KEY environment variable is not set. Generate with: openssl rand -hex 32",
-    );
-  }
-
-  if (key.length !== 64) {
-    throw new Error("ENCRYPTION_KEY must be a 64-character hex string (32 bytes)");
-  }
-
-  return Buffer.from(key, "hex");
+const hex = (value: Uint8Array) =>
+  Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+const bytes = (value: string) =>
+  Uint8Array.from(value.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+async function encryptionKey() {
+  const key = runtimeEnv.ENCRYPTION_KEY;
+  if (!key || !/^[a-f\d]{64}$/i.test(key))
+    throw new Error("ENCRYPTION_KEY must be 64 hexadecimal characters");
+  return crypto.subtle.importKey("raw", bytes(key), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
-
-/**
- * Encrypt a string using AES-256-GCM
- * @param plaintext - The string to encrypt
- * @returns Encrypted string in format: iv:authTag:ciphertext (all hex encoded)
- */
-export function encrypt(plaintext: string): string {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(IV_LENGTH);
-
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  let encrypted = cipher.update(plaintext, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  const authTag = cipher.getAuthTag();
-
-  // Format: iv:authTag:ciphertext
-  return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
+// Preserve the existing iv:tag:ciphertext encoding so imported provider keys remain readable.
+export async function encrypt(plaintext: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(16));
+  const output = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, tagLength: 128 },
+      await encryptionKey(),
+      new TextEncoder().encode(plaintext),
+    ),
+  );
+  return `${hex(iv)}:${hex(output.slice(-16))}:${hex(output.slice(0, -16))}`;
 }
-
-/**
- * Decrypt a string encrypted with encrypt()
- * @param encryptedData - The encrypted string in format: iv:authTag:ciphertext
- * @returns Decrypted plaintext string
- * @throws Error if decryption fails (invalid data or wrong key)
- */
-export function decrypt(encryptedData: string): string {
-  const key = getEncryptionKey();
-
-  const parts = encryptedData.split(":");
-  if (parts.length !== 3) {
-    throw new Error("Invalid encrypted data format");
-  }
-
-  const [ivHex, authTagHex, ciphertext] = parts;
-  const iv = Buffer.from(ivHex, "hex");
-  const authTag = Buffer.from(authTagHex, "hex");
-
-  if (iv.length !== IV_LENGTH) {
-    throw new Error("Invalid IV length");
-  }
-
-  if (authTag.length !== AUTH_TAG_LENGTH) {
-    throw new Error("Invalid auth tag length");
-  }
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(ciphertext, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
-}
-
-/**
- * Check if a string is encrypted (has the expected format)
- */
-export function isEncrypted(value: string): boolean {
-  if (!value) return false;
-  const parts = value.split(":");
-  if (parts.length !== 3) return false;
-
-  const [ivHex, authTagHex] = parts;
-  // Check if IV and auth tag are valid hex and correct length
-  return (
-    /^[0-9a-f]+$/i.test(ivHex) &&
-    /^[0-9a-f]+$/i.test(authTagHex) &&
-    ivHex.length === IV_LENGTH * 2 &&
-    authTagHex.length === AUTH_TAG_LENGTH * 2
+export async function decrypt(value: string): Promise<string> {
+  if (!isEncrypted(value)) throw new Error("Invalid encrypted data format");
+  const [iv, tag, ciphertext] = value.split(":");
+  const cipher = bytes(ciphertext),
+    auth = bytes(tag);
+  const combined = new Uint8Array(cipher.length + auth.length);
+  combined.set(cipher);
+  combined.set(auth, cipher.length);
+  return new TextDecoder().decode(
+    await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: bytes(iv), tagLength: 128 },
+      await encryptionKey(),
+      combined,
+    ),
   );
 }
-
-/**
- * Safely decrypt a value, returning null if decryption fails or value is not encrypted
- */
-export function safeDecrypt(value: string | null | undefined): string | null {
+export function isEncrypted(value: string): boolean {
+  return typeof value === "string" && /^[a-f\d]{32}:[a-f\d]{32}:(?:[a-f\d]{2})*$/i.test(value);
+}
+export async function safeDecrypt(value: string | null | undefined): Promise<string | null> {
   if (!value) return null;
-  if (!isEncrypted(value)) return value; // Return as-is if not encrypted
-
+  if (!isEncrypted(value)) return value;
   try {
-    return decrypt(value);
+    return await decrypt(value);
   } catch (error) {
     logger.error("Failed to decrypt value", {}, error);
     return null;
   }
 }
-
-/**
- * Encrypt a value only if it's not already encrypted
- */
-export function ensureEncrypted(value: string): string {
-  if (isEncrypted(value)) return value;
-  return encrypt(value);
+export async function ensureEncrypted(value: string): Promise<string> {
+  return isEncrypted(value) ? value : encrypt(value);
 }
-
-/**
- * Mask a sensitive value for display (show last 4 characters)
- */
 export function maskSensitiveValue(value: string): string {
-  if (!value || value.length <= 8) {
-    return "••••••••";
-  }
-  return `${"•".repeat(value.length - 4)}${value.slice(-4)}`;
+  return !value || value.length <= 8
+    ? "••••••••"
+    : `${"•".repeat(value.length - 4)}${value.slice(-4)}`;
 }

@@ -1,4 +1,4 @@
-import type { TaskStatus, TaskType, TaskWorkflowState } from "@prisma/client";
+import type { TaskStatus, TaskType, TaskWorkflowState } from "../database/models";
 import { TASK_STATUS, TASK_TYPE, TASK_WORKFLOW_STATE } from "./types";
 
 /** User-facing language. Internal API/DB enum names must not leak into the UI. */

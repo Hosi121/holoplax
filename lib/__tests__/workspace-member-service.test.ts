@@ -18,14 +18,14 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
-  default: { $transaction: mocks.transaction },
+vi.mock("../db", () => ({
+  default: { command: mocks.transaction },
 }));
 
 import {
   removeWorkspaceMember,
   updateWorkspaceMemberRole,
-} from "../../modules/workspaces/infrastructure/prisma-workspace-member-commands";
+} from "../../modules/workspaces/infrastructure/d1-workspace-member-commands";
 
 const params = {
   actorId: "owner-1",

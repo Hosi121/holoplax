@@ -1,3 +1,4 @@
+import { runtimeEnv } from "../server/runtime";
 /**
  * Returns the application base URL used to construct absolute links in emails
  * (password-reset, email-verification, workspace-invite, etc.).
@@ -11,10 +12,10 @@
  * fallback so no extra configuration is needed.
  */
 export function getBaseUrl(): string {
-  const url = process.env.APP_URL ?? process.env.NEXTAUTH_URL;
+  const url = runtimeEnv.APP_URL ?? runtimeEnv.NEXTAUTH_URL;
   if (url) return url;
 
-  if (process.env.NODE_ENV === "production") {
+  if (runtimeEnv.NODE_ENV === "production") {
     throw new Error(
       "APP_URL must be set in production — omitting it would send email links pointing to localhost",
     );

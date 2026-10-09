@@ -18,16 +18,16 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
-  default: { $transaction: mocks.transaction },
+vi.mock("../db", () => ({
+  default: { command: mocks.transaction },
 }));
 
-vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
+vi.mock("../../modules/tasks/infrastructure/d1-task-automation-jobs", () => ({
   enqueueTaskAutomation: mocks.enqueueAutomation,
   wakeTaskAutomationWorker: mocks.wakeAutomation,
 }));
 
-import { bulkUpdateTasks } from "../../modules/tasks/infrastructure/prisma-bulk-task-command";
+import { bulkUpdateTasks } from "../../modules/tasks/infrastructure/d1-bulk-task-command";
 
 describe("bulk task commands", () => {
   beforeEach(() => {

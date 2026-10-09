@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   commitTaskToSprint,
   completeTaskCommitment,
-} from "../../modules/shared/infrastructure/prisma-sprint-items";
+} from "../../modules/shared/infrastructure/d1-sprint-items";
 
 const task = { id: "task-1", title: "Task", type: "TASK" as const, points: 5 };
 

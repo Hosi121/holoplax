@@ -18,12 +18,12 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
+vi.mock("../db", () => ({
   default: {
-    $transaction: mocks.transaction,
+    command: mocks.transaction,
   },
 }));
-vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
+vi.mock("../../modules/tasks/infrastructure/d1-task-automation-jobs", () => ({
   enqueueTaskAutomation: mocks.enqueueAutomation,
   wakeTaskAutomationWorker: mocks.wakeAutomation,
   processTaskAutomationJobs: vi.fn(),

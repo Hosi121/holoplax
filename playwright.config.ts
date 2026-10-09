@@ -1,11 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
 
-try {
-  process.loadEnvFile(".env");
-} catch {
-  // CI supplies environment variables directly and may not have a local file.
-}
-
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -24,9 +18,10 @@ export default defineConfig({
   webServer: {
     // Production output avoids dev-server compilation/HMR remounting forms in
     // the middle of an interaction and also verifies the deployable artifact.
-    command: process.env.E2E_BUILD_READY ? "npm run start" : "npm run build && npm run start",
+    command: "node scripts/e2e-server.mjs",
+    gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
     url: "http://localhost:3000/api/health",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

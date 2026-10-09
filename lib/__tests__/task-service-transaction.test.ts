@@ -37,10 +37,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../prisma", () => ({
+vi.mock("../db", () => ({
   default: {
     task: { findFirst: mocks.outsideTaskRead },
-    $transaction: mocks.transaction,
+    command: mocks.transaction,
   },
 }));
 
@@ -48,12 +48,12 @@ vi.mock("../logger", () => ({
   logger: { error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
 
-vi.mock("../../modules/tasks/infrastructure/prisma-task-automation-jobs", () => ({
+vi.mock("../../modules/tasks/infrastructure/d1-task-automation-jobs", () => ({
   enqueueTaskAutomation: mocks.enqueue,
   wakeTaskAutomationWorker: mocks.wake,
 }));
 
-import { updateTask } from "../../modules/tasks/infrastructure/prisma-task-service";
+import { updateTask } from "../../modules/tasks/infrastructure/d1-task-service";
 
 const currentTask = {
   id: "task-1",
@@ -113,7 +113,7 @@ describe("task update transaction boundary", () => {
 
     expect(mocks.outsideTaskRead).not.toHaveBeenCalled();
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
-      isolationLevel: "Serializable",
+      maxAttempts: 1,
     });
     expect(mocks.tx.task.findFirst).toHaveBeenNthCalledWith(
       1,

@@ -1,4 +1,5 @@
 import { getSystemHealth } from "../../../modules/system/index.server";
+import { runtimeEnv } from "../../runtime";
 
 type HealthStatus = {
   status: "healthy" | "degraded" | "unhealthy";
@@ -42,7 +43,7 @@ export async function GET() {
       oldestRunningAt: snapshot.delegation.oldestRunningAt?.toISOString() ?? null,
     },
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version ?? "unknown",
+    version: runtimeEnv.npm_package_version ?? "unknown",
   };
   return Response.json(health, { status: reachable ? 200 : 503 });
 }

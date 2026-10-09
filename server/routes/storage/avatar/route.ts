@@ -1,14 +1,9 @@
-import { randomUUID } from "crypto";
 import { requireAuth } from "../../../../lib/api-auth";
 import { withApiHandler } from "../../../../lib/api-handler";
 import { ok } from "../../../../lib/api-response";
 import { AvatarUploadSchema } from "../../../../lib/contracts/storage";
 import { parseBody } from "../../../../lib/http/validation";
-import {
-  createAvatarUploadUrl,
-  ensureAvatarBucket,
-  getPublicObjectUrl,
-} from "../../../../lib/storage";
+import { createAvatarUploadUrl, getPublicObjectUrl } from "../../../../lib/storage";
 
 export async function POST(request: Request) {
   return withApiHandler(
@@ -27,9 +22,8 @@ export async function POST(request: Request) {
       });
       const { filename, contentType, size } = body;
 
-      await ensureAvatarBucket();
       const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const key = `avatars/${userId}/${randomUUID()}-${safeName}`;
+      const key = `avatars/${userId}/${crypto.randomUUID()}-${safeName}`;
       const uploadUrl = await createAvatarUploadUrl({ key, contentType, contentLength: size });
       const publicUrl = getPublicObjectUrl(key);
       return ok({ uploadUrl, publicUrl, key });

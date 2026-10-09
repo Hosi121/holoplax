@@ -1,7 +1,7 @@
 import { createAiOperations } from "./application/ai-operations";
-import { prismaAiOperationsPort } from "./infrastructure/prisma-ai-operations";
+import { d1AiOperationsPort } from "./infrastructure/d1-ai-operations";
 
-const operations = createAiOperations(prismaAiOperationsPort);
+const operations = createAiOperations(d1AiOperationsPort);
 export const getAiContext = operations.getContext;
 export const listAiLogs = operations.listLogs;
 export const listAiPrep = operations.listPrep;

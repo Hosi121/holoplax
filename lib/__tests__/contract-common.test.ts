@@ -13,7 +13,7 @@ describe("OptionalNullableDateSchema", () => {
     expect(OptionalNullableDateSchema.parse(undefined)).toBeUndefined();
   });
 
-  it("rejects invalid dates before they reach Prisma", () => {
+  it("rejects invalid dates before they reach Db", () => {
     expect(OptionalNullableDateSchema.safeParse("not-a-date").success).toBe(false);
   });
 });

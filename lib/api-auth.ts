@@ -1,5 +1,5 @@
 import { getSession } from "./auth";
-import prisma from "./prisma";
+import db from "./db";
 
 export class AuthError extends Error {
   constructor(message = "unauthorized") {
@@ -26,7 +26,7 @@ export async function requireAuth() {
   if (!userId) {
     throw new AuthError();
   }
-  const user = await prisma.user.findUnique({
+  const user = await db.user.findUnique({
     where: { id: userId },
     select: { disabledAt: true, role: true, passwordChangedAt: true },
   });

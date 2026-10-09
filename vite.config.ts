@@ -7,7 +7,7 @@ export default defineConfig({
       name: "client-boundary",
       load(id) {
         if (
-          /\/server\/|\/modules\/[^/]+\/infrastructure\/|\/index\.server\.[jt]s$|\/node_modules\/(?:@prisma\/client|\.prisma)\//.test(
+          /\/server\/|\/modules\/[^/]+\/infrastructure\/|\/index\.server\.[jt]s$|\/database\/(?:client|schema)\.[jt]s$/.test(
             id,
           )
         ) {

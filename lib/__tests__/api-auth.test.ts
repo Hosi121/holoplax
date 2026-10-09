@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn(), findUser: vi.fn() }));
 vi.mock("../auth", () => ({ getSession: mocks.getSession }));
-vi.mock("../prisma", () => ({ default: { user: { findUnique: mocks.findUser } } }));
+vi.mock("../db", () => ({ default: { user: { findUnique: mocks.findUser } } }));
 
 import { requireAuth } from "../api-auth";
 

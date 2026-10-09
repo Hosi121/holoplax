@@ -1,0 +1,16 @@
+# Generate each value with: openssl rand -hex 32
+AUTH_SECRET=replace-with-a-random-secret-of-at-least-32-characters
+ENCRYPTION_KEY=replace-with-64-hex-characters
+# Optional: direct OpenAI or an OpenAI-compatible gateway
+# AI_MODEL=gpt-4o-mini
+# AI_API_KEY=
+# AI_BASE_URL=https://api.openai.com/v1
+# AI_MONTHLY_COST_LIMIT_USD=10
+# Optional OAuth (callback: /api/auth/callback/<provider>)
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+# GITHUB_ID=
+# GITHUB_SECRET=
+# EMAIL_FROM=holoplax@your-verified-domain.example
+# EMAIL_VERIFY_ALWAYS=true
+# AUTOMATION_REQUIRE_APPROVAL=true

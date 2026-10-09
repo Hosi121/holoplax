@@ -7,7 +7,8 @@ const toPosix = (value) => value.replaceAll("\\", "/");
 const walk = (directory) =>
   readdirSync(directory).flatMap((entry) => {
     const path = resolve(directory, entry);
-    if (["node_modules", ".next", "dist", "coverage"].includes(entry)) return [];
+    if (["node_modules", ".wrangler", "dist", "coverage", "test-results"].includes(entry))
+      return [];
     return statSync(path).isDirectory() ? walk(path) : [path];
   });
 
@@ -53,6 +54,7 @@ for (const file of sourceFiles) {
     for (const target of imports) {
       if (
         target === "@prisma/client" ||
+        /(?:^|\/)database\/(?:client|schema)$/.test(target) ||
         target.startsWith("next/") ||
         target === "hono" ||
         target.startsWith("hono/") ||
@@ -70,6 +72,7 @@ for (const file of sourceFiles) {
     for (const target of imports) {
       if (
         target === "@prisma/client" ||
+        /(?:^|\/)database\/(?:client|schema)$/.test(target) ||
         target.startsWith("next/") ||
         target === "hono" ||
         target.startsWith("hono/") ||
@@ -103,14 +106,14 @@ for (const file of sourceFiles) {
   // must participate in another module's transaction.
   const ownsTaskWrites =
     path.startsWith("modules/tasks/infrastructure/") ||
-    path === "modules/shared/infrastructure/prisma-task-consistency.ts" ||
+    path === "modules/shared/infrastructure/d1-task-consistency.ts" ||
     path.startsWith("scripts/") ||
     /\.(?:test|spec)\.[jt]sx?$/.test(path);
   if (!ownsTaskWrites) {
-    const prismaTaskMutation =
+    const taskMutation =
       /\b(?:prisma|tx|db)\.task\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\s*\(/;
     const rawTaskMutation = /\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+"Task"/i;
-    if (prismaTaskMutation.test(source) || rawTaskMutation.test(source)) {
+    if (taskMutation.test(source) || rawTaskMutation.test(source)) {
       report(file, "Task writes must use the tasks module or the shared consistency adapter");
     }
   }
@@ -119,7 +122,7 @@ for (const file of sourceFiles) {
   // to pass through one adapter prevents individual commands from omitting
   // immutable task snapshots or inventing a different event shape.
   const ownsTaskStatusEventWrites =
-    path === "modules/shared/infrastructure/prisma-task-status-events.ts" ||
+    path === "modules/shared/infrastructure/d1-task-status-events.ts" ||
     path.startsWith("scripts/") ||
     /\.(?:test|spec)\.[jt]sx?$/.test(path);
   if (
@@ -134,7 +137,8 @@ for (const file of sourceFiles) {
   // Dependency decisions are part of the Task aggregate. Keeping their state
   // and event updates in one writer makes waiver/reactivation atomic.
   const ownsTaskDependencyWrites =
-    path === "modules/tasks/infrastructure/prisma-task-write.ts" ||
+    path === "modules/tasks/infrastructure/d1-task-write.ts" ||
+    path === "modules/tasks/infrastructure/d1-task-writer.ts" ||
     path.startsWith("scripts/") ||
     /\.(?:test|spec)\.[jt]sx?$/.test(path);
   if (
@@ -149,7 +153,7 @@ for (const file of sourceFiles) {
   // A single retry policy is the process-wide unit-of-work boundary. Direct
   // declarations would silently reintroduce inconsistent conflict handling.
   const ownsSerializableTransactions =
-    path === "modules/shared/infrastructure/prisma-serializable-transaction.ts" ||
+    path === "modules/shared/infrastructure/d1-atomic-command.ts" ||
     /\.(?:test|spec)\.[jt]sx?$/.test(path);
   if (!ownsSerializableTransactions && /isolationLevel\s*:\s*["']Serializable["']/.test(source)) {
     report(file, "Serializable transactions must use the shared retrying transaction adapter");
@@ -189,8 +193,8 @@ for (const file of sourceFiles) {
   if (imports.includes("@prisma/client")) {
     report(file, "driving adapter cannot depend on persistence model types");
   }
-  if (imports.some((target) => /(?:^@\/lib\/prisma$|(?:^|\/)lib\/prisma$)/.test(target))) {
-    report(file, "driving adapter cannot access Prisma directly");
+  if (imports.some((target) => /(?:^@\/lib\/db$|(?:^|\/)lib\/db$)/.test(target))) {
+    report(file, "driving adapter cannot access the database directly");
   }
 }
 
@@ -203,7 +207,6 @@ const protectedAdapters = [
   "server/routes/workspaces/",
   "server/routes/health/",
   "server/routes/velocity/",
-  "server/routes/integrations/discord/",
   "server/routes/mcp/",
   "server/routes/account/",
   "server/routes/delegations/",
@@ -219,7 +222,8 @@ for (const file of sourceFiles) {
   for (const target of imports) {
     if (
       target === "@prisma/client" ||
-      /(?:^|\/)lib\/prisma$/.test(target) ||
+      /(?:^|\/)database\/(?:client|schema)$/.test(target) ||
+      /(?:^|\/)lib\/db$/.test(target) ||
       /modules\/[^/]+\/(?:application|domain|infrastructure)\//.test(target)
     ) {
       report(file, `migrated adapter cannot bypass its module via ${target}`);

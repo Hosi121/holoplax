@@ -1,3 +1,4 @@
+import { runtimeEnv } from "../server/runtime";
 /**
  * Structured logging utility for production environments
  *
@@ -37,12 +38,12 @@ type LogEntry = {
 };
 
 const getMinLevel = (): LogLevel => {
-  const env = process.env.LOG_LEVEL?.toLowerCase();
+  const env = runtimeEnv.LOG_LEVEL?.toLowerCase();
   if (env && env in LOG_LEVELS) {
     return env as LogLevel;
   }
   // Default: debug in development, info in production
-  return process.env.NODE_ENV === "production" ? "info" : "debug";
+  return runtimeEnv.NODE_ENV === "production" ? "info" : "debug";
 };
 
 const shouldLog = (level: LogLevel): boolean => {
@@ -55,7 +56,7 @@ const formatError = (error: unknown): LogEntry["error"] | undefined => {
     return {
       name: error.name,
       message: error.message,
-      stack: process.env.NODE_ENV === "production" ? undefined : error.stack,
+      stack: runtimeEnv.NODE_ENV === "production" ? undefined : error.stack,
     };
   }
   return {

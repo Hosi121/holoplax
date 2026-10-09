@@ -1,13 +1,13 @@
 import type {
-  Severity as PrismaSeverity,
-  SprintStatus as PrismaSprintStatus,
-  TaskAutomationStatus as PrismaTaskAutomationStatus,
-  TaskHierarchyRole as PrismaTaskHierarchyRole,
-  TaskOrigin as PrismaTaskOrigin,
-  TaskStatus as PrismaTaskStatus,
-  TaskType as PrismaTaskType,
-  TaskWorkflowState as PrismaTaskWorkflowState,
-} from "@prisma/client";
+  Severity as DbSeverity,
+  SprintStatus as DbSprintStatus,
+  TaskAutomationStatus as DbTaskAutomationStatus,
+  TaskHierarchyRole as DbTaskHierarchyRole,
+  TaskOrigin as DbTaskOrigin,
+  TaskStatus as DbTaskStatus,
+  TaskType as DbTaskType,
+  TaskWorkflowState as DbTaskWorkflowState,
+} from "../database/models";
 import type { TaskView } from "../modules/tasks";
 import type { TaskAutomationState as DomainTaskAutomationState } from "../modules/tasks/domain/task-types";
 
@@ -21,13 +21,13 @@ export const TASK_STATUS = {
   BACKLOG: "BACKLOG",
   SPRINT: "SPRINT",
   DONE: "DONE",
-} as const satisfies Record<string, PrismaTaskStatus>;
+} as const satisfies Record<string, DbTaskStatus>;
 
 export const TASK_TYPE = {
   EPIC: "EPIC",
   PBI: "PBI",
   TASK: "TASK",
-} as const satisfies Record<string, PrismaTaskType>;
+} as const satisfies Record<string, DbTaskType>;
 
 export const TASK_WORKFLOW_STATE = {
   READY: "READY",
@@ -35,20 +35,20 @@ export const TASK_WORKFLOW_STATE = {
   BLOCKED: "BLOCKED",
   DONE: "DONE",
   CANCELED: "CANCELED",
-} as const satisfies Record<string, PrismaTaskWorkflowState>;
+} as const satisfies Record<string, DbTaskWorkflowState>;
 
 export const AUTOMATION_STATUS = {
   NONE: "NONE",
   PREPARED: "PREPARED",
   SPLIT_PENDING: "SPLIT_PENDING",
   SPLIT_REJECTED: "SPLIT_REJECTED",
-} as const satisfies Record<string, PrismaTaskAutomationStatus>;
+} as const satisfies Record<string, DbTaskAutomationStatus>;
 
 export const TASK_HIERARCHY_ROLE = {
   STANDARD: "STANDARD",
   SPLIT_PARENT: "SPLIT_PARENT",
   SPLIT_CHILD: "SPLIT_CHILD",
-} as const satisfies Record<string, PrismaTaskHierarchyRole>;
+} as const satisfies Record<string, DbTaskHierarchyRole>;
 
 export const TASK_ORIGIN = {
   MANUAL: "MANUAL",
@@ -56,34 +56,34 @@ export const TASK_ORIGIN = {
   AUTOMATION: "AUTOMATION",
   ROUTINE: "ROUTINE",
   ONBOARDING: "ONBOARDING",
-} as const satisfies Record<string, PrismaTaskOrigin>;
+} as const satisfies Record<string, DbTaskOrigin>;
 
 export const SEVERITY = {
   LOW: "LOW",
   MEDIUM: "MEDIUM",
   HIGH: "HIGH",
-} as const satisfies Record<string, PrismaSeverity>;
+} as const satisfies Record<string, DbSeverity>;
 
-// Browser-safe enums; type-only Prisma imports still check their values.
+// Browser-safe enums; type-only Db imports still check their values.
 export const Severity = SEVERITY;
-export type Severity = PrismaSeverity;
+export type Severity = DbSeverity;
 export const TaskAutomationStatus = AUTOMATION_STATUS;
-export type TaskAutomationStatus = PrismaTaskAutomationStatus;
+export type TaskAutomationStatus = DbTaskAutomationStatus;
 export const TaskHierarchyRole = TASK_HIERARCHY_ROLE;
-export type TaskHierarchyRole = PrismaTaskHierarchyRole;
+export type TaskHierarchyRole = DbTaskHierarchyRole;
 export const TaskOrigin = TASK_ORIGIN;
-export type TaskOrigin = PrismaTaskOrigin;
+export type TaskOrigin = DbTaskOrigin;
 export const TaskStatus = TASK_STATUS;
-export type TaskStatus = PrismaTaskStatus;
+export type TaskStatus = DbTaskStatus;
 export const TaskType = TASK_TYPE;
-export type TaskType = PrismaTaskType;
+export type TaskType = DbTaskType;
 export const TaskWorkflowState = TASK_WORKFLOW_STATE;
-export type TaskWorkflowState = PrismaTaskWorkflowState;
+export type TaskWorkflowState = DbTaskWorkflowState;
 
 /**
  * Labels for display (Japanese)
  */
-export const SEVERITY_LABELS: Record<PrismaSeverity, string> = {
+export const SEVERITY_LABELS: Record<DbSeverity, string> = {
   LOW: "低",
   MEDIUM: "中",
   HIGH: "高",
@@ -92,7 +92,7 @@ export const SEVERITY_LABELS: Record<PrismaSeverity, string> = {
 /**
  * Reverse mapping for parsing Japanese input
  */
-export const SEVERITY_FROM_LABEL: Record<string, PrismaSeverity> = {
+export const SEVERITY_FROM_LABEL: Record<string, DbSeverity> = {
   低: "LOW",
   中: "MEDIUM",
   高: "HIGH",
@@ -123,7 +123,7 @@ export type AutomationSettingDTO = {
 export type SprintDTO = {
   id: string;
   name: string;
-  status: PrismaSprintStatus;
+  status: DbSprintStatus;
   capacityPoints: number;
   startedAt?: string | Date;
   plannedEndAt?: string | Date | null;

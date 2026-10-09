@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { DatabaseError } from "../../database/client";
 import {
   ApplicationError,
   type ApplicationErrorKind,
@@ -81,6 +82,18 @@ const toErrorResult = (
   error: unknown,
   fallback?: { code?: string; message?: string; status?: number; requestId?: string },
 ): ErrorResult => {
+  if (error instanceof DatabaseError) {
+    const status = error.code === "NOT_FOUND" ? 404 : error.code === "CONSTRAINT" ? 400 : 409;
+    return {
+      status,
+      envelope: buildEnvelope(
+        `DATABASE_${error.code}`,
+        error.message,
+        undefined,
+        fallback?.requestId,
+      ),
+    };
+  }
   if (error instanceof ApplicationError) {
     const statusByKind: Record<ApplicationErrorKind, number> = {
       bad_request: HTTP_STATUS.BAD_REQUEST,

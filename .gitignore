@@ -16,13 +16,6 @@ node_modules
 /playwright-report
 /blob-report
 
-# next.js
-/.next/
-/out/
-
-# prisma generated client
-generated/prisma-client
-
 # production
 /build
 dist
@@ -41,12 +34,8 @@ yarn-error.log*
 .env*
 !.env.example
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # terraform
 **/.terraform/
@@ -66,3 +55,8 @@ __pycache__/
 
 # Generated API route table
 server/route-table.generated.ts
+
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars*
+!.dev.vars.example

@@ -1,5 +1,5 @@
-import { Prisma } from "@prisma/client";
-import prisma from "./prisma";
+import { Db } from "../database/models";
+import db from "./db";
 
 /**
  * Persist an audit-log entry.
@@ -17,13 +17,13 @@ export async function logAudit(params: {
   metadata?: Record<string, unknown>;
 }): Promise<void> {
   try {
-    await prisma.auditLog.create({
+    await db.auditLog.create({
       data: {
         actorId: params.actorId,
         action: params.action,
         targetUserId: params.targetUserId ?? null,
         targetWorkspaceId: params.targetWorkspaceId ?? null,
-        metadata: (params.metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        metadata: (params.metadata ?? Db.JsonNull) as Db.InputJsonValue,
       },
     });
   } catch (err) {

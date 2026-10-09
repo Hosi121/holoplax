@@ -12,7 +12,7 @@ export type TaskPolicyInput = {
 };
 
 /**
- * Pure task invariant evaluation. This module intentionally has no Prisma,
+ * Pure task invariant evaluation. This module intentionally has no Db,
  * HTTP, Zod, or framework dependency so every command path can share it.
  */
 export function findTaskPolicyViolation(input: TaskPolicyInput): string | null {

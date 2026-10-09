@@ -1,8 +1,8 @@
 import { createDelegationCommands } from "./application/delegation-commands";
-import { startDelegationWorker, wakeDelegationWorker } from "./infrastructure/delegation-worker";
-import { prismaDelegationCommandPort } from "./infrastructure/prisma-delegation-commands";
+import { d1DelegationCommandPort } from "./infrastructure/d1-delegation-commands";
+import { wakeDelegationWorker } from "./infrastructure/delegation-worker";
 
-const commands = createDelegationCommands(prismaDelegationCommandPort);
+const commands = createDelegationCommands(d1DelegationCommandPort);
 
 export const createDelegatedWork = async (...args: Parameters<typeof commands.create>) => {
   const job = await commands.create(...args);
@@ -17,8 +17,6 @@ export const actOnDelegatedWork = async (...args: Parameters<typeof commands.act
   if (job.status === "PENDING") wakeDelegationWorker();
   return job;
 };
-
-export const startDurableDelegationWorker = startDelegationWorker;
 
 export type {
   DelegationJob,

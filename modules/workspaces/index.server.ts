@@ -1,18 +1,18 @@
 import { createWorkspaceMemberCommands } from "./application/member-commands";
 import { createWorkspaceAccess } from "./application/workspace-access";
 import { createWorkspaceCommands } from "./application/workspace-commands";
-import { prismaWorkspaceAccessPort } from "./infrastructure/prisma-workspace-access";
-import { prismaWorkspaceCommandPort } from "./infrastructure/prisma-workspace-commands";
-import { prismaWorkspaceMemberCommandPort } from "./infrastructure/prisma-workspace-member-commands";
+import { d1WorkspaceAccessPort } from "./infrastructure/d1-workspace-access";
+import { d1WorkspaceCommandPort } from "./infrastructure/d1-workspace-commands";
+import { d1WorkspaceMemberCommandPort } from "./infrastructure/d1-workspace-member-commands";
 
-const access = createWorkspaceAccess(prismaWorkspaceAccessPort);
+const access = createWorkspaceAccess(d1WorkspaceAccessPort);
 
 export const isWorkspaceMember = access.isMember;
-const memberCommands = createWorkspaceMemberCommands(prismaWorkspaceMemberCommandPort);
+const memberCommands = createWorkspaceMemberCommands(d1WorkspaceMemberCommandPort);
 export const updateWorkspaceMemberRole = memberCommands.updateRole;
 export const removeWorkspaceMember = memberCommands.remove;
 
-const workspaceCommands = createWorkspaceCommands(prismaWorkspaceCommandPort);
+const workspaceCommands = createWorkspaceCommands(d1WorkspaceCommandPort);
 export const listWorkspaces = workspaceCommands.list;
 export const createWorkspace = workspaceCommands.create;
 export const listWorkspaceMembers = workspaceCommands.listMembers;

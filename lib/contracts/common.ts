@@ -6,7 +6,7 @@ const DateStringSchema = z.string().trim().refine(isValidDateString, "invalid da
 
 /**
  * Optional request date. Empty strings and null clear a nullable field; any
- * non-empty value must be parseable before it reaches Prisma.
+ * non-empty value must be parseable before it reaches Db.
  */
 export const OptionalNullableDateSchema = z
   .preprocess(
