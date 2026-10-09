@@ -14,22 +14,22 @@
 | `AiSuggestionReaction` | 提案への反応と、その時点の文脈・反応時間 |
 
 Claim / Metric / Question の owner は user または workspace の一方だけ。
-保存形式は [Prisma schema](../prisma/schema.prisma)、編集と質問は [memory module](../modules/memory) を参照。
+保存形式は [D1 migration](../migrations/0001_initial.sql)、編集と質問は [memory module](../modules/memory) を参照。
 
 ## 更新と利用
 
-[日次ジョブ](../scripts/metrics/metrics_job.py) は workflow event のスナップショットから
+[日次ジョブ](../modules/metrics/infrastructure/d1-metrics.ts) は workflow event のスナップショットから
 処理量、リードタイム、期限内完了率、WIP を集計する。AI反応からは種別ごとの受容率・修正率・
 反応時間を集計し、workspace の `flow_state` / `ai_trust_state` も更新する。
-AWS では EventBridge から ECS タスクを起動する。
+毎日UTC 0時のCronから、ownerごとのQueueメッセージで処理する。
 
 数値の現在値には `alpha = 1 - 2^(-1/decayDays)` の指数移動平均を使う。
-欠測値は更新しない。日次ジョブは明示 Claim を推定で上書きしないが、
-反応APIの即時更新には [保護が不足している](issues.md#データと更新規則)。
+欠測値は更新しない。日次ジョブと反応APIの即時更新は、明示 Claim を推定で上書きしない。
+同じ日次集計窓の再配信ではEMAを二重適用しない。
 指標キー・集計窓・SQL はジョブ内を正本とし、文書に複製しない。
 
 提案の反応は `VIEWED` / `ACCEPTED` / `MODIFIED` / `REJECTED` / `IGNORED` を記録する。
-[反応APIの実装](../modules/ai/infrastructure/prisma-ai-operations.ts) は閲覧以外の反応で受容率を即時更新する。
+[反応APIの実装](../modules/ai/infrastructure/d1-ai-operations.ts) は閲覧以外の反応で受容率を即時更新する。
 `ACCEPTED` と `MODIFIED` を受容として数える。
 
 [context hook](../app/backlog/hooks/use-suggestion-context.ts) が現在の傾向を読み、

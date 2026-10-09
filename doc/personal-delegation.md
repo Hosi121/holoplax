@@ -21,7 +21,7 @@
 戻っても成功として保存しない。失敗・滞留はヘルスチェックに反映する。
 
 実装は [runner](../modules/delegation/application/delegation-runner.ts)、
-[queue](../modules/delegation/infrastructure/prisma-delegation-queue.ts)、
+[queue](../modules/delegation/infrastructure/d1-delegation-queue.ts)、
 [executor](../modules/delegation/infrastructure/ai-delegation-executor.ts) を参照。
 
 実操作を追加する場合は、操作ごとに許可範囲と承認規則、冪等キー、確認可能な実行記録、

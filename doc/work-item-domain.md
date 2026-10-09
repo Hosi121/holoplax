@@ -19,9 +19,8 @@ API の旧 `BACKLOG` / `SPRINT` / `DONE` は境界で導出する。
 `workflowState = DONE` なら `DONE`、それ以外で active Sprint に所属すれば `SPRINT`、
 残りは `BACKLOG`。内部ロジックで旧値を正本にしない。
 
-Prisma モデルから `Task.status` / `Task.automationState` は除去済み。
-DB にだけ残る互換列と同期 trigger は旧 ECS タスクとの併存用で、
-[撤去条件](issues.md#データと更新規則) を満たしてから削除する。
+D1では `Task.status` / `Task.automationState` と旧同期triggerを持たない。
+旧DBからの変換では、互換列と正本の矛盾を検出して停止する。
 
 ## 更新時の規則
 
@@ -45,6 +44,6 @@ DB にだけ残る互換列と同期 trigger は旧 ECS タスクとの併存用
 持ち越し先は以前の SprintItem に結び付ける。`TaskDependencyEvent` も両端の Task 削除後に残す。
 監査ログは actor が削除されても残る。
 
-保存形式は [Prisma schema](../prisma/schema.prisma)、遷移と計画判断は
+保存形式は [D1 migration](../migrations/0001_initial.sql)、遷移と計画判断は
 [workflow](../modules/tasks/domain/task-workflow.ts) / [lifecycle planner](../modules/tasks/application/task-lifecycle.ts)、
 スプリントの判断は [sprint policy](../modules/sprints/domain/sprint-policy.ts) を参照。

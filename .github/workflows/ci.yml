@@ -16,34 +16,12 @@ concurrency:
 
 env:
   CI: "true"
+  WRANGLER_SEND_METRICS: "false"
 
 jobs:
   quality:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: holoplax
-          POSTGRES_PASSWORD: holoplax
-          POSTGRES_DB: holoplax_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U holoplax"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://holoplax:holoplax@127.0.0.1:5432/holoplax_test
-      NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: ci-nextauth-secret-at-least-32-chars
-      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      MINIO_ENDPOINT: http://localhost:9000
-      MINIO_PUBLIC_URL: http://localhost:9000
-      MINIO_BUCKET_AVATARS: holoplax-avatars
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,22 +30,22 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --workspace server --workspace mcp-server --include-workspace-root
-      - run: npx prisma generate
-      - run: npx prisma migrate deploy
       - run: npm run lint
+      - run: npm run check:cf-types
+      - run: npm run check:metrics
       - run: npm run typecheck
       - run: npm run test:run
       - run: npm run build
       - run: npm run build:mcp
-      - run: python3 -m py_compile scripts/metrics/metrics_job.py
-      - name: Start MinIO for upload tests
-        run: >-
-          docker run -d --name minio -p 9000:9000
-          -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin
-          minio/minio:RELEASE.2024-08-17T01-24-54Z server /data
-      - name: Wait for MinIO
-        run: timeout 30 sh -c 'until curl -fsS http://localhost:9000/minio/health/ready; do sleep 1; done'
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
         env:
           E2E_BUILD_READY: "1"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

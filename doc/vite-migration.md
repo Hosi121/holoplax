@@ -1,5 +1,7 @@
 # Next.js から Vite / Hono への移行
 
+これはコミット `dca8adf` / `e6a6a83` 時点の記録。現在の実行構成は [構成](architecture.md)、検証範囲は [課題](issues.md) を参照。
+
 依存とビルド工程を減らすため、Next.js を Vite の SPA と Hono の Node サーバーに置き換えた。
 認証が前提でブラウザからのデータ取得が中心のため、SSR 用の別フレームワークは追加しない。
 既存 React UI を使い、ページを React Router で遅延ロードする。
@@ -29,4 +31,4 @@ Docker 3 ターゲット、Web 実行イメージに対する Playwright 2 件�
 画面遷移とログアウトを確認した。開発サーバーの画面・アセット・API 接続も確認済み。
 
 隔離 DB / 一時 MinIO を使った検証であり、新規環境の起動と外部 OAuth は未検証の制約がある。
-詳細は [課題](issues.md#起動と検証)。push・GitHub Actions 実行・AWS デプロイはこの検証に含めていない。
+push・GitHub Actions 実行・AWS デプロイは当時の検証に含めていない。
